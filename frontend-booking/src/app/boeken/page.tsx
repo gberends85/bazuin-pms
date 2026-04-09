@@ -477,10 +477,11 @@ export default function BookingPage() {
                 <div style={{ display: 'flex', gap: 8 }}>
                   {(['terschelling', 'vlieland', 'anders'] as const).map(d => {
                     const selected = state.destination === d;
+                    const needsDest = avail && !state.destination;
                     return (
                       <button key={d} onClick={() => upd('destination', d)}
                         style={{ flex: 1, padding: '11px 8px', borderRadius: 8,
-                          border: selected ? '2px solid #0a7c6e' : '0.5px solid rgba(10,34,64,0.2)',
+                          border: selected ? '2px solid #0a7c6e' : needsDest ? '1.5px solid #e24b4a' : '0.5px solid rgba(10,34,64,0.2)',
                           background: selected ? '#e6f7f5' : 'white',
                           cursor: 'pointer', fontSize: 14, fontWeight: 700,
                           color: selected ? '#0a7c6e' : '#0a2240',
@@ -490,6 +491,11 @@ export default function BookingPage() {
                     );
                   })}
                 </div>
+                {avail && !state.destination && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#e24b4a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span>⚠</span> Kies een bestemming om verder te gaan.
+                  </div>
+                )}
                 {state.destination === 'anders' && (
                   <div style={{ marginTop: 8, fontSize: 12, color: '#7090b0', padding: '8px 12px', background: '#f8f9fb', borderRadius: 8 }}>
                     U rijdt zelf en neemt geen veerboot — vul op de volgende stap uw aankomst- en ophaaltijd in.
@@ -511,8 +517,8 @@ export default function BookingPage() {
               </div>
             </div>
 
-            {/* Basistarief (vóór datumselectie) */}
-            {!avail && baseRate && (
+            {/* Basistarief — alleen tonen als datums zijn gekozen maar prijs nog laadt */}
+            {!avail && baseRate && state.arrival && state.departure && (
               <div style={{ ...S.card, background: '#f4f6f9', border: 'none' }}>
                 <div style={{ fontSize: 12, color: '#7090b0', marginBottom: 6, textTransform: 'uppercase' as const, letterSpacing: '0.5px', fontWeight: 600 }}>
                   Tarief {baseRate.rateName}
@@ -549,7 +555,10 @@ export default function BookingPage() {
               </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
+              {avail && !state.destination && (
+                <span style={{ fontSize: 12, color: '#e24b4a', fontWeight: 600 }}>Selecteer eerst een bestemming</span>
+              )}
               <button style={S.btnPrimary} disabled={!avail || avail.available < state.vehicleCount || !state.destination}
                 onClick={() => { if (state.destination !== 'anders') upd('ferryRetDest', state.destination); setStep(2); }}>
                 {state.destination === 'anders' ? 'Verder: Tijden invullen →' : 'Verder: Veerboot kiezen →'}

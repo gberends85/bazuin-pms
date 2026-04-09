@@ -553,6 +553,16 @@ export default function BookingPage() {
                     <span style={{ fontSize: 12, color: '#7090b0' }}>(€ {price.pricePerCar.toFixed(0)} p/auto)</span>
                   )}
                 </div>
+                {price.segments?.length > 1 && (
+                  <div style={{ marginTop: 10, padding: '8px 10px', background: '#f4f6f9', borderRadius: 7, fontSize: 12, color: '#556070' }}>
+                    {price.segments.map((seg: any, i: number) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: i < price.segments.length - 1 ? 3 : 0 }}>
+                        <span>{seg.rateName} <span style={{ color: '#9ab0c8' }}>({seg.daysInRate} van {price.days} dag{price.days !== 1 ? 'en' : ''})</span></span>
+                        <span style={{ fontWeight: 600 }}>€ {seg.weightedPrice.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

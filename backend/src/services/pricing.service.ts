@@ -1,5 +1,13 @@
 import { query } from '../db/pool';
-import { addDays, differenceInDays, isWithinInterval, parseISO } from 'date-fns';
+import { addDays, differenceInDays } from 'date-fns';
+
+export interface PriceSegment {
+  rateId: string;
+  rateName: string;
+  daysInRate: number;
+  fullRatePrice: number;   // what this rate would charge for the FULL stay
+  weightedPrice: number;   // pro-rata share: (daysInRate / totalDays) × fullRatePrice
+}
 
 export interface PriceCalculation {
   days: number;
@@ -12,11 +20,58 @@ export interface PriceCalculation {
   pricePerCar: number;
   totalPrice: number;
   breakdown: string;
+  segments: PriceSegment[];   // one entry per rate period that overlaps the booking
+}
+
+/** Convert a Date to a YYYY-MM-DD string in UTC */
+function toDateStr(d: Date): string {
+  return d.toISOString().split('T')[0];
+}
+
+/**
+ * Look up the price for `n` days from a specific rate's day-price table.
+ * Falls back to base_day_price × n when no explicit entry exists.
+ */
+async function getRatePriceForDays(
+  rateId: string,
+  baseDayPrice: number,
+  n: number
+): Promise<number> {
+  const capped = Math.min(n, 30); // table goes up to 30
+  const dpResult = await query(
+    'SELECT price FROM rate_day_prices WHERE rate_id = $1 AND day_number = $2',
+    [rateId, capped]
+  );
+
+  if (dpResult.rows.length > 0) {
+    return parseFloat(dpResult.rows[0].price);
+  }
+
+  // Beyond table: use 14-day price + extra days at base rate
+  if (n > 14) {
+    const dp14 = await query(
+      'SELECT price FROM rate_day_prices WHERE rate_id = $1 AND day_number = 14',
+      [rateId]
+    );
+    const p14 = dp14.rows.length > 0
+      ? parseFloat(dp14.rows[0].price)
+      : baseDayPrice * 14;
+    return p14 + (n - 14) * baseDayPrice;
+  }
+
+  return baseDayPrice * n;
 }
 
 /**
  * Calculate parking price for a given date range and number of vehicles.
- * Days = (departure - arrival) + 1 (both days count, per De Bazuin policy).
+ *
+ * Days = (departure − arrival) + 1  (both days count, per De Bazuin policy).
+ *
+ * When the booking spans multiple rate periods the cost is a weighted average:
+ *   price = Σ ( rate_i.priceForFullStay × daysInRate_i / totalDays )
+ *
+ * Example – 8 days, voorjaar (€89) covers 2 days, zomer (€100) covers 6:
+ *   price = 89 × (2/8) + 100 × (6/8) = 22.25 + 75.00 = €97.25
  */
 export async function calculatePrice(
   arrivalDate: Date,
@@ -25,87 +80,136 @@ export async function calculatePrice(
   vehicleCount: number = 1
 ): Promise<PriceCalculation> {
   const nights = differenceInDays(departureDate, arrivalDate);
-  const days = nights + 1; // De Bazuin counts both arrival AND departure day
+  const days   = nights + 1; // both arrival AND departure day
 
   if (nights <= 0) {
     throw new Error('Vertrekdatum moet na aankomstdatum liggen');
   }
 
-  // Find the active rate for the arrival date
-  const rateResult = await query(
-    `SELECT r.*, rdp.price as day_price
-     FROM rates r
-     LEFT JOIN rate_day_prices rdp ON rdp.rate_id = r.id AND rdp.day_number = $1
-     WHERE r.parking_lot_id = $2
-       AND r.is_active = true
-       AND r.valid_from <= $3
-       AND r.valid_until >= $3
-     ORDER BY r.sort_order ASC
-     LIMIT 1`,
-    [Math.min(days, 100), lotId, arrivalDate.toISOString().split('T')[0]]
+  // Build the list of every calendar day in the booking as YYYY-MM-DD strings
+  const bookingDays: string[] = Array.from({ length: days }, (_, i) =>
+    toDateStr(addDays(arrivalDate, i))
   );
 
-  if (rateResult.rows.length === 0) {
+  const arrStr = bookingDays[0];
+  const depStr = bookingDays[days - 1];
+
+  // ── Find ALL active rates that overlap the booking window ──────────────────
+  const ratesResult = await query(
+    `SELECT * FROM rates
+     WHERE parking_lot_id = $1
+       AND is_active = true
+       AND valid_from  <= $2
+       AND valid_until >= $3
+     ORDER BY valid_from ASC`,
+    [lotId, depStr, arrStr]
+  );
+
+  if (ratesResult.rows.length === 0) {
     throw new Error('Geen tarief beschikbaar voor deze periode');
   }
 
-  const rate = rateResult.rows[0];
-  let basePricePerCar: number;
+  // ── Count booking days that fall within each rate period ───────────────────
+  const segments: PriceSegment[] = [];
 
-  if (rate.day_price !== null) {
-    // Use the manual override price for this specific day count
-    basePricePerCar = parseFloat(rate.day_price);
-  } else if (days > 14) {
-    // Beyond table: use 14-day price + extra days at base_day_price
-    const day14Result = await query(
-      'SELECT price FROM rate_day_prices WHERE rate_id = $1 AND day_number = 14',
-      [rate.id]
+  for (const rate of ratesResult.rows) {
+    const fromStr  = String(rate.valid_from).slice(0, 10);
+    const untilStr = String(rate.valid_until).slice(0, 10);
+
+    const daysInRate = bookingDays.filter(d => d >= fromStr && d <= untilStr).length;
+    if (daysInRate === 0) continue;
+
+    const fullRatePrice = await getRatePriceForDays(
+      rate.id,
+      parseFloat(rate.base_day_price),
+      days
     );
-    const day14Price = day14Result.rows[0]
-      ? parseFloat(day14Result.rows[0].price)
-      : 140.00;
-    basePricePerCar = day14Price + (days - 14) * parseFloat(rate.base_day_price);
-  } else {
-    // Fall back to base_day_price * days
-    basePricePerCar = parseFloat(rate.base_day_price) * days;
+
+    const weightedPrice = (daysInRate / days) * fullRatePrice;
+
+    segments.push({
+      rateId:       rate.id,
+      rateName:     rate.name,
+      daysInRate,
+      fullRatePrice,
+      weightedPrice,
+    });
   }
 
-  // Check for season surcharge
+  // Edge case: some days may fall outside all rate periods (gap between periods).
+  // Assign uncovered days to the segment with the most days as a safety fallback.
+  const coveredDays = segments.reduce((s, seg) => s + seg.daysInRate, 0);
+  if (coveredDays < days && segments.length > 0) {
+    const largest = segments.reduce((a, b) => a.daysInRate >= b.daysInRate ? a : b);
+    const extra   = days - coveredDays;
+    largest.daysInRate    += extra;
+    largest.weightedPrice  = (largest.daysInRate / days) * largest.fullRatePrice;
+  }
+
+  if (segments.length === 0) {
+    throw new Error('Geen tarief beschikbaar voor deze periode');
+  }
+
+  // ── Weighted base price ────────────────────────────────────────────────────
+  const basePricePerCar = Math.round(
+    segments.reduce((sum, seg) => sum + seg.weightedPrice, 0) * 100
+  ) / 100;
+
+  // Primary rate = the one covering the most days (used for rateId / rateName)
+  const primary = segments.reduce((a, b) => a.daysInRate >= b.daysInRate ? a : b);
+
+  // ── Season surcharge (based on arrival date) ───────────────────────────────
   const seasonResult = await query(
     `SELECT * FROM season_surcharges
      WHERE is_active = true
-       AND valid_from <= $1
+       AND valid_from  <= $1
        AND valid_until >= $1
      ORDER BY surcharge_pct DESC
      LIMIT 1`,
-    [arrivalDate.toISOString().split('T')[0]]
+    [arrStr]
   );
 
-  let seasonSurchargePct = 0;
+  let seasonSurchargePct    = 0;
   let seasonSurchargeAmount = 0;
 
   if (seasonResult.rows.length > 0) {
-    seasonSurchargePct = parseFloat(seasonResult.rows[0].surcharge_pct);
-    seasonSurchargeAmount =
-      Math.round(basePricePerCar * (seasonSurchargePct / 100) * 100) / 100;
+    seasonSurchargePct    = parseFloat(seasonResult.rows[0].surcharge_pct);
+    seasonSurchargeAmount = Math.round(basePricePerCar * (seasonSurchargePct / 100) * 100) / 100;
   }
 
-  const pricePerCar =
-    Math.round((basePricePerCar + seasonSurchargeAmount) * 100) / 100;
-  const totalPrice = Math.round(pricePerCar * vehicleCount * 100) / 100;
+  const pricePerCar = Math.round((basePricePerCar + seasonSurchargeAmount) * 100) / 100;
+  const totalPrice  = Math.round(pricePerCar * vehicleCount * 100) / 100;
+
+  // ── Breakdown string ───────────────────────────────────────────────────────
+  let breakdown: string;
+  if (segments.length === 1) {
+    breakdown = `${days} dag${days !== 1 ? 'en' : ''} × ${vehicleCount} auto${vehicleCount !== 1 ? "'s" : ''}`;
+  } else {
+    const parts = segments.map(
+      s => `${s.rateName} ${s.daysInRate}/${days} × €${s.fullRatePrice.toFixed(2)}`
+    );
+    breakdown = parts.join(' + ');
+  }
+  if (seasonSurchargePct > 0) {
+    breakdown += ` + ${seasonSurchargePct}% seizoenstoeslag`;
+  }
+
+  const rateName = segments.length > 1
+    ? segments.map(s => `${s.rateName} (${s.daysInRate}d)`).join(' + ')
+    : primary.rateName;
 
   return {
     days,
     nights,
-    rateId: rate.id,
-    rateName: rate.name,
+    rateId:               primary.rateId,
+    rateName,
     basePricePerCar,
     seasonSurchargePct,
     seasonSurchargeAmount,
     pricePerCar,
     totalPrice,
-    breakdown: `${days} dag${days !== 1 ? 'en' : ''} × ${vehicleCount} auto${vehicleCount !== 1 ? "'s" : ''}` +
-      (seasonSurchargePct > 0 ? ` + ${seasonSurchargePct}% seizoenstoeslag` : ''),
+    breakdown,
+    segments,
   };
 }
 
@@ -119,8 +223,8 @@ export async function calculateRefund(
 ): Promise<{ refundPct: number; refundAmount: number; policyDescription: string }> {
   if (adminOverridePct !== undefined) {
     return {
-      refundPct: adminOverridePct,
-      refundAmount: Math.round(totalPaid * (adminOverridePct / 100) * 100) / 100,
+      refundPct:         adminOverridePct,
+      refundAmount:      Math.round(totalPaid * (adminOverridePct / 100) * 100) / 100,
       policyDescription: `Admin override: ${adminOverridePct}%`,
     };
   }
@@ -141,15 +245,11 @@ export async function calculateRefund(
     return { refundPct: 0, refundAmount: 0, policyDescription: 'Geen restitutie' };
   }
 
-  const policy = policyResult.rows[0];
-  const refundPct = policy.refund_percentage;
+  const policy      = policyResult.rows[0];
+  const refundPct   = policy.refund_percentage;
   const refundAmount = Math.round(totalPaid * (refundPct / 100) * 100) / 100;
 
-  return {
-    refundPct,
-    refundAmount,
-    policyDescription: policy.description,
-  };
+  return { refundPct, refundAmount, policyDescription: policy.description };
 }
 
 /**
@@ -158,17 +258,13 @@ export async function calculateRefund(
 export async function generateReference(): Promise<string> {
   const year = new Date().getFullYear();
   const rand = Math.floor(1000 + Math.random() * 9000);
-  const ref = `PP-${year}-${rand}`;
-  
-  // Check uniqueness
+  const ref  = `PP-${year}-${rand}`;
+
   const existing = await query(
     'SELECT id FROM reservations WHERE reference = $1',
     [ref]
   );
-  
-  if (existing.rows.length > 0) {
-    return generateReference(); // recurse
-  }
-  
+
+  if (existing.rows.length > 0) return generateReference();
   return ref;
 }

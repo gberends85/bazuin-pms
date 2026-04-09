@@ -111,11 +111,17 @@ router.get('/availability', async (req: Request, res: Response) => {
   }
 
   const lotResult = await query(
-    `SELECT pl.*, l.total_spots, l.online_spots
-     FROM parking_lots pl
-     JOIN locations l ON l.id = pl.location_id
-     WHERE pl.id = $1 AND pl.is_active = true`,
-    [lot_id || 'b0000000-0000-0000-0000-000000000001']
+    lot_id
+      ? `SELECT pl.*, l.total_spots, l.online_spots
+         FROM parking_lots pl
+         JOIN locations l ON l.id = pl.location_id
+         WHERE pl.id = $1 AND pl.is_active = true`
+      : `SELECT pl.*, l.total_spots, l.online_spots
+         FROM parking_lots pl
+         JOIN locations l ON l.id = pl.location_id
+         WHERE pl.is_active = true
+         ORDER BY pl.sort_order ASC LIMIT 1`,
+    lot_id ? [lot_id] : []
   );
 
   if (lotResult.rows.length === 0) {
@@ -169,7 +175,14 @@ router.get('/rates/calculate', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'arrival en departure zijn verplicht' });
   }
 
-  const lotId = lot_id || 'b0000000-0000-0000-0000-000000000001';
+  // Gebruik de meegegeven lot_id, anders de eerste actieve parkeerlocatie uit de DB
+  let lotId = lot_id;
+  if (!lotId) {
+    const lotResult = await query('SELECT id FROM parking_lots WHERE is_active = true ORDER BY sort_order ASC LIMIT 1');
+    if (lotResult.rows.length === 0) return res.status(400).json({ error: 'Geen parkeerlocatie geconfigureerd' });
+    lotId = lotResult.rows[0].id;
+  }
+
   const vehicleCount = parseInt(vehicles || '1');
 
   const priceInfo = await calculatePrice(

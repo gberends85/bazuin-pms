@@ -41,22 +41,45 @@ export default function DashboardPage() {
             <span style={{fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.45)',textTransform:'uppercase',letterSpacing:'0.6px'}}>⛴ Boottijden vandaag — Rederij Doeksen</span>
             <Link href="/settings/ferries" style={{fontSize:11,color:'rgba(255,255,255,0.5)',textDecoration:'none'}}>✎ Aanpassen</Link>
           </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:10}}>
-            {ferries?.schedules?.filter((s: any) => s.direction === 'outbound').slice(0,4).map((s: any, i: number) => (
-              <div key={i} style={{background:'rgba(255,255,255,0.07)',borderRadius:8,padding:'10px 12px'}}>
-                <div style={{fontSize:10,fontWeight:700,color:'#f5c842',textTransform:'uppercase',marginBottom:3}}>→ {s.destination}</div>
-                <div style={{fontSize:20,fontWeight:800}}>{s.departureTime}</div>
-                <div style={{fontSize:10,color:'rgba(255,255,255,0.45)',marginTop:2}}>{s.ferryName}</div>
+          {ferries?.schedules ? (() => {
+            const outbound = ferries.schedules.filter((s: any) => s.direction === 'outbound');
+            const returns = ferries.schedules.filter((s: any) => s.direction === 'return');
+            const destinations = ['terschelling','vlieland'] as const;
+            return (
+              <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                {destinations.map(dest => {
+                  const out = outbound.filter((s: any) => s.destination === dest);
+                  const ret = returns.filter((s: any) => s.destination === dest);
+                  if (out.length === 0 && ret.length === 0) return null;
+                  return (
+                    <div key={dest}>
+                      <div style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.8px',marginBottom:6}}>
+                        {dest === 'terschelling' ? '🟡 Terschelling' : '🔵 Vlieland'}
+                      </div>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))',gap:8}}>
+                        {out.slice(0,5).map((s: any, i: number) => (
+                          <div key={i} style={{background:'rgba(255,255,255,0.07)',borderRadius:8,padding:'8px 10px'}}>
+                            <div style={{fontSize:9,fontWeight:700,color:'#f5c842',textTransform:'uppercase',marginBottom:2}}>↗ Heen</div>
+                            <div style={{fontSize:19,fontWeight:800}}>{s.departureTime}</div>
+                            <div style={{fontSize:9,color:'rgba(255,255,255,0.4)',marginTop:1}}>{s.ferryName}</div>
+                          </div>
+                        ))}
+                        {ret.slice(0,3).map((s: any, i: number) => (
+                          <div key={i} style={{background:'rgba(255,255,255,0.07)',borderRadius:8,padding:'8px 10px',borderLeft:'2px solid #0a7c6e'}}>
+                            <div style={{fontSize:9,fontWeight:700,color:'#0d9b8a',textTransform:'uppercase',marginBottom:2}}>↙ Arr. Harlingen</div>
+                            <div style={{fontSize:19,fontWeight:800}}>{s.arrivalHarlingen || s.departureTime}</div>
+                            <div style={{fontSize:9,color:'rgba(255,255,255,0.4)',marginTop:1}}>{dest} retour</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-            {ferries?.schedules?.filter((s: any) => s.direction === 'return').slice(0,2).map((s: any, i: number) => (
-              <div key={i} style={{background:'rgba(255,255,255,0.07)',borderRadius:8,padding:'10px 12px',borderLeft:'3px solid #0a7c6e'}}>
-                <div style={{fontSize:10,fontWeight:700,color:'#0d9b8a',textTransform:'uppercase',marginBottom:3}}>← Aankomst Harlingen</div>
-                <div style={{fontSize:20,fontWeight:800}}>{s.arrivalHarlingen || s.departureTime}</div>
-                <div style={{fontSize:10,color:'rgba(255,255,255,0.45)',marginTop:2}}>{s.destination} retour</div>
-              </div>
-            ))}
-          </div>
+            );
+          })() : (
+            <div style={{color:'rgba(255,255,255,0.3)',fontSize:13}}>Geen veerboottijden beschikbaar</div>
+          )}
         </div>
 
         {/* Stats */}

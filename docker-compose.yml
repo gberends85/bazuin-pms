@@ -1,0 +1,69 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: bazuin_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bazuin_pms
+      POSTGRES_USER: bazuin
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql
+      - ./backend/migrations/002_seed_data.sql:/docker-entrypoint-initdb.d/002_seed.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bazuin -d bazuin_pms"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: bazuin_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://bazuin:${DB_PASSWORD:-changeme}@postgres:5432/bazuin_pms
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-info@autostallingdebazuin.nl}
+      FRONTEND_BOOKING_URL: ${FRONTEND_BOOKING_URL:-http://localhost:3000}
+      FRONTEND_ADMIN_URL: ${FRONTEND_ADMIN_URL:-http://localhost:3002}
+      NODE_ENV: production
+      PORT: 3001
+    ports:
+      - "3001:3001"
+
+  frontend-booking:
+    build: ./frontend-booking
+    container_name: bazuin_booking
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${API_URL:-http://localhost:3001}/api/v1
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY}
+    ports:
+      - "3000:3000"
+
+  frontend-admin:
+    build: ./frontend-admin
+    container_name: bazuin_admin
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${API_URL:-http://localhost:3001}/api/v1
+    ports:
+      - "3002:3002"
+
+volumes:
+  postgres_data:

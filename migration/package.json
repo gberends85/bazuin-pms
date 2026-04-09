@@ -1,0 +1,12 @@
+{
+  "name": "bazuin-migration",
+  "version": "1.0.0",
+  "scripts": {
+    "migrate": "npx tsx migrate-from-umbraco.ts"
+  },
+  "dependencies": {
+    "pg": "^8.11.3",
+    "dotenv": "^16.4.1",
+    "tsx": "^4.7.0"
+  }
+}

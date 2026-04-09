@@ -1051,6 +1051,58 @@ router.put('/admin/rates/:id/day-prices', requireAuth, async (req: Request, res:
   }
 });
 
+// ── Admin: Rate aanmaken ───────────────────────────────────────
+router.post('/admin/rates', requireAuth, async (req: Request, res: Response) => {
+  const { name, validFrom, validUntil, baseDayPrice, minDays, maxDays, customerInfo, sortOrder } = req.body;
+  const lotResult = await query('SELECT id FROM parking_lots LIMIT 1');
+  if (lotResult.rows.length === 0) return res.status(400).json({ error: 'Geen parkeerlocatie gevonden' });
+  const lotId = lotResult.rows[0].id;
+
+  const result = await query(
+    `INSERT INTO rates (parking_lot_id, name, valid_from, valid_until, base_day_price, min_days, max_days, customer_info, sort_order)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    [lotId, name, validFrom, validUntil, baseDayPrice || 8.00, minDays || 1, maxDays || 100, customerInfo || null, sortOrder ?? 0]
+  );
+  const rate = result.rows[0];
+
+  // Genereer standaard dagprijzen (dag 1..30: dagprijs × aantal dagen)
+  const base = parseFloat(baseDayPrice || 8.00);
+  for (let d = 1; d <= 30; d++) {
+    await query(
+      'INSERT INTO rate_day_prices (rate_id, day_number, price) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+      [rate.id, d, parseFloat((base * d).toFixed(2))]
+    );
+  }
+  return res.json(rate);
+});
+
+// ── Admin: Rate bijwerken ──────────────────────────────────────
+router.put('/admin/rates/:id', requireAuth, async (req: Request, res: Response) => {
+  const { name, validFrom, validUntil, baseDayPrice, minDays, maxDays, customerInfo, sortOrder, isActive } = req.body;
+  const result = await query(
+    `UPDATE rates SET
+       name        = COALESCE($1, name),
+       valid_from  = COALESCE($2::date, valid_from),
+       valid_until = COALESCE($3::date, valid_until),
+       base_day_price = COALESCE($4, base_day_price),
+       min_days    = COALESCE($5, min_days),
+       max_days    = COALESCE($6, max_days),
+       customer_info = $7,
+       sort_order  = COALESCE($8, sort_order),
+       is_active   = COALESCE($9, is_active),
+       updated_at  = NOW()
+     WHERE id = $10 RETURNING *`,
+    [name, validFrom || null, validUntil || null, baseDayPrice ?? null, minDays ?? null, maxDays ?? null, customerInfo ?? null, sortOrder ?? null, isActive ?? null, req.params.id]
+  );
+  return res.json(result.rows[0]);
+});
+
+// ── Admin: Rate verwijderen ────────────────────────────────────
+router.delete('/admin/rates/:id', requireAuth, async (req: Request, res: Response) => {
+  await query('DELETE FROM rates WHERE id = $1', [req.params.id]);
+  return res.json({ success: true });
+});
+
 // ============================================================
 // ADMIN — EMAIL TEMPLATES
 // ============================================================

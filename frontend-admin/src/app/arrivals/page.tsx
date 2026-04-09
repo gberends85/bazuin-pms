@@ -295,6 +295,31 @@ function ArrivalCard({ res, onSelect, onUpdate }: { res: any; onSelect: () => vo
   const lbl: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 5 };
   const inp: React.CSSProperties = { width: '100%', padding: '8px 11px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 7, fontSize: 14, color: '#0a2240', boxSizing: 'border-box' };
 
+  const payBadge = res.payment_status === 'paid'
+    ? <span style={{ fontSize: 9, fontWeight: 700, background: '#e8f5eb', color: '#2a7a3a', borderRadius: 3, padding: '1px 6px' }}>✓ betaald</span>
+    : res.payment_status === 'on_site' || res.payment_method === 'on_site'
+    ? <span style={{ fontSize: 9, fontWeight: 700, background: '#fff0cc', color: '#8a5f00', borderRadius: 3, padding: '1px 6px' }}>● ter plekke</span>
+    : <span style={{ fontSize: 9, fontWeight: 700, background: '#fdeaea', color: '#8a2020', borderRadius: 3, padding: '1px 6px' }}>! open</span>;
+
+  const actionBtns = (
+    <div style={{ display: 'flex', gap: 4 }} onClick={stopProp}>
+      {!isCheckedIn && res.status === 'booked' && (
+        <>
+          <button title="Inchecken" onClick={() => setCheckinOpen(true)}
+            style={{ background: '#0a7c6e', border: 'none', color: 'white', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>✓</button>
+          <button title="Inchecken + mail" onClick={() => setCheckinMailOpen(true)}
+            style={{ background: '#0a2240', border: 'none', color: 'white', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 13 }}>✉</button>
+        </>
+      )}
+      <button title="Envelop afdrukken" onClick={() => window.open(`/print/envelope/${res.id}`, '_blank')}
+        style={{ background: '#f4f6f9', border: '0.5px solid rgba(10,34,64,0.2)', color: '#0a2240', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 13 }}>🖨</button>
+      {res.status !== 'cancelled' && res.status !== 'completed' && (
+        <button title="Annuleren" onClick={() => setCancelOpen(true)}
+          style={{ background: 'none', border: '0.5px solid rgba(200,0,0,0.3)', color: '#c00', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontSize: 13 }}>✕</button>
+      )}
+    </div>
+  );
+
   return (
     <>
       <div
@@ -307,93 +332,92 @@ function ArrivalCard({ res, onSelect, onUpdate }: { res: any; onSelect: () => vo
         onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 1px 8px rgba(10,34,64,0.08)')}
         onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
       >
-        <div style={{ display: 'flex', alignItems: 'center', padding: '9px 12px', gap: 12 }}>
-
+        {/* ── Desktop layout ─────────────────────────────────── */}
+        <div className="arrival-row-desktop" style={{ alignItems: 'center', padding: '9px 12px', gap: 12 }}>
           {/* 1. Kenteken + auto info */}
           <div style={{ flexShrink: 0, width: 150 }}>
             {plates.map((p: string) => <PlateTooltip key={p} plate={p} />)}
             {carInfo && <div style={{ fontSize: 9, color: '#7090b0', marginTop: 3, lineHeight: 1.3 }}>{carInfo}</div>}
           </div>
-
           {/* 2. Naam + meta */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: 14, color: '#0a2240', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{res.first_name} {res.last_name}</span>
               {isCheckedIn && <span style={{ fontSize: 9, fontWeight: 700, color: '#0a7c6e', background: '#e6f7f5', borderRadius: 3, padding: '1px 5px', flexShrink: 0 }}>✓ IN</span>}
-              {res.admin_notes && (
-                <NoteIcon note={res.admin_notes} onClick={stopProp} />
-              )}
+              {res.admin_notes && <NoteIcon note={res.admin_notes} onClick={stopProp} />}
             </div>
             <div style={{ fontSize: 10, color: '#9ab0c8', marginTop: 2, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <span>#{res.reference}</span>
-              {res.phone && (
-                <a href={waLink(res.phone)} target="_blank" rel="noopener" onClick={stopProp}
-                  style={{ color: '#25D366', textDecoration: 'none', fontWeight: 600 }}>📱 WA</a>
-              )}
-              {res.ev_kwh_total > 0 && (
-                <span style={{ color: '#0a7c6e', fontWeight: 700 }}>⚡ {res.ev_kwh_total} kWh</span>
-              )}
+              {res.phone && <a href={waLink(res.phone)} target="_blank" rel="noopener" onClick={stopProp} style={{ color: '#25D366', textDecoration: 'none', fontWeight: 600 }}>📱 WA</a>}
+              {res.ev_kwh_total > 0 && <span style={{ color: '#0a7c6e', fontWeight: 700 }}>⚡ {res.ev_kwh_total} kWh</span>}
             </div>
-            {/* Betaalstatus + bedrag */}
             <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ fontSize: 12, fontWeight: 800, color: '#0a2240' }}>
-                € {parseFloat(res.total_price || 0).toFixed(2)}
-              </span>
-              {res.payment_status === 'paid' ? (
-                <span style={{ fontSize: 9, fontWeight: 700, background: '#e8f5eb', color: '#2a7a3a', borderRadius: 3, padding: '1px 6px' }}>✓ betaald</span>
-              ) : res.payment_status === 'on_site' || res.payment_method === 'on_site' ? (
-                <span style={{ fontSize: 9, fontWeight: 700, background: '#fff0cc', color: '#8a5f00', borderRadius: 3, padding: '1px 6px' }}>● ter plekke</span>
-              ) : (
-                <span style={{ fontSize: 9, fontWeight: 700, background: '#fdeaea', color: '#8a2020', borderRadius: 3, padding: '1px 6px' }}>! open</span>
-              )}
+              <span style={{ fontSize: 12, fontWeight: 800, color: '#0a2240' }}>€ {parseFloat(res.total_price || 0).toFixed(2)}</span>
+              {payBadge}
             </div>
           </div>
-
-          {/* 3. Aankomstdatum + Heentijd + aankomst eiland */}
-          <div style={{ flexShrink: 0, width: 170, textAlign: 'left', paddingRight: 14, borderRight: '0.5px solid rgba(10,34,64,0.08)', marginRight: 4 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#4a6080', marginBottom: 2, textTransform: 'capitalize' }}>
-              {fmtDateLong(res.arrival_date)}
-            </div>
+          {/* 3. Heentijd */}
+          <div style={{ flexShrink: 0, width: 170, paddingRight: 14, borderRight: '0.5px solid rgba(10,34,64,0.08)', marginRight: 4 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#4a6080', marginBottom: 2, textTransform: 'capitalize' }}>{fmtDateLong(res.arrival_date)}</div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              <span style={{ fontSize: 20, fontWeight: 900, color: '#0a2240', lineHeight: 1.1 }}>
-                {res.ferry_outbound_time || '—'}
-              </span>
-              {res.ferry_outbound_arrival_island && (
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#7090b0' }}>→ {res.ferry_outbound_arrival_island}</span>
-              )}
+              <span style={{ fontSize: 20, fontWeight: 900, color: '#0a2240', lineHeight: 1.1 }}>{res.ferry_outbound_time || '—'}</span>
+              {res.ferry_outbound_arrival_island && <span style={{ fontSize: 13, fontWeight: 700, color: '#7090b0' }}>→ {res.ferry_outbound_arrival_island}</span>}
             </div>
           </div>
-
-          {/* 4. Terugreis tijden */}
+          {/* 4. Terugreis */}
           {res.ferry_return_time && (
-            <div style={{ flexShrink: 0, width: 190, textAlign: 'left' }}>
+            <div style={{ flexShrink: 0, width: 190 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: '#4a6080', marginBottom: 2, textTransform: 'capitalize' }}>← {fmtDateLong(res.departure_date)}</div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                 <span style={{ fontSize: 11, fontWeight: 600, color: '#7090b0' }}>{res.ferry_return_time}</span>
-                {res.ferry_return_arrival_harlingen && (
-                  <span style={{ fontSize: 20, fontWeight: 900, color: '#0a7c6e' }}>{res.ferry_return_arrival_harlingen}</span>
-                )}
+                {res.ferry_return_arrival_harlingen && <span style={{ fontSize: 20, fontWeight: 900, color: '#0a7c6e' }}>{res.ferry_return_arrival_harlingen}</span>}
               </div>
             </div>
           )}
+          {/* 5. Knoppen */}
+          <div style={{ flexShrink: 0 }}>{actionBtns}</div>
+        </div>
 
-          {/* 5. Actieknoppen */}
-          <div style={{ flexShrink: 0, display: 'flex', gap: 4 }} onClick={stopProp}>
-            {!isCheckedIn && res.status === 'booked' && (
-              <>
-                <button title="Inchecken" onClick={() => setCheckinOpen(true)}
-                  style={{ background: '#0a7c6e', border: 'none', color: 'white', borderRadius: 6, padding: '5px 9px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>✓</button>
-                <button title="Inchecken + mail" onClick={() => setCheckinMailOpen(true)}
-                  style={{ background: '#0a2240', border: 'none', color: 'white', borderRadius: 6, padding: '5px 9px', cursor: 'pointer', fontSize: 12 }}>✉</button>
-              </>
-            )}
-            <button title="Envelop afdrukken"
-              onClick={() => window.open(`/print/envelope/${res.id}`, '_blank')}
-              style={{ background: '#f4f6f9', border: '0.5px solid rgba(10,34,64,0.2)', color: '#0a2240', borderRadius: 6, padding: '5px 9px', cursor: 'pointer', fontSize: 12 }}>🖨</button>
-            {res.status !== 'cancelled' && res.status !== 'completed' && (
-              <button title="Annuleren" onClick={() => setCancelOpen(true)}
-                style={{ background: 'none', border: '0.5px solid rgba(200,0,0,0.3)', color: '#c00', borderRadius: 6, padding: '5px 9px', cursor: 'pointer', fontSize: 12 }}>✕</button>
-            )}
+        {/* ── Mobile layout ───────────────────────────────────── */}
+        <div className="arrival-row-mobile" style={{ flexDirection: 'column', padding: '10px 12px', gap: 8 }}>
+          {/* Bovenste rij: kenteken + status + knoppen */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {/* Naam + badge */}
+              <div style={{ fontWeight: 700, fontSize: 15, color: '#0a2240', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                {res.first_name} {res.last_name}
+                {isCheckedIn && <span style={{ fontSize: 9, fontWeight: 700, color: '#0a7c6e', background: '#e6f7f5', borderRadius: 3, padding: '1px 5px' }}>✓ IN</span>}
+                {res.admin_notes && <NoteIcon note={res.admin_notes} onClick={stopProp} />}
+              </div>
+              {/* Kentekens */}
+              <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                {plates.map((p: string) => <PlateTooltip key={p} plate={p} />)}
+              </div>
+              {carInfo && <div style={{ fontSize: 10, color: '#7090b0', marginTop: 3 }}>{carInfo}</div>}
+            </div>
+            <div onClick={stopProp}>{actionBtns}</div>
+          </div>
+
+          {/* Onderste rij: boottijd + prijs + meta */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+            {/* Boottijd heen */}
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ fontSize: 22, fontWeight: 900, color: '#0a2240' }}>{res.ferry_outbound_time || '—'}</span>
+              {res.ferry_outbound_arrival_island && <span style={{ fontSize: 12, color: '#7090b0', fontWeight: 600 }}>→ {res.ferry_outbound_arrival_island}</span>}
+            </div>
+            {/* Prijs + betaalstatus */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ fontSize: 14, fontWeight: 800, color: '#0a2240' }}>€ {parseFloat(res.total_price || 0).toFixed(2)}</span>
+              {payBadge}
+            </div>
+          </div>
+
+          {/* Meta: reference + WA + EV */}
+          <div style={{ fontSize: 11, color: '#9ab0c8', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span>#{res.reference}</span>
+            {res.phone && <a href={waLink(res.phone)} target="_blank" rel="noopener" onClick={stopProp} style={{ color: '#25D366', textDecoration: 'none', fontWeight: 600 }}>📱 WA</a>}
+            {res.ev_kwh_total > 0 && <span style={{ color: '#0a7c6e', fontWeight: 700 }}>⚡ {res.ev_kwh_total} kWh</span>}
+            {res.ferry_return_arrival_harlingen && <span>← {res.ferry_return_arrival_harlingen}</span>}
           </div>
         </div>
       </div>

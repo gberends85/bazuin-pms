@@ -82,3 +82,51 @@ input, select, textarea {
 .btn-wa { background: #25d366; color: white; }
 .btn-wa:hover { background: #128c3e; }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ── Sidebar responsive ─────────────────────────────────────── */
+.sidebar-close-btn { display: none; }
+
+@media (max-width: 767px) {
+  /* Sidebar wordt een vaste overlay op mobiel */
+  .sidebar {
+    position: fixed !important;
+    top: 0; left: 0; bottom: 0;
+    z-index: 99;
+    transform: translateX(-100%);
+  }
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.3);
+  }
+  .sidebar.sidebar-closed {
+    transform: translateX(-100%);
+  }
+  /* Backdrop zichtbaar op mobiel */
+  .mobile-backdrop { display: block !important; }
+  /* Sluit-knop zichtbaar op mobiel */
+  .sidebar-close-btn { display: block !important; }
+  /* Hamburger topbar zichtbaar op mobiel */
+  .mobile-topbar { display: flex !important; }
+}
+
+@media (min-width: 768px) {
+  /* Desktop: sidebar altijd zichtbaar, geen overlay */
+  .sidebar {
+    position: relative !important;
+    transform: none !important;
+    box-shadow: none !important;
+  }
+  .mobile-topbar { display: none !important; }
+  .sidebar-close-btn { display: none !important; }
+}
+
+/* ── Aankomsten mobiel ──────────────────────────────────────── */
+@media (max-width: 767px) {
+  .arrival-row-desktop { display: none !important; }
+  .arrival-row-mobile { display: flex !important; }
+}
+@media (min-width: 768px) {
+  .arrival-row-desktop { display: flex !important; }
+  .arrival-row-mobile { display: none !important; }
+}

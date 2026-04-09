@@ -68,6 +68,9 @@ export const api = {
   reports: { financial: (p: any) => req<any>(`/admin/reports/financial?${new URLSearchParams(p)}`) },
   rates: {
     list: () => req<any[]>('/admin/rates'),
+    create: (d: any) => req<any>('/admin/rates', { method: 'POST', body: JSON.stringify(d) }),
+    update: (id: string, d: any) => req<any>(`/admin/rates/${id}`, { method: 'PUT', body: JSON.stringify(d) }),
+    remove: (id: string) => req<any>(`/admin/rates/${id}`, { method: 'DELETE' }),
     dayPrices: (id: string) => req<any[]>(`/admin/rates/${id}/day-prices`),
     updateDayPrices: (id: string, dp: any[]) => req<any>(`/admin/rates/${id}/day-prices`, { method: 'PUT', body: JSON.stringify({ dayPrices: dp }) }),
   },

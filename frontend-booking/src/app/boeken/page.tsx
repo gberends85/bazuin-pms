@@ -163,6 +163,7 @@ interface BookingState {
   vehicleCount: number;
   ferryOutId: string;
   ferryOutTime: string;
+  ferryOutCustom: boolean;
   isFastOut: boolean;
   ferryRetId: string;
   ferryRetTime: string;
@@ -180,7 +181,7 @@ interface BookingState {
 
 const INIT: BookingState = {
   arrival: '', departure: '', destination: '', vehicleCount: 1,
-  ferryOutId: '', ferryOutTime: '', isFastOut: false,
+  ferryOutId: '', ferryOutTime: '', ferryOutCustom: false, isFastOut: false,
   ferryOutBoatType: '', ferryRetBoatType: '',
   ferryRetId: '', ferryRetTime: '', ferryRetDest: '',
   ferryRetCustom: false, ferryRetCustomTime: '',
@@ -605,24 +606,32 @@ export default function BookingPage() {
 
               {feriesOut.length > 0 ? (
                 <>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 6, marginBottom: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 6, marginBottom: 10 }}>
                     {feriesOut.map((s, i) => {
-                      const sel = state.ferryOutTime === s.departureTime;
+                      const sel = state.ferryOutTime === s.departureTime && !state.ferryOutCustom;
                       return (
-                        <button key={i} onClick={() => { upd('ferryOutId', s.ferryId); upd('ferryOutTime', s.departureTime); upd('isFastOut', s.isFast); upd('ferryOutBoatType', ''); }}
+                        <button key={i} onClick={() => { upd('ferryOutId', s.ferryId); upd('ferryOutTime', s.departureTime); upd('isFastOut', s.isFast); upd('ferryOutCustom', false); }}
                           style={{ padding: '8px 6px', borderRadius: 8, border: sel ? '2px solid #0a7c6e' : '0.5px solid rgba(10,34,64,0.15)', background: sel ? '#e6f7f5' : 'white', cursor: 'pointer', textAlign: 'center' as const }}>
                           <div style={{ fontSize: 16, fontWeight: 800, color: sel ? '#0a7c6e' : '#0a2240' }}>{s.departureTime}</div>
                           {s.isFast && <div style={{ fontSize: 9, fontWeight: 700, color: '#0a7c6e', marginTop: 1 }}>snel</div>}
                         </button>
                       );
                     })}
+                    {/* Eigen tijd knop */}
+                    <button onClick={() => { upd('ferryOutCustom', true); upd('ferryOutId', ''); upd('ferryOutTime', ''); }}
+                      style={{ padding: '8px 6px', borderRadius: 8, border: state.ferryOutCustom ? '2px solid #e8a020' : '0.5px solid rgba(10,34,64,0.15)', background: state.ferryOutCustom ? '#fff8e6' : 'white', cursor: 'pointer', textAlign: 'center' as const }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: state.ferryOutCustom ? '#b07a10' : '#556070' }}>Eigen</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: state.ferryOutCustom ? '#b07a10' : '#556070' }}>tijd</div>
+                    </button>
                   </div>
-                  <div style={{ marginBottom: 20 }}>
-                    <label style={{ ...S.label, marginBottom: 4 }}>Eigen vertrektijd</label>
-                    <input type="time" value={state.ferryOutId ? '' : state.ferryOutTime}
-                      onChange={e => { upd('ferryOutTime', e.target.value); upd('ferryOutId', ''); }}
-                      style={{ border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 8, padding: '8px 12px', fontSize: 15, fontWeight: 700, color: '#0a2240', outline: 'none', width: 130 }} />
-                  </div>
+                  {state.ferryOutCustom && (
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ ...S.label, marginBottom: 4 }}>Eigen vertrektijd vanuit Harlingen</label>
+                      <input type="time" value={state.ferryOutTime}
+                        onChange={e => upd('ferryOutTime', e.target.value)}
+                        style={{ border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 8, padding: '8px 12px', fontSize: 20, fontWeight: 800, color: '#0a2240', outline: 'none', width: 150, background: 'white' }} />
+                    </div>
+                  )}
                 </>
               ) : (
                 /* Geen Doeksen-data: eigen invulveld met boottype + aankomstberekening */
@@ -748,7 +757,9 @@ export default function BookingPage() {
               <p style={{ margin: '0 0 20px', fontSize: 13, color: '#7090b0' }}>Optioneel — voeg elektrisch laden toe per auto.</p>
 
               {state.vehicles.map((v, i) => {
-                const evSvcs = services.filter(s => s.kwh && !s.admin_only);
+                const evSvcs = services
+                  .filter(s => s.kwh && !s.admin_only)
+                  .filter((s, idx, arr) => arr.findIndex(x => x.kwh === s.kwh) === idx);
                 const fuelType = v.rdw?.fuelType?.toLowerCase() || '';
                 const isCombustion = fuelType.includes('benzine') || fuelType.includes('diesel') || fuelType.includes('lpg');
                 return (

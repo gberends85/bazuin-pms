@@ -305,10 +305,13 @@ export default function BookingPage() {
     if (!state.arrival || !state.departure) return;
     if (state.departure <= state.arrival) return;
     setAvail(null); setPrice(null);
-    Promise.all([
-      bookingApi.checkAvailability(state.arrival, state.departure),
-      bookingApi.calculatePrice(state.arrival, state.departure, state.vehicleCount),
-    ]).then(([a, p]) => { setAvail(a); setPrice(p); }).catch(err => setError(err.message));
+    // Run both independently so a pricing error doesn't block the availability result
+    bookingApi.checkAvailability(state.arrival, state.departure)
+      .then(a => setAvail(a))
+      .catch(err => setError(err.message));
+    bookingApi.calculatePrice(state.arrival, state.departure, state.vehicleCount)
+      .then(p => setPrice(p))
+      .catch(() => { /* pricing error is non-fatal; user can still proceed */ });
   }, [state.arrival, state.departure, state.vehicleCount]);
 
   // Load ferries when destination + dates known

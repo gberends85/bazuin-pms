@@ -23,9 +23,12 @@ export interface PriceCalculation {
   segments: PriceSegment[];   // one entry per rate period that overlaps the booking
 }
 
-/** Convert a Date to a YYYY-MM-DD string in UTC */
+/** Convert a Date to a YYYY-MM-DD string using LOCAL date parts (avoids UTC offset shift) */
 function toDateStr(d: Date): string {
-  return d.toISOString().split('T')[0];
+  const y   = d.getFullYear();
+  const m   = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 /**
@@ -95,18 +98,22 @@ export async function calculatePrice(
   const depStr = bookingDays[days - 1];
 
   // ── Find ALL active rates that overlap the booking window ──────────────────
+  console.log(`[pricing] lot=${lotId} arr=${arrStr} dep=${depStr} days=${days}`);
+
   const ratesResult = await query(
     `SELECT * FROM rates
      WHERE parking_lot_id = $1
        AND is_active = true
-       AND valid_from  <= $2
-       AND valid_until >= $3
+       AND valid_from  <= $2::date
+       AND valid_until >= $3::date
      ORDER BY valid_from ASC`,
     [lotId, depStr, arrStr]
   );
 
+  console.log(`[pricing] rates found: ${ratesResult.rows.length}`, ratesResult.rows.map((r: any) => `${r.name} (${r.valid_from}→${r.valid_until})`));
+
   if (ratesResult.rows.length === 0) {
-    throw new Error('Geen tarief beschikbaar voor deze periode');
+    throw new Error(`Geen tarief beschikbaar voor periode ${arrStr}–${depStr} (lot ${lotId})`);
   }
 
   // ── Count booking days that fall within each rate period ───────────────────
@@ -146,8 +153,10 @@ export async function calculatePrice(
     largest.weightedPrice  = (largest.daysInRate / days) * largest.fullRatePrice;
   }
 
+  console.log(`[pricing] segments built: ${segments.length}`, segments.map(s => `${s.rateName}:${s.daysInRate}d`));
+
   if (segments.length === 0) {
-    throw new Error('Geen tarief beschikbaar voor deze periode');
+    throw new Error(`Geen tarief beschikbaar voor periode ${arrStr}–${depStr}`);
   }
 
   // ── Weighted base price ────────────────────────────────────────────────────

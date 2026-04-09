@@ -620,13 +620,15 @@ export default function BookingPage() {
               {feriesOut.length > 0 ? (
                 <>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 6, marginBottom: 10 }}>
-                    {feriesOut.map((s, i) => {
+                    {feriesOut
+                      .filter((s, idx, arr) => arr.findIndex(x => x.departureTime === s.departureTime && x.ferryId === s.ferryId) === idx)
+                      .map((s, i) => {
                       const sel = state.ferryOutTime === s.departureTime && !state.ferryOutCustom;
                       return (
                         <button key={i} onClick={() => { upd('ferryOutId', s.ferryId); upd('ferryOutTime', s.departureTime); upd('isFastOut', s.isFast); upd('ferryOutCustom', false); }}
                           style={{ padding: '8px 6px', borderRadius: 8, border: sel ? '2px solid #0a7c6e' : '0.5px solid rgba(10,34,64,0.15)', background: sel ? '#e6f7f5' : 'white', cursor: 'pointer', textAlign: 'center' as const }}>
                           <div style={{ fontSize: 16, fontWeight: 800, color: sel ? '#0a7c6e' : '#0a2240' }}>{s.departureTime}</div>
-                          {s.isFast && <div style={{ fontSize: 9, fontWeight: 700, color: '#0a7c6e', marginTop: 1 }}>snel</div>}
+                          <div style={{ fontSize: 9, fontWeight: 700, color: sel ? '#0a7c6e' : '#7090b0', marginTop: 2 }}>{s.isFast ? 'snelboot' : 'veerboot'}</div>
                         </button>
                       );
                     })}
@@ -690,13 +692,16 @@ export default function BookingPage() {
                   />
                 ) : ferriesRet.length > 0 ? (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 6 }}>
-                    {ferriesRet.map((s, i) => {
+                    {ferriesRet
+                      .filter((s, idx, arr) => arr.findIndex(x => x.departureTime === s.departureTime && x.ferryId === s.ferryId) === idx)
+                      .map((s, i) => {
                       const sel = state.ferryRetTime === s.departureTime;
                       return (
                         <button key={i} onClick={() => { upd('ferryRetId', s.ferryId); upd('ferryRetTime', s.departureTime); }}
                           style={{ padding: '8px 6px', borderRadius: 8, border: sel ? '2px solid #0a7c6e' : '0.5px solid rgba(10,34,64,0.15)', background: sel ? '#e6f7f5' : 'white', cursor: 'pointer', textAlign: 'center' as const }}>
                           <div style={{ fontSize: 9, fontWeight: 700, color: '#7090b0', marginBottom: 2 }}>vertrek eiland</div>
                           <div style={{ fontSize: 16, fontWeight: 800, color: sel ? '#0a7c6e' : '#0a2240' }}>{s.departureTime}</div>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: sel ? '#0a7c6e' : '#7090b0', marginTop: 2 }}>{s.isFast ? 'snelboot' : 'veerboot'}</div>
                           {s.arrivalHarlingen && <><div style={{ fontSize: 9, fontWeight: 700, color: '#7090b0', marginTop: 4, marginBottom: 2 }}>aankomst Hlg</div>
                           <div style={{ fontSize: 13, fontWeight: 700, color: sel ? '#0a7c6e' : '#556070' }}>{s.arrivalHarlingen}</div></>}
                         </button>

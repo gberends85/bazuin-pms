@@ -120,8 +120,9 @@ export async function calculatePrice(
   const segments: PriceSegment[] = [];
 
   for (const rate of ratesResult.rows) {
-    const fromStr  = String(rate.valid_from).slice(0, 10);
-    const untilStr = String(rate.valid_until).slice(0, 10);
+    // pg kan DATE teruggeven als Date-object of als string — beide afhandelen
+    const fromStr  = rate.valid_from instanceof Date ? toDateStr(rate.valid_from)  : String(rate.valid_from).slice(0, 10);
+    const untilStr = rate.valid_until instanceof Date ? toDateStr(rate.valid_until) : String(rate.valid_until).slice(0, 10);
 
     const daysInRate = bookingDays.filter(d => d >= fromStr && d <= untilStr).length;
     if (daysInRate === 0) continue;

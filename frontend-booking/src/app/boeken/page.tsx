@@ -843,7 +843,7 @@ export default function BookingPage() {
                               🔋 Geschatte accucapaciteit: ~{ev.batteryCapacityKwh} kWh
                             </div>
                             <div style={{ color: '#556070' }}>
-                              WLTP bereik: {ev.wltpRangeKm} km · Realistisch: ~{Math.round(ev.wltpRangeKm * 0.7)} km
+                              WLTP bereik: {ev.wltpRangeKm} km · Realistisch: ~{Math.round(ev.realisticKmPerKwh * ev.batteryCapacityKwh)} km
                             </div>
                             <div style={{ color: '#556070', marginTop: 2 }}>
                               Ca. {ev.realisticKmPerKwh} km extra per geladen kWh

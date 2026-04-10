@@ -141,7 +141,7 @@ export async function generateInvoicePdf(token: string): Promise<{ pdf: Buffer; 
     doc.fillColor(GREY).fontSize(8).font('Helvetica')
       .text('Autostalling De Bazuin  |  Zeilmakersstraat 2, 8861SE Harlingen  |  0517-412986  |  info@autostallingdebazuin.nl',
         50, 782, { align: 'center', width: 495 })
-      .text('BTW-nummer: NL000000000B00  |  KvK: 00000000', 50, 796, { align: 'center', width: 495 })
+      .text('BTW: NL863463319B01  |  KvK: 85003190  |  IBAN: NL81ABNA01087948', 50, 796, { align: 'center', width: 495 })
       .text('Bedankt voor uw vertrouwen in Autostalling De Bazuin!', 50, 812, { align: 'center', width: 495 });
 
     doc.end();

@@ -106,7 +106,8 @@ export async function lookupRdw(rawPlate: string): Promise<VehicleInfo | null> {
           if (wltpRange > 0 && wltpConsumption > 0) {
             const batteryCapacity = Math.round((wltpRange * wltpConsumption / 1000) * 10) / 10;
             const realisticKmPerKwh = Math.round((1000 / wltpConsumption) * 0.7 * 10) / 10;
-            const suggestedKwh = Math.round(batteryCapacity / 2);
+            // Adviseer volledige lading, maximaal 30 kWh (afgerond omhoog)
+            const suggestedKwh = Math.min(Math.ceil(batteryCapacity), 30);
             evInfo = {
               wltpRangeKm: wltpRange,
               wltpConsumptionWhPerKm: wltpConsumption,

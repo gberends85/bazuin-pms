@@ -857,9 +857,12 @@ export default function BookingPage() {
                             Geen laden
                           </button>
                           {availableSvcs.map(s => {
-                            const isSuggested = suggestedKwh !== null && s.kwh === availableSvcs.reduce((best, opt) =>
-                              Math.abs(opt.kwh - suggestedKwh) < Math.abs(best.kwh - suggestedKwh) ? opt : best
-                            ).kwh;
+                            // Kleinste optie die >= benodigde kWh (volledig opladen), anders de grootste beschikbare
+                            const suggestedOpt = suggestedKwh !== null
+                              ? (availableSvcs.filter(o => o.kwh >= suggestedKwh).sort((a, b) => a.kwh - b.kwh)[0]
+                                 ?? availableSvcs[availableSvcs.length - 1])
+                              : null;
+                            const isSuggested = suggestedOpt !== null && s.kwh === suggestedOpt.kwh;
                             const extraKm = ev ? Math.round(s.kwh * ev.realisticKmPerKwh) : null;
                             const sel = v.evKwh === s.kwh;
                             return (

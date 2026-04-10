@@ -82,7 +82,9 @@ export const api = {
   },
   services: {
     list: () => req<any[]>('/admin/services'),
+    create: (d: any) => req<any>('/admin/services', { method: 'POST', body: JSON.stringify(d) }),
     update: (id: string, d: any) => req<any>(`/admin/services/${id}`, { method: 'PUT', body: JSON.stringify(d) }),
+    remove: (id: string) => req<any>(`/admin/services/${id}`, { method: 'DELETE' }),
   },
   emailTemplates: {
     list: () => req<any[]>('/admin/email-templates'),

@@ -1190,17 +1190,37 @@ router.post('/admin/ferries/doeksen-sync/:date', requireAuth, async (req: Reques
 // ADMIN — SERVICES
 // ============================================================
 router.get('/admin/services', requireAuth, async (_req, res) => {
-  const result = await query('SELECT * FROM services ORDER BY sort_order');
+  const result = await query('SELECT * FROM services ORDER BY sort_order, created_at');
   return res.json(result.rows);
 });
 
-router.put('/admin/services/:id', requireAuth, async (req: Request, res: Response) => {
-  const { name, description, customerInfo, price, adminOnly, isActive } = req.body;
-  await query(
-    `UPDATE services SET name=$1, description=$2, customer_info=$3, price=$4,
-     admin_only=$5, is_active=$6, updated_at=NOW() WHERE id=$7`,
-    [name, description, customerInfo, price, adminOnly, isActive, req.params.id]
+router.post('/admin/services', requireAuth, async (req: Request, res: Response) => {
+  const { name, description, customerInfo, price, unit, kwh, adminOnly, isActive } = req.body;
+  const maxOrder = await query('SELECT COALESCE(MAX(sort_order),0)+1 AS next FROM services');
+  const result = await query(
+    `INSERT INTO services (name, description, customer_info, price, unit, kwh, admin_only, is_active, sort_order)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [name || 'Nieuwe dienst', description || null, customerInfo || null,
+     parseFloat(price) || 0, unit || 'per_booking', kwh || null,
+     adminOnly ?? false, isActive ?? true, maxOrder.rows[0].next]
   );
+  return res.status(201).json(result.rows[0]);
+});
+
+router.put('/admin/services/:id', requireAuth, async (req: Request, res: Response) => {
+  const { name, description, customerInfo, price, unit, kwh, adminOnly, isActive, sortOrder } = req.body;
+  const result = await query(
+    `UPDATE services SET name=$1, description=$2, customer_info=$3, price=$4,
+     unit=$5, kwh=$6, admin_only=$7, is_active=$8, sort_order=COALESCE($9, sort_order), updated_at=NOW()
+     WHERE id=$10 RETURNING *`,
+    [name, description, customerInfo, parseFloat(price), unit, kwh || null,
+     adminOnly, isActive, sortOrder ?? null, req.params.id]
+  );
+  return res.json(result.rows[0]);
+});
+
+router.delete('/admin/services/:id', requireAuth, async (req: Request, res: Response) => {
+  await query('DELETE FROM services WHERE id=$1', [req.params.id]);
   return res.json({ success: true });
 });
 

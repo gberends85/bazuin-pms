@@ -122,6 +122,7 @@ export default function ServicesPage() {
                     <input value={s.name} onChange={e => update(s.id, 'name', e.target.value)}
                       style={{ fontSize: 14, fontWeight: 700, border: 'none', borderBottom: '0.5px solid rgba(10,34,64,0.2)', padding: '2px 4px', color: '#0a2240', background: 'transparent', minWidth: 160 }} />
                     {s.kwh && <span style={{ ...tag, color: '#0a7c6e', background: '#e6f7f5' }}>⚡ {s.kwh} kWh</span>}
+                    {!s.kwh && <span style={{ ...tag, color: '#aab8cc', background: '#f4f6f9' }}>geen kWh</span>}
                     {s.admin_only && <span style={{ ...tag, color: '#7a5010', background: '#fef3dc' }}>Admin only</span>}
                     <span style={{ ...tag, color: '#185fa5', background: '#e6f1fb' }}>{unitLabel(s.unit || 'per_booking')}</span>
                   </div>
@@ -137,6 +138,14 @@ export default function ServicesPage() {
                     <span style={{ color: '#7090b0', fontSize: 13 }}>€</span>
                     <input type="number" value={s.price} onChange={e => update(s.id, 'price', e.target.value)} step="0.01" min="0"
                       style={{ width: 75, padding: '5px 7px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 6, fontSize: 15, fontWeight: 700, textAlign: 'right' }} />
+                  </div>
+
+                  {/* kWh (optioneel, voor laaddiensten) */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ color: '#7090b0', fontSize: 12 }}>⚡ kWh</span>
+                    <input type="number" value={s.kwh || ''} onChange={e => update(s.id, 'kwh', e.target.value ? parseFloat(e.target.value) : null)} step="1" min="0"
+                      placeholder="—"
+                      style={{ width: 55, padding: '4px 7px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 6, fontSize: 13, textAlign: 'right' }} />
                   </div>
 
                   {/* Eenheid */}

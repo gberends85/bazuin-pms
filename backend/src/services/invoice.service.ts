@@ -120,14 +120,31 @@ export async function generateInvoicePdf(token: string): Promise<{ pdf: Buffer; 
       drawRow(sv.name, `${sv.quantity || 1}`, fmtMoney(lineTotal), i % 2 === 0);
     });
 
-    // ── Totaal ───────────────────────────────────────────────
+    // ── BTW + Totaal ─────────────────────────────────────────
+    const totalIncl = parseFloat(r.total_price || '0');
+    const totalExcl = Math.round((totalIncl / 1.21) * 100) / 100;
+    const btwAmount = Math.round((totalIncl - totalExcl) * 100) / 100;
+
     y += 8;
+    // Subtotaal excl. BTW
+    doc.rect(350, y, 195, 1).fill('#dde4ee');
+    y += 5;
+    doc.fillColor('#556070').fontSize(9).font('Helvetica')
+      .text('Subtotaal excl. BTW', 360, y)
+      .text(fmtMoney(totalExcl), 430, y, { width: 105, align: 'right' });
+    y += 14;
+    doc.fillColor('#556070').fontSize(9).font('Helvetica')
+      .text('BTW 21%', 360, y)
+      .text(fmtMoney(btwAmount), 430, y, { width: 105, align: 'right' });
+    y += 10;
+
+    // Totaal incl. BTW
     doc.rect(350, y, 195, 1).fill(DARK);
-    y += 6;
+    y += 5;
     doc.rect(350, y, 195, 26).fill(DARK);
     doc.fillColor('white').fontSize(11).font('Helvetica-Bold')
-      .text('Totaal', 360, y + 7)
-      .text(fmtMoney(parseFloat(r.total_price || '0')), 430, y + 7, { width: 105, align: 'right' });
+      .text('Totaal incl. BTW', 360, y + 7)
+      .text(fmtMoney(totalIncl), 430, y + 7, { width: 105, align: 'right' });
     y += 36;
 
     // Betaalstatus

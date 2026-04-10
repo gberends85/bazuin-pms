@@ -17,6 +17,7 @@ import {
   signAccessToken, signRefreshToken, verifyRefreshToken,
 } from '../middleware/auth';
 import { syncDoeksenSchedule, syncDoeksenScheduleDays } from '../services/doeksen.service';
+import { generateInvoicePdf } from '../services/invoice.service';
 
 export const router = Router();
 
@@ -522,6 +523,49 @@ router.post('/payments/create-intent', async (req: Request, res: Response) => {
   );
 
   return res.json({ clientSecret, paymentIntentId });
+});
+
+// ============================================================
+// PUBLIC — GET RESERVATION BY PAYMENT INTENT (for bevestiging page)
+// ============================================================
+router.get('/reservations/by-payment-intent/:intentId', async (req: Request, res: Response) => {
+  const result = await query(
+    `SELECT r.id, r.reference, r.arrival_date, r.departure_date, r.total_price,
+            r.payment_status, r.payment_method, r.status, r.cancellation_token,
+            r.ferry_outbound_time, r.ferry_return_time, r.ferry_return_custom_time,
+            c.first_name, c.last_name, c.email
+     FROM reservations r JOIN customers c ON c.id = r.customer_id
+     WHERE r.stripe_payment_intent_id = $1`,
+    [req.params.intentId]
+  );
+  if (result.rows.length === 0) return res.status(404).json({ error: 'Niet gevonden' });
+  const r = result.rows[0];
+  const vehicles = await query(
+    'SELECT license_plate FROM vehicles WHERE reservation_id = $1 ORDER BY sort_order',
+    [r.id]
+  );
+  const services = await query(
+    `SELECT s.name, rs.quantity, rs.price_at_booking
+     FROM reservation_services rs JOIN services s ON s.id = rs.service_id
+     WHERE rs.reservation_id = $1`,
+    [r.id]
+  );
+  return res.json({
+    ...r,
+    vehicles: vehicles.rows,
+    services: services.rows,
+  });
+});
+
+// ============================================================
+// PUBLIC — DOWNLOAD INVOICE PDF
+// ============================================================
+router.get('/invoice/:token', async (req: Request, res: Response) => {
+  const result = await generateInvoicePdf(req.params.token);
+  if (!result) return res.status(404).json({ error: 'Factuur niet gevonden' });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+  return res.send(result.pdf);
 });
 
 // ============================================================

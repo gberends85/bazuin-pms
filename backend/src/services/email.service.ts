@@ -99,6 +99,7 @@ export async function sendBookingConfirmation(
     totaal_bedrag: `€ ${parseFloat(res.total_price).toFixed(2).replace('.', ',')}`,
     annuleringslink: `${baseUrl}/annuleren/${res.cancellation_token}`,
     wijzigingslink: `${baseUrl}/wijzigen/${res.cancellation_token}`,
+    factuurlink: `${process.env.API_URL || 'https://api.booking.parkeren-harlingen.nl/api/v1'}/invoice/${res.cancellation_token}`,
     whatsapp_nummer: settings['company_whatsapp'] || '31612345678',
   });
 }

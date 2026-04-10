@@ -3,9 +3,10 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 
-function fmtDayNum(iso: string) { return new Date(iso + 'T12:00:00').getDate(); }
-function fmtDayName(iso: string) { return new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'long' }); }
-function fmtMonth(iso: string) { return new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { month: 'long' }); }
+function toDateOnly(iso: string) { return String(iso).slice(0, 10); }
+function fmtDayNum(iso: string) { return new Date(toDateOnly(iso) + 'T12:00:00').getDate(); }
+function fmtDayName(iso: string) { return new Date(toDateOnly(iso) + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'long' }); }
+function fmtMonth(iso: string) { return new Date(toDateOnly(iso) + 'T12:00:00').toLocaleDateString('nl-NL', { month: 'long' }); }
 
 function C6Envelope({ res }: { res: any }) {
   const plates = res.vehicles?.map((v: any) => v.license_plate) || (res.plates || '').split(', ').filter(Boolean);

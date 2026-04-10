@@ -5,15 +5,10 @@ import { api } from '@/lib/api';
 function fmtDay(iso: string) {
   return new Date(iso).toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
 }
-function fmtDayNum(iso: string) {
-  return new Date(iso).getDate();
-}
-function fmtDayName(iso: string) {
-  return new Date(iso).toLocaleDateString('nl-NL', { weekday: 'long' });
-}
-function fmtMonth(iso: string) {
-  return new Date(iso).toLocaleDateString('nl-NL', { month: 'long' });
-}
+function toDateOnly(iso: string) { return String(iso).slice(0, 10); }
+function fmtDayNum(iso: string) { return new Date(toDateOnly(iso) + 'T12:00:00').getDate(); }
+function fmtDayName(iso: string) { return new Date(toDateOnly(iso) + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'long' }); }
+function fmtMonth(iso: string) { return new Date(toDateOnly(iso) + 'T12:00:00').toLocaleDateString('nl-NL', { month: 'long' }); }
 
 function C6Envelope({ res }: { res: any }) {
   const plates = res.vehicles?.map((v: any) => v.license_plate) || (res.plates || '').split(', ').filter(Boolean);

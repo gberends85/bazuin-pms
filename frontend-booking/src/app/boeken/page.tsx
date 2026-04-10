@@ -621,7 +621,7 @@ export default function BookingPage() {
                 <>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 6, marginBottom: 10 }}>
                     {feriesOut
-                      .filter((s, idx, arr) => arr.findIndex(x => x.departureTime === s.departureTime && x.ferryId === s.ferryId) === idx)
+                      .filter((s, idx, arr) => arr.findIndex(x => x.departureTime === s.departureTime && x.isFast === s.isFast) === idx)
                       .map((s, i) => {
                       const sel = state.ferryOutTime === s.departureTime && !state.ferryOutCustom;
                       return (
@@ -693,7 +693,7 @@ export default function BookingPage() {
                 ) : ferriesRet.length > 0 ? (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 6 }}>
                     {ferriesRet
-                      .filter((s, idx, arr) => arr.findIndex(x => x.departureTime === s.departureTime && x.ferryId === s.ferryId) === idx)
+                      .filter((s, idx, arr) => arr.findIndex(x => x.departureTime === s.departureTime && x.isFast === s.isFast) === idx)
                       .map((s, i) => {
                       const sel = state.ferryRetTime === s.departureTime;
                       return (

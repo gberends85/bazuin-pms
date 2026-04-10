@@ -16,8 +16,9 @@ interface RdwFuelEntry {
   kenteken: string;
   brandstof_omschrijving: string;
   // BEV
-  actieradius_enkel_elektrisch_wltp?: string;
+  actie_radius_enkel_elektrisch_wltp?: string;
   elektrisch_verbruik_enkel_elektrisch_wltp?: string;
+  actie_radius_enkel_elektrisch_stad_wltp?: string;
   // PHEV
   actie_radius_extern_opladen_wltp?: string;
   elektrisch_verbruik_extern_opladen_wltp?: string;
@@ -95,7 +96,7 @@ export async function lookupRdw(rawPlate: string): Promise<VehicleInfo | null> {
 
         if (electricEntry) {
           // BEV: enkel elektrisch / PHEV: extern opladen
-          const rangeStr = electricEntry.actieradius_enkel_elektrisch_wltp
+          const rangeStr = electricEntry.actie_radius_enkel_elektrisch_wltp
             || electricEntry.actie_radius_extern_opladen_wltp;
           const consumptionStr = electricEntry.elektrisch_verbruik_enkel_elektrisch_wltp
             || electricEntry.elektrisch_verbruik_extern_opladen_wltp;

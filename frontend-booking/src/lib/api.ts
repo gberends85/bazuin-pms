@@ -31,6 +31,9 @@ export const bookingApi = {
   getFerries: (date: string, destination: string, direction: string) =>
     get<{ schedules: any[] }>(`/ferries?date=${date}&destination=${destination}&direction=${direction}`),
 
+  syncDoeksenDates: (dates: string[]) =>
+    post<{ success: boolean; results: Record<string, any> }>('/ferries/sync', { dates }),
+
   getServices: () => get<any[]>('/services'),
 
   lookupPlate: (plate: string) =>

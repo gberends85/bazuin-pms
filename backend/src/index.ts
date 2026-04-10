@@ -171,30 +171,9 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   res.status(status).json({ error: message });
 });
 
-// ── Doeksen dagelijkse sync ───────────────────────────────────
-function scheduleDailyDoeksenSync() {
-  // Direct bij opstarten: sync vandaag + 14 dagen vooruit
-  syncDoeksenScheduleDays(14).catch(err =>
-    console.error('Doeksen startsync mislukt:', err)
-  );
-
-  // Elke dag om 05:00 opnieuw syncen
-  function scheduleNext() {
-    const now = new Date();
-    const next = new Date();
-    next.setHours(5, 0, 0, 0);
-    if (next <= now) next.setDate(next.getDate() + 1);
-    const msUntil = next.getTime() - now.getTime();
-    setTimeout(() => {
-      syncDoeksenScheduleDays(14).catch(err =>
-        console.error('Doeksen dagsync mislukt:', err)
-      );
-      scheduleNext();
-    }, msUntil);
-    console.log(`Volgende Doeksen sync gepland om ${next.toLocaleTimeString('nl-NL')}`);
-  }
-  scheduleNext();
-}
+// ── Doeksen sync ─────────────────────────────────────────────
+// Automatische sync uitgeschakeld — tijden worden handmatig geladen
+// via de knop in de boekingsflow of via het adminpaneel.
 
 // ── Start ─────────────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {
@@ -206,7 +185,7 @@ app.listen(PORT, '0.0.0.0', () => {
 ║   ${new Date().toLocaleString('nl-NL').padEnd(43)}║
 ╚═══════════════════════════════════════════════╝
   `);
-  scheduleDailyDoeksenSync();
+  // Geen automatische Doeksen-sync bij opstart
 });
 
 export default app;

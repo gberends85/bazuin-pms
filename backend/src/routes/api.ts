@@ -193,6 +193,27 @@ router.get('/rates/calculate', async (req: Request, res: Response) => {
 });
 
 // ============================================================
+// PUBLIC — DOEKSEN SYNC (voor boekingspagina, rate-limited)
+// ============================================================
+router.post('/ferries/sync', async (req: Request, res: Response) => {
+  const { dates } = req.body as { dates: string[] };
+  if (!Array.isArray(dates) || dates.length === 0 || dates.length > 3) {
+    return res.status(400).json({ error: 'Geef 1–3 datums mee' });
+  }
+  const results: Record<string, any> = {};
+  for (const d of dates) {
+    const date = new Date(d);
+    if (isNaN(date.getTime())) continue;
+    try {
+      results[d] = await syncDoeksenSchedule(date);
+    } catch (e: any) {
+      results[d] = { error: e.message };
+    }
+  }
+  return res.json({ success: true, results });
+});
+
+// ============================================================
 // PUBLIC — FERRY SCHEDULES
 // ============================================================
 router.get('/ferries', async (req: Request, res: Response) => {
@@ -216,31 +237,7 @@ router.get('/ferries', async (req: Request, res: Response) => {
     destination ? [date, destination] : [date]
   );
 
-  // Alleen terugvallen op templates als er GEEN Doeksen-data is (notes LIKE 'Doeksen sync')
-  // én ook geen handmatig ingevoerde tijden — d.w.z. de datum is verder dan 14 dagen weg
-  if (scheduleResult.rows.length === 0) {
-    const hasDoeksenForDate = await query(
-      `SELECT 1 FROM ferry_schedules WHERE schedule_date = $1 AND notes LIKE 'Doeksen sync%' LIMIT 1`,
-      [date]
-    );
-    // Gebruik templates alleen als er helemaal geen Doeksen data voor deze datum is
-    if (hasDoeksenForDate.rows.length === 0) {
-      scheduleResult = await query(
-        `SELECT fst.*, f.name, f.duration_min, f.is_fast, fst.destination as ferry_destination
-         FROM ferry_schedule_templates fst
-         JOIN ferries f ON f.id = fst.ferry_id
-         WHERE fst.day_of_week = $1
-           AND fst.valid_from <= $2
-           AND (fst.valid_until IS NULL OR fst.valid_until >= $2)
-           AND fst.is_active = true
-           ${destination ? 'AND fst.destination = $3' : ''}
-           ${direction ? `AND fst.direction = '${direction === 'return' ? 'return' : 'outbound'}'` : ''}
-           AND f.is_active = true
-         ORDER BY fst.departure_time`,
-        destination ? [dayOfWeek, date, destination] : [dayOfWeek, date]
-      );
-    }
-  }
+  // Geen template-fallback: alleen echte Doeksen-data of handmatig ingevoerde tijden tonen
 
   return res.json({
     date,

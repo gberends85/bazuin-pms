@@ -292,12 +292,34 @@ export default function BookingPage() {
   const [services, setServices] = useState<any[]>([]);
   const [baseRate, setBaseRate] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [syncingDoeksen, setSyncingDoeksen] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<any>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
 
   function upd(field: keyof BookingState, val: any) {
     setState(prev => ({ ...prev, [field]: val }));
+  }
+
+  async function syncAndReloadFerries() {
+    if (!state.arrival || !state.departure) return;
+    setSyncingDoeksen(true);
+    try {
+      await bookingApi.syncDoeksenDates([state.arrival, state.departure]);
+      // Herlaad veerboten na sync
+      if (state.destination && state.destination !== 'anders') {
+        const [out, ret] = await Promise.all([
+          bookingApi.getFerries(state.arrival, state.destination, 'outbound'),
+          bookingApi.getFerries(state.departure, state.ferryRetDest || state.destination, 'return'),
+        ]);
+        setFerriesOut(out.schedules || []);
+        setFerriesRet(ret.schedules || []);
+      }
+    } catch (e: any) {
+      setError('Doeksen tijden laden mislukt: ' + e.message);
+    } finally {
+      setSyncingDoeksen(false);
+    }
   }
 
   // Step 1: check availability + price as soon as dates are known (destination doesn't affect price)
@@ -609,7 +631,13 @@ export default function BookingPage() {
               </div>
             ) : (
             <div style={S.card}>
-              <h2 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: '#0a2240' }}>Veerbootkeuze</h2>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0a2240' }}>Veerbootkeuze</h2>
+                <button onClick={syncAndReloadFerries} disabled={syncingDoeksen}
+                  style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid #0a7c6e', background: syncingDoeksen ? '#e6f7f5' : 'white', color: '#0a7c6e', fontSize: 12, fontWeight: 700, cursor: syncingDoeksen ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {syncingDoeksen ? '⏳ Laden…' : '↻ Laad actuele tijden'}
+                </button>
+              </div>
               <p style={{ margin: '0 0 18px', fontSize: 13, color: '#7090b0' }}>Uw auto wordt 30 minuten na aankomst van de boot klaargezet.</p>
 
               {/* ── Heenreis ── */}
@@ -649,7 +677,17 @@ export default function BookingPage() {
                   )}
                 </>
               ) : (
-                /* Geen Doeksen-data: eigen invulveld met boottype + aankomstberekening */
+                /* Geen Doeksen-data beschikbaar */
+                <div style={{ padding: '16px', background: '#f8fafc', borderRadius: 10, marginBottom: 10, textAlign: 'center' as const }}>
+                  <div style={{ fontSize: 13, color: '#7090b0', marginBottom: 8 }}>Geen veerboottijden beschikbaar voor deze datum.</div>
+                  <button onClick={syncAndReloadFerries} disabled={syncingDoeksen}
+                    style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid #0a7c6e', background: 'white', color: '#0a7c6e', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                    {syncingDoeksen ? '⏳ Laden…' : '↻ Laad actuele tijden van Doeksen'}
+                  </button>
+                </div>
+              )}
+              {false && (
+                /* Bewaard als fallback voor eigen tijdinvoer */
                 <CustomTimeEntry
                   label="Vertrektijd vanuit Harlingen"
                   time={state.ferryOutTime}
@@ -709,15 +747,13 @@ export default function BookingPage() {
                     })}
                   </div>
                 ) : (
-                  <CustomTimeEntry
-                    label="Vertrektijd vanaf het eiland"
-                    time={state.ferryRetTime}
-                    boatType={state.ferryRetBoatType}
-                    destination={state.ferryRetDest || state.destination}
-                    arrivalLabel="Aankomst in Harlingen"
-                    onTimeChange={t => upd('ferryRetTime', t)}
-                    onBoatTypeChange={bt => upd('ferryRetBoatType', bt as any)}
-                  />
+                  <div style={{ padding: '16px', background: '#f8fafc', borderRadius: 10, textAlign: 'center' as const }}>
+                    <div style={{ fontSize: 13, color: '#7090b0', marginBottom: 8 }}>Geen veerboottijden beschikbaar voor deze datum.</div>
+                    <button onClick={syncAndReloadFerries} disabled={syncingDoeksen}
+                      style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid #0a7c6e', background: 'white', color: '#0a7c6e', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                      {syncingDoeksen ? '⏳ Laden…' : '↻ Laad actuele tijden van Doeksen'}
+                    </button>
+                  </div>
                 )}
               </div>
             </div>

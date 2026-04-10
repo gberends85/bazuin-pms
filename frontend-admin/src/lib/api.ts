@@ -78,6 +78,7 @@ export const api = {
     list: () => req<any[]>('/admin/ferries'),
     schedules: (date: string, dest?: string) => req<any>(`/ferries?date=${date}${dest?'&destination='+dest:''}`),
     addSchedule: (d: any) => req<any>('/admin/ferries/schedule', { method: 'POST', body: JSON.stringify(d) }),
+    syncDoeksen: (days: number) => req<any>('/admin/ferries/doeksen-sync', { method: 'POST', body: JSON.stringify({ days }) }),
   },
   services: {
     list: () => req<any[]>('/admin/services'),

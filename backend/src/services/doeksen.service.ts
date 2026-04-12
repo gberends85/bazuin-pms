@@ -7,12 +7,15 @@ import { query } from '../db/pool';
 const DOEKSEN_API = 'https://api-2021.rederij-doeksen.nl';
 
 // Mapping Doeksen vessel-code → ferry_id in onze database
+// Gebaseerd op live Doeksen API response (vesselName veld is leidend):
+// Terschelling: FR=ms.Friesland(veer), WDV=ms.Willem de Vlamingh(veer), KW=Sneldienst, WB=onbekend
+// Vlieland:     VL=ms.Vlieland(veer), TI=Sneldienst
 const VESSEL_TO_FERRY_ID: Record<string, string> = {
   FR:  'f0000000-0000-0000-0000-000000000001', // ms. Friesland (Veerdienst Terschelling)
   WDV: 'f0000000-0000-0000-0000-000000000001', // ms. Willem de Vlamingh (Veerdienst Terschelling)
-  TI:  'f0000000-0000-0000-0000-000000000003', // Sneldienst Terschelling
-  VL:  'f0000000-0000-0000-0000-000000000002', // Veerdienst Vlieland
-  KW:  'f0000000-0000-0000-0000-000000000002', // Veerdienst Vlieland (alternatief)
+  KW:  'f0000000-0000-0000-0000-000000000003', // Sneldienst Terschelling
+  VL:  'f0000000-0000-0000-0000-000000000002', // ms. Vlieland (Veerdienst Vlieland)
+  TI:  'f0000000-0000-0000-0000-000000000003', // Sneldienst Vlieland
   MK:  'f0000000-0000-0000-0000-000000000002', // Veerdienst Vlieland (alternatief)
 };
 
@@ -26,6 +29,7 @@ const ROUTES = [
 
 interface DoeksenDeparture {
   vessel: string;
+  vesselName?: string;
   departureDateTime: string;
   arrivalDateTime: string;
   status: string;
@@ -86,12 +90,15 @@ export async function syncDoeksenSchedule(date: Date): Promise<{ inserted: numbe
 
         const ferryId = VESSEL_TO_FERRY_ID[dep.vessel];
         if (!ferryId) {
-          // Onbekend schip — sla op als Veerdienst op basis van bestemming
-          const fallbackId = route.destination === 'terschelling'
-            ? 'f0000000-0000-0000-0000-000000000001'
-            : 'f0000000-0000-0000-0000-000000000002';
+          // Onbekend schip — gebruik vesselName als hint, anders veerdienst als fallback
+          const isFastByName = dep.vesselName?.toLowerCase().includes('snel');
+          const fallbackId = isFastByName
+            ? 'f0000000-0000-0000-0000-000000000003'  // Sneldienst
+            : route.destination === 'terschelling'
+              ? 'f0000000-0000-0000-0000-000000000001' // Veerdienst Terschelling
+              : 'f0000000-0000-0000-0000-000000000002'; // Veerdienst Vlieland
 
-          console.warn(`Onbekend Doeksen schip "${dep.vessel}", gebruik fallback ferry_id`);
+          console.warn(`Onbekend Doeksen schip "${dep.vessel}" (${dep.vesselName}), gebruik fallback ferry_id ${fallbackId}`);
 
           const scheduleDate = toDateStr(dep.departureDateTime);
           const departureTime = toTimeStr(dep.departureDateTime);

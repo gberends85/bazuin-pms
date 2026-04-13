@@ -7,7 +7,7 @@ import {
 } from '../services/pricing.service';
 import { lookupRdw, normalizePlate } from '../services/rdw.service';
 import {
-  sendBookingConfirmation, sendCheckinMail, sendCancellationMail, sendModificationMail,
+  sendBookingConfirmation, sendCheckinMail, sendCancellationMail, sendModificationMail, sendTemplatedEmail,
 } from '../services/email.service';
 import {
   createPaymentIntent, processRefund,
@@ -1177,6 +1177,39 @@ router.put('/admin/email-templates/:slug', requireAuth, async (req: Request, res
     'UPDATE email_templates SET subject=$1, body_html=$2, updated_at=NOW() WHERE slug=$3',
     [subject, body_html, req.params.slug]
   );
+  return res.json({ success: true });
+});
+
+router.post('/admin/email-templates/:slug/test', requireAuth, async (req: Request, res: Response) => {
+  const { to } = req.body;
+  if (!to) return res.status(400).json({ error: 'Ontvanger (to) is verplicht' });
+
+  const testVars: Record<string, string> = {
+    voornaam: 'Jan',
+    reference: 'TEST-2026-001',
+    aankomst_datum: 'maandag 20 april 2026',
+    vertrek_datum: 'vrijdag 24 april 2026',
+    kentekenlijst: 'AB-123-C',
+    veerboot_heen: 'Veerdienst Terschelling',
+    vertrektijd_heen: '09:00',
+    veerboot_terug: 'Sneldienst',
+    vertrektijd_terug: '17:30',
+    totaal_bedrag: '€ 45,00',
+    annuleringslink: 'https://booking.parkeren-harlingen.nl/annuleren/test-token',
+    wijzigingslink: 'https://booking.parkeren-harlingen.nl/wijzigen/test-token',
+    factuurlink: 'https://api.booking.parkeren-harlingen.nl/api/v1/invoice/test-token',
+    whatsapp_nummer: '31612345678',
+    kenteken: 'AB-123-C',
+    inchecktijd: '10:30',
+    vaknummer: 'A12',
+    extra_bericht: 'Dit is een testmail vanuit het admin paneel.',
+    restitutie_bedrag: '€ 10,00',
+    restitutie_pct: '20%',
+    nieuwe_aankomst: 'dinsdag 21 april 2026',
+    nieuw_vertrek: 'zaterdag 25 april 2026',
+  };
+
+  await sendTemplatedEmail(req.params.slug, to, testVars);
   return res.json({ success: true });
 });
 

@@ -12,6 +12,8 @@ export default function EmailsPage() {
   const [body, setBody] = useState('');
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState(false);
+  const [testEmail, setTestEmail] = useState('');
+  const [sendingTest, setSendingTest] = useState(false);
 
   useEffect(() => { api.emailTemplates.list().then(setTemplates); }, []);
 
@@ -20,6 +22,16 @@ export default function EmailsPage() {
     setEditing(t);
     setSubject(t.subject);
     setBody(t.body_html);
+  }
+
+  async function sendTest() {
+    if (!editing || !testEmail) return;
+    setSendingTest(true);
+    try {
+      await api.emailTemplates.sendTest(editing.slug, testEmail);
+      toast(`Testmail verstuurd naar ${testEmail} ✓`);
+    } catch (e: any) { toastError(e.message); }
+    finally { setSendingTest(false); }
   }
 
   async function save() {
@@ -97,6 +109,27 @@ export default function EmailsPage() {
             <textarea value={body} onChange={e => setBody(e.target.value)} rows={14}
               style={{ width: '100%', padding: '9px 12px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 7, fontSize: 12, fontFamily: 'monospace', resize: 'vertical' }} />
           )}
+        </div>
+
+        {/* Testmail */}
+        <div style={{ borderTop: '0.5px solid rgba(10,34,64,0.1)', paddingTop: 14, marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Testmail versturen</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="email"
+              value={testEmail}
+              onChange={e => setTestEmail(e.target.value)}
+              placeholder="ontvanger@email.nl"
+              style={{ flex: 1, padding: '8px 12px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 7, fontSize: 13 }}
+            />
+            <button className="btn btn-ghost btn-sm" onClick={sendTest} disabled={sendingTest || !testEmail}
+              style={{ whiteSpace: 'nowrap' }}>
+              {sendingTest ? 'Versturen...' : '📧 Verstuur test'}
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: '#7090b0', marginTop: 5 }}>
+            Verstuurt het sjabloon met voorbeelddata naar het opgegeven adres.
+          </div>
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

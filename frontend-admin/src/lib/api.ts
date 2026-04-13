@@ -90,6 +90,7 @@ export const api = {
     list: () => req<any[]>('/admin/email-templates'),
     get: (slug: string) => req<any>(`/admin/email-templates/${slug}`),
     update: (slug: string, subject: string, body_html: string) => req<any>(`/admin/email-templates/${slug}`, { method: 'PUT', body: JSON.stringify({ subject, body_html }) }),
+    sendTest: (slug: string, to: string) => req<any>(`/admin/email-templates/${slug}/test`, { method: 'POST', body: JSON.stringify({ to }) }),
   },
   customers: { list: (q?: string) => req<any[]>(`/admin/customers${q?'?search='+q:''}`) },
   rdw: { lookup: (plate: string) => req<any>(`/vehicles/rdw/${plate}`) },

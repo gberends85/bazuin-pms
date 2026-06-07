@@ -4,18 +4,22 @@ import { NextResponse } from 'next/server';
 // Voorkomt CORS en gebruikt altijd de actuele tarieven uit de database.
 const API_BASE = process.env.BOOKING_API_URL || 'http://127.0.0.1:3001/api/v1';
 
+// Strikte validatie; voorkomt injectie van extra query-params/pad in de backend-URL.
+const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const arrival = searchParams.get('arrival') || '';
   const departure = searchParams.get('departure') || '';
   const vehicles = searchParams.get('vehicles') || '1';
 
-  if (!arrival || !departure) {
-    return NextResponse.json({ error: 'arrival en departure verplicht' }, { status: 400 });
+  if (!isDate(arrival) || !isDate(departure)) {
+    return NextResponse.json({ error: 'arrival en departure moeten geldige datums zijn' }, { status: 400 });
   }
+  const vehiclesNum = Math.max(1, Math.min(99, parseInt(vehicles, 10) || 1));
 
   try {
-    const url = `${API_BASE}/rates/calculate?arrival=${arrival}&departure=${departure}&vehicles=${vehicles}`;
+    const url = `${API_BASE}/rates/calculate?arrival=${encodeURIComponent(arrival)}&departure=${encodeURIComponent(departure)}&vehicles=${vehiclesNum}`;
     const r = await fetch(url, { cache: 'no-store' });
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));

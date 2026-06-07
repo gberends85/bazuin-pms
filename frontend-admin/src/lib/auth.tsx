@@ -18,7 +18,12 @@ export function useAuthGuard(): boolean {
 
     const token = getToken();
     if (!token) {
-      router.replace('/login');
+      // Geen in-memory token (bv. na een herlaad): probeer een stille refresh via de
+      // httpOnly cookie. Lukt dat niet, dan pas doorsturen naar login.
+      fetch(`${API}/auth/refresh`, { method: 'POST', credentials: 'include' })
+        .then(r => r.ok ? r.json() : Promise.reject(new Error('Refresh failed')))
+        .then(({ accessToken }) => { setToken(accessToken); setReady(true); })
+        .catch(() => { router.replace('/login'); });
       return;
     }
 

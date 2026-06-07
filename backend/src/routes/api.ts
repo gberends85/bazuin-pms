@@ -231,9 +231,14 @@ router.post('/auth/refresh', async (req: Request, res: Response) => {
 
   try {
     const payload = verifyRefreshToken(token);
-    const accessToken = signAccessToken({
-      adminId: payload.adminId, email: payload.email, role: payload.role,
-    });
+    // Rol + actief-status opnieuw uit de DB lezen, zodat een gedegradeerde of
+    // gedeactiveerde admin niet 7 dagen lang verse access-tokens kan blijven munten.
+    const r = await query('SELECT id, email, role, is_active FROM admin_users WHERE id = $1', [payload.adminId]);
+    if (r.rows.length === 0 || !r.rows[0].is_active) {
+      return res.status(401).json({ error: 'Gebruiker niet gevonden of inactief' });
+    }
+    const row = r.rows[0];
+    const accessToken = signAccessToken({ adminId: row.id, email: row.email, role: row.role });
     return res.json({ accessToken });
   } catch {
     return res.status(401).json({ error: 'Ongeldige refresh token' });

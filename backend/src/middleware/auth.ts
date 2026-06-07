@@ -58,7 +58,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       return res.status(401).json({ error: 'Gebruiker niet gevonden of inactief' });
     }
 
-    req.admin = payload;
+    // Gebruik de ACTUELE rol uit de database, niet de (mogelijk verouderde) rol uit het token.
+    // Anders behoudt een gedegradeerde admin zijn rechten tot het token verloopt.
+    const row = result.rows[0];
+    req.admin = { adminId: row.id, email: row.email, role: row.role };
     next();
   } catch {
     return res.status(401).json({ error: 'Ongeldige of verlopen sessie' });

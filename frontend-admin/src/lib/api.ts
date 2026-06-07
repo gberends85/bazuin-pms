@@ -1,23 +1,23 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
+// Het access-token wordt ALLEEN in het geheugen bewaard (niet in localStorage/sessionStorage),
+// zodat een XSS-lek het niet langdurig kan stelen. Bij een herlaad wordt het stil opnieuw
+// opgehaald via de httpOnly refresh-cookie (zie useAuthGuard / req()).
 let _token: string | null = null;
 export function setToken(t: string) {
   _token = t;
+  // Migratie: ruim eventuele oude, op schijf bewaarde tokens op.
   if (typeof window !== 'undefined') {
-    sessionStorage.setItem('bzt', t);
-    localStorage.setItem('bzt', t);
+    try { localStorage.removeItem('bzt'); sessionStorage.removeItem('bzt'); } catch {}
   }
 }
 export function getToken() {
-  return _token || (typeof window !== 'undefined'
-    ? (sessionStorage.getItem('bzt') || localStorage.getItem('bzt'))
-    : null);
+  return _token;
 }
 export function clearToken() {
   _token = null;
   if (typeof window !== 'undefined') {
-    sessionStorage.removeItem('bzt');
-    localStorage.removeItem('bzt');
+    try { localStorage.removeItem('bzt'); sessionStorage.removeItem('bzt'); } catch {}
   }
 }
 

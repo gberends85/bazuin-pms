@@ -6,6 +6,10 @@ import { NextResponse } from 'next/server';
 //   /api/availability?from=YYYY-MM-DD&to=YYYY-MM-DD            → [{ date, available }]  (kalender)
 const API_BASE = process.env.BOOKING_API_URL || 'http://127.0.0.1:3001/api/v1';
 
+// Alleen strikte ISO-datums toelaten; voorkomt injectie van extra query-params/pad in de backend-URL.
+const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+const enc = encodeURIComponent;
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const arrival = searchParams.get('arrival') || '';
@@ -15,7 +19,8 @@ export async function GET(req: Request) {
 
   try {
     if (from && to) {
-      const url = `${API_BASE}/availability/calendar?from=${from}&to=${to}`;
+      if (!isDate(from) || !isDate(to)) return NextResponse.json({ error: 'Ongeldige datum' }, { status: 400 });
+      const url = `${API_BASE}/availability/calendar?from=${enc(from)}&to=${enc(to)}`;
       const r = await fetch(url, { cache: 'no-store' });
       if (!r.ok) return NextResponse.json({ error: 'Beschikbaarheid niet beschikbaar' }, { status: r.status });
       const data = await r.json();
@@ -23,7 +28,8 @@ export async function GET(req: Request) {
     }
 
     if (arrival && departure) {
-      const url = `${API_BASE}/availability?arrival=${arrival}&departure=${departure}`;
+      if (!isDate(arrival) || !isDate(departure)) return NextResponse.json({ error: 'Ongeldige datum' }, { status: 400 });
+      const url = `${API_BASE}/availability?arrival=${enc(arrival)}&departure=${enc(departure)}`;
       const r = await fetch(url, { cache: 'no-store' });
       if (!r.ok) {
         const body = await r.json().catch(() => ({}));

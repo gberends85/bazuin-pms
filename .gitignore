@@ -47,3 +47,8 @@ test.pdf
 # backups
 *.bak*
 .env.bak*
+
+# Claude Code lokale config (machine-specifiek, bevat geen gedeelde instellingen)
+.claude/settings.local.json
+.claude/worktrees/
+.claude/*.lock

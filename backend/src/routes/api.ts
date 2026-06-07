@@ -245,6 +245,32 @@ router.post('/auth/logout', (_req, res) => {
   res.json({ success: true });
 });
 
+// Eigen admin-wachtwoord wijzigen (ingelogd; vereist het huidige wachtwoord).
+router.post('/auth/change-password', requireAuth, async (req: Request, res: Response) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Huidig en nieuw wachtwoord zijn verplicht' });
+  }
+  if (String(newPassword).length < 8) {
+    return res.status(400).json({ error: 'Nieuw wachtwoord moet minimaal 8 tekens zijn' });
+  }
+  const adminId = (req as any).admin?.adminId;
+  if (!adminId) return res.status(401).json({ error: 'Niet ingelogd' });
+
+  const result = await query('SELECT password_hash FROM admin_users WHERE id = $1 AND is_active = true', [adminId]);
+  if (result.rows.length === 0) return res.status(404).json({ error: 'Gebruiker niet gevonden' });
+
+  const valid = await bcrypt.compare(currentPassword, result.rows[0].password_hash);
+  if (!valid) return res.status(401).json({ error: 'Huidig wachtwoord is onjuist' });
+
+  const hash = await bcrypt.hash(String(newPassword), 12);
+  await query(
+    'UPDATE admin_users SET password_hash = $1, failed_login_attempts = 0, locked_until = NULL WHERE id = $2',
+    [hash, adminId]
+  );
+  return res.json({ success: true });
+});
+
 // ============================================================
 // GUEST AUTH — gasten inloggen met email + wachtwoord
 // ============================================================

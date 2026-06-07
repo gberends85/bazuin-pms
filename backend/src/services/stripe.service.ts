@@ -99,9 +99,23 @@ export async function processRefund(
     throw new Error('Geen betaling gevonden voor deze reservering — mogelijk nog niet betaald');
   }
 
+  // Valideer het restitutiebedrag tegen wat er daadwerkelijk is geïnd en al is terugbetaald.
+  // Voorkomt over-restitutie (>100%, negatief, of dubbele restitutie bij herhaalde aanroep).
+  const charge = await stripe.charges.retrieve(chargeId);
+  const refundableCents = (charge.amount_captured ?? charge.amount ?? 0) - (charge.amount_refunded ?? 0);
+  const requestedCents = Math.round(amountEuros * 100);
+  if (!Number.isFinite(requestedCents) || requestedCents <= 0) {
+    throw new Error('Ongeldig restitutiebedrag');
+  }
+  if (requestedCents > refundableCents) {
+    throw new Error(
+      `Restitutiebedrag (€${(requestedCents / 100).toFixed(2)}) overschrijdt het nog beschikbare bedrag (€${(refundableCents / 100).toFixed(2)})`
+    );
+  }
+
   const refund = await stripe.refunds.create({
     charge: chargeId,
-    amount: Math.round(amountEuros * 100),
+    amount: requestedCents,
     reason: 'requested_by_customer',
     metadata: { reason: reason || 'Annulering via systeem' },
   });

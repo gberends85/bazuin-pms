@@ -169,14 +169,20 @@ app.post(
           const charge = event.data.object as any;
           // Match via payment_intent ID
           if (charge.payment_intent) {
+            // Neem het werkelijk gerestitueerde bedrag van Stripe over (cumulatief, in centen).
+            // Anders blijft refund_amount NULL en wordt een VOLLEDIGE refund (bv. vanuit het
+            // Stripe-dashboard) ten onrechte als 'partial_refund' geregistreerd.
+            const refundedEuros = (charge.amount_refunded ?? 0) / 100;
             await query(
               `UPDATE reservations
-               SET payment_status = CASE
-                 WHEN refund_amount >= total_price THEN 'refunded'
-                 ELSE 'partial_refund'
-               END
+               SET refund_amount = $2,
+                   payment_status = CASE
+                     WHEN $2 >= total_price THEN 'refunded'
+                     ELSE 'partial_refund'
+                   END,
+                   updated_at = NOW()
                WHERE stripe_payment_intent_id = $1`,
-              [charge.payment_intent]
+              [charge.payment_intent, refundedEuros]
             );
           }
           break;

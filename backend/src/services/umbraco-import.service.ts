@@ -201,8 +201,10 @@ export async function importUmbracoRecord(
   const isCancelled = item.cancelled ?? false;
   const status = isCancelled ? 'cancelled' : (departure < today ? 'completed' : 'booked');
 
-  // Prijs
-  const totalPrice = parseFloat(item.price ?? item.totalPrice ?? 0);
+  // Prijs — NaN-veilig (ontbrekend/ongeldig/komma-decimaal → 0 i.p.v. NaN in de DB)
+  const rawPrice = item.price ?? item.totalPrice ?? 0;
+  let totalPrice = typeof rawPrice === 'number' ? rawPrice : parseFloat(String(rawPrice).replace(',', '.'));
+  if (!Number.isFinite(totalPrice) || totalPrice < 0) totalPrice = 0;
 
   // Notes
   const customerNote = [

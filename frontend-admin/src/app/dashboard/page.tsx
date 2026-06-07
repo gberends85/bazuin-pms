@@ -9,7 +9,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 
 // ─── Drukte grafiek ────────────────────────────────────────────────────────────
 function TrafficForecast() {
-  const today = new Date().toISOString().split('T')[0];
+  const _t = new Date();
+  const today = `${_t.getFullYear()}-${String(_t.getMonth() + 1).padStart(2, '0')}-${String(_t.getDate()).padStart(2, '0')}`;
   const in7 = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(in7);
@@ -194,7 +195,8 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null);
   const [ferries, setFerries] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const today = new Date().toISOString().split('T')[0];
+  const _t = new Date();
+  const today = `${_t.getFullYear()}-${String(_t.getMonth() + 1).padStart(2, '0')}-${String(_t.getDate()).padStart(2, '0')}`;
   const todayFmt = new Date().toLocaleDateString('nl-NL', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
 
   useEffect(() => {

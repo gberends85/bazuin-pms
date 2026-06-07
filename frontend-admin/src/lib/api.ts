@@ -61,6 +61,7 @@ export const api = {
   auth: {
     login: (email: string, password: string) => req<{accessToken:string;user:any}>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
     logout: () => req('/auth/logout', { method: 'POST' }),
+    changePassword: (currentPassword: string, newPassword: string) => req<{success:boolean}>('/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
   },
   stats: { get: () => req<any>('/admin/stats') },
   traffic: { forecast: (from: string, to: string) => req<any>(`/admin/dashboard/traffic?from=${from}&to=${to}`) },

@@ -17,7 +17,8 @@ import {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function toIso(d: Date) {
-  return d.toISOString().split('T')[0];
+  // Lokale datum (niet UTC) — anders is 'vandaag' 's avonds in NL een dag te vroeg.
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 function addDays(iso: string, n: number) {
   const d = new Date(iso); d.setDate(d.getDate() + n); return toIso(d);

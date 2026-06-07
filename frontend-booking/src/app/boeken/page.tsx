@@ -46,8 +46,9 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
   useEffect(() => {
     const m1 = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
     const m2end = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 2, 0);
-    const from = m1.toISOString().split('T')[0];
-    const to = m2end.toISOString().split('T')[0];
+    // Lokale datum (niet UTC) — anders verschuift het opgevraagde venster een dag in NL-tijd.
+    const from = toStr(m1);
+    const to = toStr(m2end);
     fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/availability/calendar?from=${from}&to=${to}`)
       .then(r => r.json())
       .then((rows: any[]) => {

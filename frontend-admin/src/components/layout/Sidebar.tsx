@@ -25,6 +25,7 @@ import {
   BanknotesIcon,
   ClipboardDocumentListIcon,
   UserGroupIcon,
+  KeyIcon,
 } from '@heroicons/react/24/outline';
 
 const nav = [
@@ -48,6 +49,7 @@ const settings = [
   { href: '/settings/emails', icon: EnvelopeIcon, label: 'E-mailsjablonen' },
   { href: '/settings/voorwaarden', icon: DocumentTextIcon, label: 'Voorwaarden' },
   { href: '/settings/contract-customers', icon: UserGroupIcon, label: 'Contractklanten' },
+  { href: '/settings/wachtwoord', icon: KeyIcon, label: 'Wachtwoord' },
 ];
 
 interface SidebarProps {

@@ -57,6 +57,13 @@ function CheckoutForm({ totalAmount, customerName, payMethod, onSuccess, onError
         onError(error.message || 'Betaling mislukt');
       } else if (paymentIntent?.status === 'succeeded') {
         onSuccess();
+      } else if (paymentIntent?.status === 'processing') {
+        // Betaling wordt nog verwerkt; de webhook bevestigt definitief. Door naar bevestiging.
+        onSuccess();
+      } else {
+        // Onverwachte/niet-afgeronde status (bv. requires_payment_method) — niet blijven hangen.
+        setStatus('error');
+        onError('Betaling kon niet worden afgerond. Probeer het opnieuw.');
       }
     } catch {
       setStatus('error');

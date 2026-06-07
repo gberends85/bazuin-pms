@@ -1,0 +1,40 @@
+module.exports = {
+  apps: [
+    {
+      name: 'bazuin-api',
+      cwd: '/opt/bazuin/backend',
+      script: 'dist/index.js',
+      env_file: '/opt/bazuin/backend/.env',
+      instances: 1,
+      autorestart: true,
+      max_memory_restart: '400M',
+    },
+    {
+      name: 'bazuin-booking',
+      cwd: '/opt/bazuin/frontend-booking',
+      script: 'node_modules/.bin/next',
+      args: 'start -p 3000',
+      env: { NODE_ENV: 'production', NEXT_PUBLIC_API_URL: 'https://api.booking.parkeren-harlingen.nl/api/v1' },
+      instances: 1,
+      autorestart: true,
+    },
+    {
+      name: 'bazuin-admin',
+      cwd: '/opt/bazuin/frontend-admin',
+      script: 'node_modules/.bin/next',
+      args: 'start -p 3002',
+      env: { NODE_ENV: 'production', NEXT_PUBLIC_API_URL: 'https://api.booking.parkeren-harlingen.nl/api/v1' },
+      instances: 1,
+      autorestart: true,
+    },
+    {
+      name: 'bazuin-website',
+      cwd: '/opt/bazuin/frontend-website',
+      script: 'node_modules/.bin/next',
+      args: 'start -p 3003',
+      env: { NODE_ENV: 'production' },
+      instances: 1,
+      autorestart: true,
+    },
+  ],
+};

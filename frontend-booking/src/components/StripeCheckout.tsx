@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useRef } from 'react';
+import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
@@ -16,64 +17,93 @@ interface Props {
   reservationId: string;
   clientSecret: string;
   totalAmount: number;
+  customerName?: string;
+  payMethod?: string;
   onSuccess: () => void;
   onError: (msg: string) => void;
 }
 
-function CheckoutForm({ totalAmount, onSuccess, onError }: Omit<Props, 'reservationId' | 'clientSecret'>) {
+// Label per betaalmethode voor de "doorsturen"-tekst
+const METHOD_LABEL: Record<string, string> = {
+  ideal: 'iDEAL',
+  paypal: 'PayPal',
+  bancontact: 'Bancontact',
+  sepa: 'SEPA-incasso',
+};
+
+function CheckoutForm({ totalAmount, customerName, payMethod, onSuccess, onError }: Omit<Props, 'reservationId' | 'clientSecret'>) {
   const stripe = useStripe();
   const elements = useElements();
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<'loading' | 'confirming' | 'error'>('loading');
+  const submitted = useRef(false);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!stripe || !elements) return;
-    setLoading(true);
+  async function confirm() {
+    if (!stripe || !elements || submitted.current) return;
+    submitted.current = true;
+    setStatus('confirming');
     try {
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
         confirmParams: {
-          return_url: `${window.location.origin}/bevestiging`,
+          return_url: `${window.location.origin}/boeken/bevestiging`,
+          payment_method_data: customerName
+            ? { billing_details: { name: customerName } }
+            : undefined,
         },
         redirect: 'if_required',
       });
-
       if (error) {
+        setStatus('error');
         onError(error.message || 'Betaling mislukt');
       } else if (paymentIntent?.status === 'succeeded') {
         onSuccess();
       }
-    } finally {
-      setLoading(false);
+    } catch {
+      setStatus('error');
+      onError('Er is een fout opgetreden bij de betaling.');
     }
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <PaymentElement options={{ layout: 'tabs' }} />
-      <button
-        type="submit"
-        disabled={!stripe || loading}
-        style={{
-          width: '100%',
-          marginTop: 20,
-          padding: '13px',
-          borderRadius: 9,
-          background: loading ? '#7090b0' : '#e8a020',
-          color: '#0a2240',
-          border: 'none',
-          fontSize: 15,
-          fontWeight: 800,
-          cursor: loading ? 'not-allowed' : 'pointer',
-        }}
-      >
-        {loading ? 'Verwerken...' : `Betalen — € ${totalAmount.toFixed(2)}`}
-      </button>
-    </form>
+    <div>
+      {/* PaymentElement verborgen maar nodig voor Stripe internals */}
+      <div style={{ display: 'none' }}>
+        <PaymentElement
+          options={{ fields: { billingDetails: { name: 'never' } } } as any}
+          onReady={confirm}
+        />
+      </div>
+      <div style={{ textAlign: 'center', padding: '32px 0' }}>
+        {status === 'loading' && (
+          <>
+            <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'center', color: '#7090b0' }}><ArrowPathIcon className="w-7 h-7" /></div>
+            <div style={{ fontSize: 14, color: '#7090b0' }}>Betaling voorbereiden…</div>
+          </>
+        )}
+        {status === 'confirming' && (
+          <>
+            <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'center', color: '#0a7c6e' }}><ArrowPathIcon className="w-7 h-7" /></div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#0a2240', marginBottom: 6 }}>
+              {payMethod && METHOD_LABEL[payMethod]
+                ? `U wordt doorgestuurd naar ${METHOD_LABEL[payMethod]}…`
+                : 'Betaling wordt verwerkt…'}
+            </div>
+            <div style={{ fontSize: 13, color: '#7090b0' }}>Even geduld, u hoeft niets te doen.</div>
+          </>
+        )}
+        {status === 'error' && (
+          <button
+            onClick={() => { submitted.current = false; confirm(); }}
+            style={{ padding: '12px 28px', background: '#e8a020', color: '#0a2240', border: 'none', borderRadius: 9, fontSize: 15, fontWeight: 800, cursor: 'pointer' }}>
+            Opnieuw proberen
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
-export default function StripeCheckout({ clientSecret, totalAmount, onSuccess, onError }: Props) {
+export default function StripeCheckout({ clientSecret, totalAmount, customerName, payMethod, onSuccess, onError }: Props) {
   return (
     <Elements
       stripe={stripePromise}
@@ -92,7 +122,7 @@ export default function StripeCheckout({ clientSecret, totalAmount, onSuccess, o
         locale: 'nl',
       }}
     >
-      <CheckoutForm totalAmount={totalAmount} onSuccess={onSuccess} onError={onError} />
+      <CheckoutForm totalAmount={totalAmount} customerName={customerName} payMethod={payMethod} onSuccess={onSuccess} onError={onError} />
     </Elements>
   );
 }

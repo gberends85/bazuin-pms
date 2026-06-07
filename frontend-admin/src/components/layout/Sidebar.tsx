@@ -1,24 +1,53 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { api, clearToken } from '@/lib/api';
+import {
+  Squares2X2Icon,
+  ArrowDownTrayIcon,
+  ArrowUpTrayIcon,
+  ListBulletIcon,
+  PencilSquareIcon,
+  CalendarDaysIcon,
+  ChartBarIcon,
+  UsersIcon,
+  WrenchScrewdriverIcon,
+  Cog6ToothIcon,
+  CurrencyEuroIcon,
+  MapIcon,
+  BoltIcon,
+  DocumentTextIcon,
+  EnvelopeIcon,
+  PowerIcon,
+  XMarkIcon,
+  BuildingOfficeIcon,
+  BanknotesIcon,
+  ClipboardDocumentListIcon,
+  UserGroupIcon,
+} from '@heroicons/react/24/outline';
 
 const nav = [
-  { href: '/dashboard', icon: '◉', label: 'Dashboard' },
-  { href: '/arrivals', icon: '↓', label: 'Aankomsten vandaag' },
-  { href: '/departures', icon: '↑', label: 'Vertrekken vandaag' },
-  { href: '/reservations', icon: '≡', label: 'Alle reserveringen' },
-  { href: '/calendar', icon: '▦', label: 'Agenda' },
-  { href: '/reports', icon: '⌁', label: 'Financieel rapport' },
-  { href: '/customers', icon: '♟', label: 'Klanten' },
+  { href: '/dashboard', icon: Squares2X2Icon, label: 'Dashboard' },
+  { href: '/arrivals', icon: ArrowDownTrayIcon, label: 'Reserveringen' },
+  { href: '/modifications', icon: PencilSquareIcon, label: 'Wijzigingsverzoeken' },
+  { href: '/calendar', icon: CalendarDaysIcon, label: 'Agenda' },
+  { href: '/kas', icon: BanknotesIcon, label: 'Kas' },
+  { href: '/reports', icon: ChartBarIcon, label: 'Financieel rapport' },
+  { href: '/customers', icon: UsersIcon, label: 'Klanten' },
+  { href: '/tools', icon: WrenchScrewdriverIcon, label: 'Importtools' },
+  { href: '/facturen', icon: BuildingOfficeIcon, label: 'Facturen' },
+  { href: '/contract-invoices', icon: ClipboardDocumentListIcon, label: 'Contractfacturatie' },
 ];
 const settings = [
-  { href: '/settings/algemeen', icon: '⚙', label: 'Algemeen' },
-  { href: '/settings/rates', icon: '€', label: 'Tarieven' },
-  { href: '/settings/ferries', icon: '⛴', label: 'Veerboten' },
-  { href: '/settings/services', icon: '⚡', label: 'Diensten' },
-  { href: '/settings/policies', icon: '✕', label: 'Annulering' },
-  { href: '/settings/emails', icon: '✉', label: 'E-mailsjablonen' },
+  { href: '/settings/algemeen', icon: Cog6ToothIcon, label: 'Algemeen' },
+  { href: '/settings/rates', icon: CurrencyEuroIcon, label: 'Tarieven' },
+  { href: '/settings/ferries', icon: MapIcon, label: 'Veerboten' },
+  { href: '/settings/services', icon: BoltIcon, label: 'Diensten' },
+  { href: '/settings/policies', icon: DocumentTextIcon, label: 'Annulering' },
+  { href: '/settings/emails', icon: EnvelopeIcon, label: 'E-mailsjablonen' },
+  { href: '/settings/voorwaarden', icon: DocumentTextIcon, label: 'Voorwaarden' },
+  { href: '/settings/contract-customers', icon: UserGroupIcon, label: 'Contractklanten' },
 ];
 
 interface SidebarProps {
@@ -29,6 +58,15 @@ interface SidebarProps {
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const path = usePathname();
   const router = useRouter();
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    api.modifications.count().then(r => setPendingCount(r.count)).catch(() => {});
+    const interval = setInterval(() => {
+      api.modifications.count().then(r => setPendingCount(r.count)).catch(() => {});
+    }, 60000); // elke minuut verversen
+    return () => clearInterval(interval);
+  }, []);
 
   async function logout() {
     await api.auth.logout().catch(() => {});
@@ -79,9 +117,9 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           <button
             onClick={onClose}
             className="sidebar-close-btn"
-            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 20, padding: '2px 6px', lineHeight: 1 }}
+            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '2px 6px', lineHeight: 1, display: 'flex', alignItems: 'center' }}
             title="Menu sluiten"
-          >✕</button>
+          ><XMarkIcon className="w-5 h-5" /></button>
         </div>
 
         <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
@@ -89,8 +127,13 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             {nav.map(i => (
               <Link key={i.href} href={i.href} onClick={onClose}
                 className={`sidebar-item${path.startsWith(i.href) ? ' active' : ''}`}>
-                <span style={{ width: 18, textAlign: 'center', fontSize: 14, flexShrink: 0 }}>{i.icon}</span>
-                <span>{i.label}</span>
+                <span style={{ width: 18, textAlign: 'center', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><i.icon className="w-5 h-5" /></span>
+                <span style={{ flex: 1 }}>{i.label}</span>
+                {i.href === '/modifications' && pendingCount > 0 && (
+                  <span style={{ background: '#e8a020', color: '#0a2240', borderRadius: 10, padding: '1px 7px', fontSize: 11, fontWeight: 800, marginLeft: 4 }}>
+                    {pendingCount}
+                  </span>
+                )}
               </Link>
             ))}
           </div>
@@ -98,7 +141,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           {settings.map(i => (
             <Link key={i.href} href={i.href} onClick={onClose}
               className={`sidebar-item${path.startsWith(i.href) ? ' active' : ''}`}>
-              <span style={{ width: 18, textAlign: 'center', fontSize: 14, flexShrink: 0 }}>{i.icon}</span>
+              <span style={{ width: 18, textAlign: 'center', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><i.icon className="w-5 h-5" /></span>
               <span>{i.label}</span>
             </Link>
           ))}
@@ -106,7 +149,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
 
         <div style={{ padding: '12px 8px', borderTop: '0.5px solid rgba(255,255,255,0.1)' }}>
           <button onClick={logout} className="sidebar-item" style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
-            <span style={{ width: 18, textAlign: 'center' }}>⏻</span><span>Uitloggen</span>
+            <span style={{ width: 18, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><PowerIcon className="w-5 h-5" /></span><span>Uitloggen</span>
           </button>
         </div>
       </aside>

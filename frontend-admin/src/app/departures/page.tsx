@@ -4,6 +4,7 @@ import AdminLayout from '@/components/layout/AdminLayout';
 import ReservationCard from '@/components/reservations/ReservationCard';
 import Toaster from '@/components/ui/Toast';
 import { api } from '@/lib/api';
+import { ArrowPathIcon } from '@heroicons/react/24/outline';
 
 export default function DeparturesPage() {
   const [data, setData] = useState<any>(null);
@@ -29,7 +30,7 @@ export default function DeparturesPage() {
             <h1 style={{ margin: '0 0 2px', fontSize: 22, fontWeight: 800, color: '#0a2240' }}>Vertrekken vandaag</h1>
             <p style={{ margin: 0, fontSize: 13, color: '#7090b0', textTransform: 'capitalize' }}>{todayFmt} · {departures.length} verwacht</p>
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={load}>↻ Verversen</button>
+          <button className="btn btn-ghost btn-sm" onClick={load} style={{display:'flex',alignItems:'center',gap:5}}><ArrowPathIcon className="w-4 h-4" />Verversen</button>
         </div>
         {loading && <div style={{ color: '#7090b0', padding: 20 }}>Laden...</div>}
         {!loading && departures.length === 0 && (

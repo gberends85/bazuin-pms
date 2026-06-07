@@ -4,18 +4,38 @@ import AdminLayout from '@/components/layout/AdminLayout';
 import PlateTooltip from '@/components/ui/PlateTooltip';
 import Modal from '@/components/ui/Modal';
 import Toaster, { toast, toastError } from '@/components/ui/Toast';
+import RefundPolicyInfo from '@/components/ui/RefundPolicyInfo';
 import { api } from '@/lib/api';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  CheckIcon, XMarkIcon, PencilSquareIcon, ArrowUpTrayIcon,
+  DocumentTextIcon, PrinterIcon, UserIcon, ChatBubbleOvalLeftEllipsisIcon,
+  ClipboardDocumentListIcon, CreditCardIcon, ArrowPathIcon,
+  ExclamationTriangleIcon, ClockIcon, CalendarDaysIcon,
+  ArrowUturnLeftIcon, BanknotesIcon, DevicePhoneMobileIcon, BuildingLibraryIcon,
+  BoltIcon, EnvelopeIcon,
+} from '@heroicons/react/24/outline';
+import { Banknote, RefreshCw, X, Link2, ClipboardCheck } from 'lucide-react';
 
 export default function ReservationDetailPage({ params }: { params: { id: string } }) {
   const [res, setRes] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [refundPct, setRefundPct] = useState(100);
+  const [refundInfo, setRefundInfo] = useState<any>(null);
   const [cancelReason, setCancelReason] = useState('');
+  // Bij openen annuleer-venster: standaard het restitutie% volgens annuleringsbeleid voorselecteren
+  useEffect(() => {
+    if (cancelOpen && res?.payment_status === 'paid') {
+      api.reservations.refundPreview(params.id).then(p => { setRefundPct(p.refundPct); setRefundInfo(p); }).catch(() => {});
+    } else if (cancelOpen && res && res.payment_status !== 'paid') {
+      setRefundPct(0);
+    }
+  }, [cancelOpen]);
   const [saving, setSaving] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // Wijziging state
   const [modifyOpen, setModifyOpen] = useState(false);
@@ -27,18 +47,165 @@ export default function ReservationDetailPage({ params }: { params: { id: string
   const [modNotes, setModNotes] = useState('');
   const [modLoading, setModLoading] = useState(false);
   const [modHistory, setModHistory] = useState<any[]>([]);
+  const [stripeData, setStripeData] = useState<any>(null);
+  const [stripeSyncing, setStripeSyncing] = useState(false);
+  const [applyingOnSite, setApplyingOnSite] = useState(false);
+  const [onSiteSurchargeSaving, setOnSiteSurchargeSaving] = useState(false);
+  const [ferryDoeksenSyncing, setFerryDoeksenSyncing] = useState(false);
+  // Bijbetaling na wijziging
+  const [pendingPayStep, setPendingPayStep] = useState(false);
+  const [pendingPayAmt, setPendingPayAmt] = useState(0);
+  const [pendingPayModId, setPendingPayModId] = useState<string | null>(null);
+  const [sendingPayLink, setSendingPayLink] = useState(false);
+
+  // Extra factuurregels
+  const [extraItems, setExtraItems] = useState<Array<{description:string; quantity:number; unit_price:number}>>([]);
+  const [extraItemsSaving, setExtraItemsSaving] = useState(false);
+
+  // Betaalstatus
+  const [payStatusSaving, setPayStatusSaving] = useState(false);
+
+  // Factuurdatum
+  const [invoiceDate, setInvoiceDate] = useState<string>('');
+  const [invoiceDateSaving, setInvoiceDateSaving] = useState(false);
+
+  // Kenteken inline bewerken
+  const [editingPlates, setEditingPlates] = useState(false);
+  const [plateValues, setPlateValues] = useState<string[]>([]);
+  const [plateSaving, setPlateSaving] = useState(false);
+
+  // Naam/contact inline bewerken
+  const [editingContact, setEditingContact] = useState(false);
+  const [contactValues, setContactValues] = useState({ firstName: '', lastName: '', email: '', phone: '' });
+  const [contactSaving, setContactSaving] = useState(false);
+  const [nameLinkCopied, setNameLinkCopied] = useState(false);
+
+  // Ferry inline bewerken
+  const [editingFerry, setEditingFerry] = useState(false);
+  const [ferryOutDest, setFerryOutDest] = useState<'terschelling'|'vlieland'>('terschelling');
+  const [ferryRetDest, setFerryRetDest] = useState<'terschelling'|'vlieland'>('terschelling');
+  const [ferryOutTime, setFerryOutTime] = useState('');
+  const [ferryRetTime, setFerryRetTime] = useState('');
+  const [ferryOutSchedules, setFerryOutSchedules] = useState<any[]>([]);
+  const [ferryRetSchedules, setFerryRetSchedules] = useState<any[]>([]);
+  const [ferryScheduleLoading, setFerryScheduleLoading] = useState(false);
+  const [ferrySaving, setFerrySaving] = useState(false);
+  const [ferryOutManual, setFerryOutManual] = useState(false);
+  const [ferryRetManual, setFerryRetManual] = useState(false);
+  const [ferryOutId, setFerryOutId] = useState('');
+  const [ferryRetId, setFerryRetId] = useState('');
+
+  function openFerryEdit() {
+    const dest = (res.ferry_outbound_destination || 'terschelling') as 'terschelling'|'vlieland';
+    const retDest = (res.ferry_return_destination || dest) as 'terschelling'|'vlieland';
+    setFerryOutDest(dest); setFerryRetDest(retDest);
+    setFerryOutTime(res.ferry_outbound_time?.slice(0,5) || '');
+    setFerryRetTime(res.ferry_return_time?.slice(0,5) || '');
+    setFerryOutId(''); setFerryRetId('');
+    setFerryOutManual(false); setFerryRetManual(false);
+    setEditingFerry(true);
+    loadFerrySchedules(res.arrival_date?.slice(0,10), res.departure_date?.slice(0,10), dest, retDest);
+  }
+
+  async function loadFerrySchedules(outDate: string, retDate: string, outDest: string, retDest: string) {
+    setFerryScheduleLoading(true);
+    try {
+      const [outRes, retRes] = await Promise.all([
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/ferries?date=${outDate}&destination=${outDest}&direction=outbound`, { headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('bazuin_token') : ''}` } }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/ferries?date=${retDate}&destination=${retDest}&direction=return`, { headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('bazuin_token') : ''}` } }),
+      ]);
+      const outData = await outRes.json().catch(() => ({}));
+      const retData = await retRes.json().catch(() => ({}));
+      setFerryOutSchedules(outData.schedules || []);
+      setFerryRetSchedules(retData.schedules || []);
+    } catch { setFerryOutSchedules([]); setFerryRetSchedules([]); }
+    finally { setFerryScheduleLoading(false); }
+  }
+
+  async function saveFerry() {
+    setFerrySaving(true);
+    try {
+      // Determine isFast from the selected outbound schedule
+      const selOutSch = ferryOutSchedules.find((s: any) => s.id === ferryOutId)
+                     || ferryOutSchedules.find((s: any) => s.departureTime?.slice(0,5) === ferryOutTime);
+      const selRetSch = ferryRetSchedules.find((s: any) => s.id === ferryRetId)
+                     || ferryRetSchedules.find((s: any) => s.departureTime?.slice(0,5) === ferryRetTime);
+
+      await api.reservations.update(params.id, {
+        ferryOutboundTime: ferryOutTime || null,
+        ferryReturnTime: ferryRetTime || null,
+        ferryOutboundDestination: ferryOutDest,
+        ferryReturnDestination: ferryRetDest,
+        ...(selOutSch ? { ferryOutboundId: selOutSch.ferryId, isFastFerryOutbound: selOutSch.isFast } : {}),
+        ...(selRetSch ? { ferryReturnId: selRetSch.ferryId } : {}),
+      });
+      toast('Boottijden opgeslagen ✓');
+      setEditingFerry(false);
+      load();
+    } catch (e: any) { toastError(e.message); }
+    finally { setFerrySaving(false); }
+  }
 
   async function load() {
     setLoading(true);
-    try { const d = await api.reservations.get(params.id); setRes(d); }
+    try {
+      const d = await api.reservations.get(params.id);
+      setRes(d);
+      setPlateValues((d.vehicles || []).map((v: any) => v.license_plate || ''));
+      setContactValues({ firstName: d.first_name || '', lastName: d.last_name || '', email: d.email || '', phone: d.phone || '' });
+      // Sync extra items from reservation
+      const items = Array.isArray(d.invoice_extra_items) ? d.invoice_extra_items
+        : (typeof d.invoice_extra_items === 'string' ? JSON.parse(d.invoice_extra_items || '[]') : []);
+      setExtraItems(items);
+      setInvoiceDate(d.invoice_date?.slice(0, 10) || d.created_at?.slice(0, 10) || '');
+    }
     catch (e: any) { toastError(e.message); }
     finally { setLoading(false); }
+  }
+
+  async function saveContact() {
+    setContactSaving(true);
+    try {
+      await api.reservations.update(params.id, {
+        firstName: contactValues.firstName,
+        lastName: contactValues.lastName,
+        email: contactValues.email,
+        phone: contactValues.phone,
+      });
+      toast('Contactgegevens opgeslagen ✓');
+      setEditingContact(false);
+      load();
+    } catch (e: any) { toastError(e.message); }
+    finally { setContactSaving(false); }
+  }
+
+  async function savePlates() {
+    setPlateSaving(true);
+    try {
+      const vehicles = (res.vehicles || []).map((v: any, i: number) => ({
+        sort_order: v.sort_order ?? i,
+        license_plate: plateValues[i] ?? '',
+      }));
+      await api.reservations.update(params.id, { vehicles });
+      toast('Kentekenplaten opgeslagen ✓');
+      setEditingPlates(false);
+      load();
+    } catch (e: any) { toastError(e.message); }
+    finally { setPlateSaving(false); }
   }
 
   useEffect(() => {
     load();
     api.reservations.modifications(params.id).then(setModHistory).catch(() => {});
+    api.reservations.stripeDetails(params.id).then(setStripeData).catch(() => {});
   }, [params.id]);
+
+  // Auto-open modify modal when ?modify=1 in URL
+  useEffect(() => {
+    if (searchParams.get('modify') === '1' && res && !modifyOpen) {
+      openModify();
+    }
+  }, [res, searchParams]);
 
   function openModify() {
     if (res) {
@@ -58,19 +225,39 @@ export default function ReservationDetailPage({ params }: { params: { id: string
     finally { setModLoading(false); }
   }
 
+  async function doSendPaymentLink() {
+    if (!pendingPayModId) return;
+    setSendingPayLink(true);
+    try {
+      await api.modifications.sendPaymentLink(pendingPayModId);
+      toast('Betaallink verstuurd per e-mail ✓');
+      setPendingPayStep(false);
+      load();
+    } catch (e: any) { toastError(e.message); }
+    finally { setSendingPayLink(false); }
+  }
+
   async function doModify() {
     setModLoading(true);
     try {
-      await api.reservations.modify(params.id, {
+      const result = await api.reservations.modify(params.id, {
         newArrivalDate: modNewArrival, newDepartureDate: modNewDeparture,
         overrideAvailability: modOverrideAvail,
         overrideTotalPrice: modOverridePrice ? parseFloat(modOverridePrice) : undefined,
         adminNotes: modNotes || undefined,
       });
-      toast('Reservering gewijzigd ✓');
-      setModifyOpen(false);
       load();
       api.reservations.modifications(params.id).then(setModHistory).catch(() => {});
+      // Check of er bijbetaling nodig is
+      if (result.pendingPaymentAmount > 0 && result.pendingModificationId) {
+        setPendingPayAmt(result.pendingPaymentAmount);
+        setPendingPayModId(result.pendingModificationId);
+        setModifyOpen(false);
+        setPendingPayStep(true);
+      } else {
+        toast('Reservering gewijzigd ✓');
+        setModifyOpen(false);
+      }
     } catch (e: any) { toastError(e.message); }
     finally { setModLoading(false); }
   }
@@ -98,6 +285,87 @@ export default function ReservationDetailPage({ params }: { params: { id: string
       load();
     } catch (e: any) { toastError(e.message); }
     finally { setSaving(false); }
+  }
+
+  async function saveExtraItems(items: typeof extraItems) {
+    setExtraItemsSaving(true);
+    try {
+      await api.reservations.extraItems(params.id, items);
+      setExtraItems(items);
+      toast('Extra factuurregels opgeslagen ✓');
+    } catch (e: any) { toastError(e.message); }
+    finally { setExtraItemsSaving(false); }
+  }
+
+  async function updatePaymentStatus(status: string, method?: string | null) {
+    setPayStatusSaving(true);
+    try {
+      await api.reservations.updatePaymentStatus(params.id, status, method);
+      toast('Betaalstatus bijgewerkt ✓');
+      load();
+    } catch (e: any) { toastError(e.message); }
+    finally { setPayStatusSaving(false); }
+  }
+
+  async function saveInvoiceDate() {
+    setInvoiceDateSaving(true);
+    try {
+      await api.reservations.updateInvoiceDate(params.id, invoiceDate || null);
+      toast('Factuurdatum opgeslagen ✓');
+      load();
+    } catch (e: any) { toastError(e.message); }
+    finally { setInvoiceDateSaving(false); }
+  }
+
+  async function applyOnSitePayment(modId: string) {
+    setApplyingOnSite(true);
+    try {
+      await api.modifications.applyOnSitePayment(modId);
+      toast('Betaling ontvangen — wijziging toegepast ✓');
+      load();
+      api.reservations.modifications(params.id).then(setModHistory).catch(() => {});
+    } catch (e: any) { toastError(e.message); }
+    finally { setApplyingOnSite(false); }
+  }
+
+  async function toggleOnSiteSurcharge(remove: boolean) {
+    setOnSiteSurchargeSaving(true);
+    try {
+      await api.reservations.onSiteSurcharge(params.id, remove);
+      toast(remove ? 'Toeslag verwijderd ✓' : 'Betalen ter plekke ingesteld (+€5) ✓');
+      load();
+    } catch (e: any) { toastError(e.message); }
+    finally { setOnSiteSurchargeSaving(false); }
+  }
+
+  async function syncFerryDatesFromDoeksen() {
+    const outDate = res?.arrival_date?.slice(0, 10);
+    const retDate = res?.departure_date?.slice(0, 10);
+    if (!outDate) return;
+    setFerryDoeksenSyncing(true);
+    try {
+      await api.ferries.syncDate(outDate);
+      if (retDate && retDate !== outDate) await api.ferries.syncDate(retDate);
+      toast('Boottijden opgehaald van Doeksen ✓');
+      // Herlaad roosters
+      loadFerrySchedules(outDate, retDate || outDate, ferryOutDest, ferryRetDest);
+    } catch (e: any) { toastError('Doeksen sync mislukt: ' + e.message); }
+    finally { setFerryDoeksenSyncing(false); }
+  }
+
+  async function doStripeSync() {
+    setStripeSyncing(true);
+    try {
+      const r = await api.reservations.stripeSync(params.id);
+      if (r.updated) {
+        toast('Betaalstatus bijgewerkt naar Betaald ✓');
+        load();
+        api.reservations.stripeDetails(params.id).then(setStripeData).catch(() => {});
+      } else {
+        toast(`Geen update nodig — Stripe: ${r.intentStatus}, systeem: ${r.currentStatus}`);
+      }
+    } catch (e: any) { toastError(e.message); }
+    finally { setStripeSyncing(false); }
   }
 
   async function openWa(msg: string) {
@@ -129,26 +397,42 @@ export default function ReservationDetailPage({ params }: { params: { id: string
         {/* Breadcrumb + actions */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Link href="/reservations" style={{ color: '#7090b0', textDecoration: 'none', fontSize: 13 }}>← Reserveringen</Link>
+            <Link href={searchParams.get('from') || '/reservations'} style={{ color: '#7090b0', textDecoration: 'none', fontSize: 13 }}>
+              ← {searchParams.get('from') === '/facturen' ? 'Facturen' : searchParams.get('from')?.startsWith('/facturen/') ? 'Factuurgroep' : 'Reserveringen'}
+            </Link>
             <span style={{ color: '#7090b0' }}>/</span>
             <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 14 }}>{res.reference}</span>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {res.status === 'booked' && (
               <>
-                <button className="btn btn-primary btn-sm" onClick={doCheckin} disabled={saving}>✓ Inchecken</button>
-                <button className="btn btn-navy btn-sm" onClick={() => { /* open checkin+mail modal */ }}>✓ + Mail</button>
-                <button className="btn btn-gold btn-sm" onClick={openModify}>✏ Wijzigen</button>
+                <button className="btn btn-primary btn-sm" onClick={doCheckin} disabled={saving} style={{display:'inline-flex',alignItems:'center',gap:5}}><CheckIcon className="w-4 h-4" />Inchecken</button>
+                <button className="btn btn-navy btn-sm" onClick={() => { /* open checkin+mail modal */ }} style={{display:'inline-flex',alignItems:'center',gap:5}}><CheckIcon className="w-4 h-4" />+ Mail</button>
+                <button className="btn btn-gold btn-sm" onClick={openModify} style={{display:'inline-flex',alignItems:'center',gap:5}}><PencilSquareIcon className="w-4 h-4" />Wijzigen</button>
               </>
             )}
             {res.status === 'checked_in' && (
-              <button className="btn btn-primary btn-sm" onClick={doCheckout} disabled={saving}>⬆ Uitchecken</button>
+              <button className="btn btn-primary btn-sm" onClick={doCheckout} disabled={saving} style={{display:'inline-flex',alignItems:'center',gap:5}}><ArrowUpTrayIcon className="w-4 h-4" />Uitchecken</button>
             )}
-            <button className="btn btn-sm" style={{ background: '#f4f6f9', color: '#0a2240', border: '0.5px solid rgba(10,34,64,0.2)' }}
+            <a href={`/print/invoice/${params.id}`} target="_blank"
+              className="btn btn-sm"
+              style={{ background: '#f4f6f9', color: '#0a2240', border: '0.5px solid rgba(10,34,64,0.2)', textDecoration: 'none', display:'inline-flex', alignItems:'center', gap:5 }}
+              title="Factuur openen"><DocumentTextIcon className="w-4 h-4" />Factuur</a>
+            <button className="btn btn-sm" style={{ background: '#f4f6f9', color: '#0a2240', border: '0.5px solid rgba(10,34,64,0.2)', display:'inline-flex', alignItems:'center', gap:5 }}
               onClick={() => window.open(`/print/envelope/${params.id}`, '_blank')}
-              title="Envelop afdrukken">🖨 Envelop</button>
+              title="Envelop afdrukken"><PrinterIcon className="w-4 h-4" />Envelop</button>
+            <button className="btn btn-sm" style={{ background: '#f4f6f9', color: '#0a2240', border: '0.5px solid rgba(10,34,64,0.2)', display:'inline-flex', alignItems:'center', gap:5 }}
+              title="Bevestigingsmail opnieuw versturen"
+              onClick={async () => {
+                try {
+                  await api.reservations.resendConfirmation(params.id);
+                  toast('Bevestigingsmail verstuurd');
+                } catch (e: any) {
+                  toastError('Mail versturen mislukt: ' + e.message);
+                }
+              }}><EnvelopeIcon className="w-4 h-4" />Mail</button>
             {res.status !== 'cancelled' && res.status !== 'completed' && (
-              <button className="btn btn-danger btn-sm" onClick={() => setCancelOpen(true)}>✕ Annuleren</button>
+              <button className="btn btn-danger btn-sm" onClick={() => setCancelOpen(true)} style={{display:'inline-flex',alignItems:'center',gap:5}}><XMarkIcon className="w-4 h-4" />Annuleren</button>
             )}
           </div>
         </div>
@@ -159,14 +443,73 @@ export default function ReservationDetailPage({ params }: { params: { id: string
             {/* Status header */}
             <div className="card" style={{ padding: '18px 22px', marginBottom: 14, background: statusColors[res.status] || 'white' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ fontSize: 22, fontWeight: 900, color: '#0a2240' }}>
-                    {res.first_name} {res.last_name}
-                  </div>
-                  <div style={{ fontSize: 13, color: '#7090b0', marginTop: 2 }}>
-                    {res.email} · {res.phone || 'geen telefoon'}
-                    {res.btw_number && ` · BTW: ${res.btw_number}`}
-                  </div>
+                <div style={{ flex: 1 }}>
+                  {editingContact ? (
+                    <div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                        <div>
+                          <label style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 3 }}>Voornaam</label>
+                          <input value={contactValues.firstName} onChange={e => setContactValues(v => ({ ...v, firstName: e.target.value }))}
+                            style={{ width: '100%', padding: '7px 10px', border: '1.5px solid rgba(10,34,64,0.25)', borderRadius: 7, fontSize: 14, fontWeight: 700, color: '#0a2240', boxSizing: 'border-box' }} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 3 }}>Achternaam</label>
+                          <input value={contactValues.lastName} onChange={e => setContactValues(v => ({ ...v, lastName: e.target.value }))}
+                            style={{ width: '100%', padding: '7px 10px', border: '1.5px solid rgba(10,34,64,0.25)', borderRadius: 7, fontSize: 14, fontWeight: 700, color: '#0a2240', boxSizing: 'border-box' }} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 3 }}>E-mailadres</label>
+                          <input type="email" value={contactValues.email} onChange={e => setContactValues(v => ({ ...v, email: e.target.value }))}
+                            style={{ width: '100%', padding: '7px 10px', border: '1.5px solid rgba(10,34,64,0.25)', borderRadius: 7, fontSize: 13, color: '#0a2240', boxSizing: 'border-box' }} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 3 }}>Telefoon</label>
+                          <input value={contactValues.phone} onChange={e => setContactValues(v => ({ ...v, phone: e.target.value }))}
+                            style={{ width: '100%', padding: '7px 10px', border: '1.5px solid rgba(10,34,64,0.25)', borderRadius: 7, fontSize: 13, color: '#0a2240', boxSizing: 'border-box' }} />
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => { setEditingContact(false); setContactValues({ firstName: res.first_name || '', lastName: res.last_name || '', email: res.email || '', phone: res.phone || '' }); }} style={{ fontSize: 11 }}>Annuleren</button>
+                        <button className="btn btn-primary btn-sm" onClick={saveContact} disabled={contactSaving} style={{ fontSize: 11 }}><CheckIcon className="w-3 h-3" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3 }} />{contactSaving ? 'Opslaan...' : 'Opslaan'}</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ fontSize: 22, fontWeight: 900, color: '#0a2240', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        {res.first_name} {res.last_name}
+                        <button className="btn btn-ghost btn-sm" onClick={() => setEditingContact(true)} style={{ fontSize: 11 }}>
+                          <PencilSquareIcon className="w-3 h-3" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3 }} />Naam wijzigen
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ fontSize: 11, color: nameLinkCopied ? '#0a7c6e' : '#7090b0' }}
+                          title="Kopieer link zodat iemand anders de naam kan aanpassen"
+                          onClick={() => {
+                            const url = `${window.location.origin}/guest/naam/${res.id}`;
+                            navigator.clipboard.writeText(url);
+                            setNameLinkCopied(true);
+                            setTimeout(() => setNameLinkCopied(false), 3000);
+                          }}
+                        >
+                          {nameLinkCopied
+                            ? <><ClipboardCheck size={12} style={{ display:'inline', verticalAlign:'middle', marginRight:3 }} />Gekopieerd!</>
+                            : <><Link2 size={12} style={{ display:'inline', verticalAlign:'middle', marginRight:3 }} />Link</>
+                          }
+                        </button>
+                        <a
+                          href={`/customers?ref=${encodeURIComponent(res.reference)}`}
+                          title="Klantpagina openen"
+                          style={{ fontSize: 12, fontWeight: 600, color: '#0a7c6e', background: '#e6f7f5', borderRadius: 6, padding: '3px 9px', textDecoration: 'none', whiteSpace: 'nowrap' }}
+                        >
+                          <UserIcon className="w-3 h-3" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Klantpagina →
+                        </a>
+                      </div>
+                      <div style={{ fontSize: 13, color: '#7090b0', marginTop: 2 }}>
+                        {res.email} · {res.phone || 'geen telefoon'}
+                        {res.btw_number && ` · BTW: ${res.btw_number}`}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: 24, fontWeight: 900, color: '#0a2240' }}>
@@ -184,13 +527,41 @@ export default function ReservationDetailPage({ params }: { params: { id: string
               </div>
             </div>
 
+            {/* Opmerking klant */}
+            {(() => {
+              const klantNoot = (res.notes || '').replace(/(\r\n|\r|\n)?Imported from v1 \| Original ID:[^\r\n]*/g, '').trim();
+              return klantNoot ? (
+                <div className="card" style={{ padding: '14px 18px', marginBottom: 14, background: '#fffbe6', border: '0.5px solid #e8c84a' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#8a6000', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6, display:'flex', alignItems:'center', gap:4 }}><ChatBubbleOvalLeftEllipsisIcon className="w-3 h-3" />Opmerking klant</div>
+                  <div style={{ fontSize: 13, color: '#0a2240', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{klantNoot}</div>
+                </div>
+              ) : null;
+            })()}
+
             {/* Voertuigen */}
             <div className="card" style={{ padding: '18px 22px', marginBottom: 14 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: '#0a2240', marginBottom: 14 }}>Voertuigen</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#0a2240' }}>Voertuigen</div>
+                {!editingPlates
+                  ? <button className="btn btn-ghost btn-sm" onClick={() => setEditingPlates(true)} style={{ fontSize: 11 }}><PencilSquareIcon className="w-3 h-3" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3 }} />Kentekens bewerken</button>
+                  : <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => { setEditingPlates(false); setPlateValues((res.vehicles || []).map((v: any) => v.license_plate || '')); }} style={{ fontSize: 11 }}>Annuleren</button>
+                      <button className="btn btn-primary btn-sm" onClick={savePlates} disabled={plateSaving} style={{ fontSize: 11 }}><CheckIcon className="w-3 h-3" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3 }} />{plateSaving ? 'Opslaan...' : 'Opslaan'}</button>
+                    </div>
+                }
+              </div>
               {(res.vehicles || []).map((v: any, i: number) => (
                 <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: i < res.vehicles.length - 1 ? '0.5px solid rgba(10,34,64,0.08)' : 'none' }}>
-                  <PlateTooltip plate={v.license_plate} />
-                  {v.rdw_make && (
+                  {editingPlates
+                    ? <input
+                        value={plateValues[i] ?? ''}
+                        onChange={e => setPlateValues(prev => { const next = [...prev]; next[i] = e.target.value.toUpperCase(); return next; })}
+                        placeholder="Onbekend"
+                        style={{ width: 130, padding: '7px 10px', border: '1.5px solid rgba(10,34,64,0.25)', borderRadius: 7, fontSize: 14, fontWeight: 700, fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase' }}
+                      />
+                    : <PlateTooltip plate={v.license_plate} />
+                  }
+                  {v.rdw_make && !editingPlates && (
                     <div style={{ fontSize: 13, color: '#7090b0' }}>
                       {v.rdw_make} {v.rdw_model}
                       {v.rdw_color && ` · ${v.rdw_color}`}
@@ -198,8 +569,8 @@ export default function ReservationDetailPage({ params }: { params: { id: string
                     </div>
                   )}
                   {v.ev_kwh && (
-                    <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: '#0a7c6e', background: '#e6f7f5', padding: '3px 10px', borderRadius: 20 }}>
-                      ⚡ {v.ev_kwh} kWh · € {Number(v.ev_price).toFixed(2)}
+                    <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: '#0a7c6e', background: '#e6f7f5', padding: '3px 10px', borderRadius: 20, display:'inline-flex', alignItems:'center', gap:4 }}>
+                      <BoltIcon className="w-3 h-3" />{v.ev_kwh} kWh · € {Number(v.ev_price).toFixed(2)}
                     </span>
                   )}
                 </div>
@@ -208,20 +579,182 @@ export default function ReservationDetailPage({ params }: { params: { id: string
 
             {/* Veerboot */}
             <div className="card" style={{ padding: '18px 22px', marginBottom: 14 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: '#0a2240', marginBottom: 14 }}>Veerbootinformatie</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, fontSize: 13 }}>
-                {[
-                  ['Bestemming', res.ferry_outbound_destination || '—'],
-                  ['Heenreis', `${res.ferry_outbound_name || '—'} ${res.ferry_outbound_time ? `om ${res.ferry_outbound_time.slice(0,5)}` : ''}`],
-                  ['Terugreis', `${res.ferry_return_name || (res.ferry_return_custom ? 'Eigen tijd' : '—')} ${res.ferry_return_time ? `om ${res.ferry_return_time.slice(0,5)}` : ''}`],
-                  ['Snelle boot', res.is_fast_ferry_outbound ? 'Ja' : 'Nee'],
-                ].map(([label, value]) => (
-                  <div key={label}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>{label}</div>
-                    <div style={{ fontWeight: 600 }}>{value}</div>
-                  </div>
-                ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#0a2240' }}>Veerbootinformatie</div>
+                {!editingFerry && (
+                  <button onClick={openFerryEdit} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 7, border: '0.5px solid rgba(10,34,64,0.18)', background: 'white', fontSize: 12, fontWeight: 600, color: '#0a2240', cursor: 'pointer' }}>
+                    <PencilSquareIcon style={{ width: 13, height: 13 }} />Wijzigen
+                  </button>
+                )}
               </div>
+
+              {!editingFerry ? (() => {
+                // Bestemming: backend levert al COALESCE(reservation.dest, ferry_type.dest)
+                // Naam als extra fallback als beide null zijn
+                const destRaw = res.ferry_outbound_destination
+                  || (res.ferry_outbound_name?.toLowerCase().includes('terschelling') ? 'terschelling'
+                    : res.ferry_outbound_name?.toLowerCase().includes('vlieland') ? 'vlieland'
+                    : res.ferry_return_name?.toLowerCase().includes('terschelling') ? 'terschelling'
+                    : res.ferry_return_name?.toLowerCase().includes('vlieland') ? 'vlieland'
+                    : null);
+                const destLabel = destRaw === 'terschelling' ? 'Terschelling' : destRaw === 'vlieland' ? 'Vlieland' : '—';
+                const outTime = res.ferry_outbound_time?.slice(0, 5);
+                const outArr = res.ferry_outbound_arrival_island;
+                const retTime = res.ferry_return_time?.slice(0, 5) || (res.ferry_return_custom ? res.ferry_return_custom_time?.slice(0, 5) : null);
+                const retArr = res.ferry_return_arrival_harlingen;
+                const isFast = res.is_fast_ferry_outbound;
+                return (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 13 }}>
+                  {/* Bestemming */}
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Bestemming</div>
+                    <div style={{ fontWeight: 700, color: '#0a2240', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {destLabel}
+                      {isFast && <span style={{ fontSize: 10, background: '#e6f7f5', color: '#0a7c6e', borderRadius: 4, padding: '1px 6px', fontWeight: 700 }}>Snelboot</span>}
+                    </div>
+                  </div>
+                  {/* Heenreis */}
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>⛴ Heenreis</div>
+                    {outTime ? (
+                      <div style={{ fontWeight: 700, color: '#0a2240' }}>
+                        {outTime}{outArr ? <span style={{ color: '#7090b0', fontWeight: 600 }}> → {outArr}</span> : ''}
+                        {res.ferry_outbound_name && res.ferry_outbound_name !== '—' && (
+                          <div style={{ fontSize: 11, color: '#9aafbf', fontWeight: 500, marginTop: 1 }}>{res.ferry_outbound_name}</div>
+                        )}
+                      </div>
+                    ) : <span style={{ color: '#b0c4d4' }}>—</span>}
+                  </div>
+                  {/* Terugreis */}
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>⛴ Terugreis</div>
+                    {retTime ? (
+                      <div>
+                        {/* Aankomsttijd Harlingen prominent */}
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                          <span style={{ fontSize: 10, color: '#7090b0', fontWeight: 600 }}>vertrek {retTime}</span>
+                          {retArr && <><span style={{ fontSize: 11, color: '#9aafbf' }}>→</span>
+                          <span style={{ fontSize: 20, fontWeight: 900, color: '#0a7c6e', lineHeight: 1 }}>{retArr}</span></>}
+                        </div>
+                        {retArr && <div style={{ fontSize: 9, color: '#7090b0', fontWeight: 600, marginTop: 1 }}>aankomst Harlingen</div>}
+                        {res.ferry_return_name && res.ferry_return_name !== '—' && (
+                          <div style={{ fontSize: 11, color: '#9aafbf', fontWeight: 500, marginTop: 2 }}>{res.ferry_return_name}</div>
+                        )}
+                        {res.ferry_return_custom && <div style={{ fontSize: 10, color: '#9aafbf' }}>Eigen tijd</div>}
+                      </div>
+                    ) : <span style={{ color: '#b0c4d4' }}>—</span>}
+                  </div>
+                  {/* Lege cel voor grid balans */}
+                  <div />
+                </div>
+                );
+              })()
+              : (
+                <div>
+                  {/* Doeksen sync */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: '8px 10px', background: '#f4f6f9', borderRadius: 7 }}>
+                    <span style={{ fontSize: 12, color: '#7090b0', flex: 1 }}>
+                      {ferryOutSchedules.length > 0
+                        ? `${ferryOutSchedules.length} vertrektijden gevonden`
+                        : 'Nog geen rooster voor deze datum'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={syncFerryDatesFromDoeksen}
+                      disabled={ferryDoeksenSyncing}
+                      style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, border: '0.5px solid rgba(10,34,64,0.2)', background: 'white', color: '#0a2240', cursor: ferryDoeksenSyncing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
+                    >
+                      <ArrowPathIcon style={{ width: 12, height: 12, animation: ferryDoeksenSyncing ? 'spin 1s linear infinite' : 'none' }} />
+                      {ferryDoeksenSyncing ? 'Ophalen…' : <><RefreshCw size={13} style={{ display:'inline', verticalAlign:'middle', marginRight:4 }} />Ophalen van Doeksen</>}
+                    </button>
+                  </div>
+                  {/* Eilandkeuze */}
+                  {(['outbound', 'return'] as const).map(dir => {
+                    const isOut = dir === 'outbound';
+                    const dest = isOut ? ferryOutDest : ferryRetDest;
+                    const setDest = isOut
+                      ? (d: 'terschelling'|'vlieland') => { setFerryOutDest(d); setFerryOutTime(''); setFerryOutId(''); loadFerrySchedules(res.arrival_date?.slice(0,10), res.departure_date?.slice(0,10), d, ferryRetDest); }
+                      : (d: 'terschelling'|'vlieland') => { setFerryRetDest(d); setFerryRetTime(''); setFerryRetId(''); loadFerrySchedules(res.arrival_date?.slice(0,10), res.departure_date?.slice(0,10), ferryOutDest, d); };
+                    const time = isOut ? ferryOutTime : ferryRetTime;
+                    const setTime = isOut ? setFerryOutTime : setFerryRetTime;
+                    const selectedId = isOut ? ferryOutId : ferryRetId;
+                    const setSelectedId = isOut ? setFerryOutId : setFerryRetId;
+                    const schedules = isOut ? ferryOutSchedules : ferryRetSchedules;
+                    const manual = isOut ? ferryOutManual : ferryRetManual;
+                    const setManual = isOut ? setFerryOutManual : setFerryRetManual;
+                    const date = isOut ? res.arrival_date?.slice(0,10) : res.departure_date?.slice(0,10);
+                    const label = isOut ? '⛴ Heenreis' : '⛴ Terugreis';
+
+                    return (
+                      <div key={dir} style={{ marginBottom: 16 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+                          {label} · {date}
+                        </div>
+                        {/* Eiland toggle */}
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                          {(['terschelling', 'vlieland'] as const).map(d => (
+                            <button key={d} type="button" onClick={() => setDest(d)} style={{ flex: 1, padding: '6px 0', borderRadius: 7, fontSize: 12, fontWeight: 700, border: dest === d ? '1.5px solid #0a7c6e' : '0.5px solid rgba(10,34,64,0.2)', background: dest === d ? '#e6f7f5' : 'white', color: dest === d ? '#0a7c6e' : '#7090b0', cursor: 'pointer' }}>
+                              {d === 'terschelling' ? 'Terschelling' : 'Vlieland'}
+                            </button>
+                          ))}
+                        </div>
+                        {/* Tijdknoppen */}
+                        {ferryScheduleLoading ? (
+                          <div style={{ fontSize: 12, color: '#7090b0' }}>Laden…</div>
+                        ) : !manual && schedules.length > 0 ? (
+                          <>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+                              {schedules.map((s: any) => {
+                                const t = s.departureTime?.slice(0,5) || '';
+                                const sel = selectedId ? s.id === selectedId : time === t;
+                                return (
+                                  <button key={s.id || t} onClick={() => { setTime(t); setSelectedId(s.id || ''); }}
+                                    style={{ padding: '6px 10px', borderRadius: 7, cursor: 'pointer', border: sel ? '2px solid #0a7c6e' : '0.5px solid rgba(10,34,64,0.2)', background: sel ? '#e6f7f5' : 'white', fontWeight: sel ? 800 : 600, color: sel ? '#0a7c6e' : '#0a2240', fontSize: 14, textAlign: 'center' as const, minWidth: 58 }}>
+                                    {t}
+                                    <div style={{ fontSize: 9, fontWeight: 700, color: sel ? '#0a7c6e' : s.isFast ? '#0a7c6e' : '#9aafbf', marginTop: 1 }}>
+                                      {s.isFast ? 'Snelboot' : 'Veerboot'}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <button type="button" onClick={() => setManual(true)} style={{ fontSize: 11, color: '#9aafbf', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Handmatig invoeren</button>
+                          </>
+                        ) : (
+                          <>
+                            {schedules.length === 0 && !ferryScheduleLoading && <div style={{ fontSize: 11, color: '#9aafbf', marginBottom: 4 }}>Geen rooster — handmatig:</div>}
+                            <input type="time" value={time} onChange={e => setTime(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 7, fontSize: 14, color: '#0a2240', boxSizing: 'border-box' }} />
+                            {manual && schedules.length > 0 && <button type="button" onClick={() => setManual(false)} style={{ fontSize: 11, color: '#9aafbf', background: 'none', border: 'none', cursor: 'pointer', marginTop: 4 }}>Terug naar rooster</button>}
+                          </>
+                        )}
+                        {time && (() => {
+                          const selSch = schedules.find((s: any) => s.id === selectedId) || schedules.find((s: any) => s.departureTime?.slice(0,5) === time);
+                          const destLabel = dest === 'terschelling' ? 'Terschelling' : 'Vlieland';
+                          const typeLabel = selSch ? (selSch.isFast ? 'Snelboot' : 'Veerboot') : '';
+                          const durMin = selSch?.durationMin || (selSch?.isFast ? 50 : (dest === 'vlieland' ? 100 : 120));
+                          const [h, m] = time.split(':').map(Number);
+                          const arrTot = h * 60 + m + durMin;
+                          const arrTime = `${String(Math.floor(arrTot / 60)).padStart(2, '0')}:${String(arrTot % 60).padStart(2, '0')}`;
+                          return (
+                            <div style={{ marginTop: 6, fontSize: 12, color: '#0a7c6e', fontWeight: 700 }}>
+                              ✓ {time} → {arrTime}{destLabel ? ` · ${destLabel}` : ''}{typeLabel ? ` · ${typeLabel}` : ''}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    );
+                  })}
+
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                    <button onClick={saveFerry} disabled={ferrySaving} style={{ flex: 1, padding: '9px', borderRadius: 8, background: ferrySaving ? '#ccc' : '#0a2240', color: 'white', border: 'none', fontSize: 13, fontWeight: 700, cursor: ferrySaving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                      <CheckIcon style={{ width: 14, height: 14 }} />{ferrySaving ? 'Opslaan…' : 'Opslaan'}
+                    </button>
+                    <button onClick={() => setEditingFerry(false)} style={{ padding: '9px 14px', borderRadius: 8, border: '0.5px solid rgba(10,34,64,0.18)', background: 'white', fontSize: 13, fontWeight: 600, color: '#556070', cursor: 'pointer' }}>
+                      Annuleren
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Prijsopbouw */}
@@ -263,6 +796,198 @@ export default function ReservationDetailPage({ params }: { params: { id: string
               </div>
             </div>
 
+            {/* Extra factuurregels */}
+            <div className="card" style={{ padding: '18px 22px', marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#0a2240', display:'flex', alignItems:'center', gap:6 }}><ClipboardDocumentListIcon className="w-4 h-4" />Extra factuurregels</div>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ fontSize: 11, padding: '3px 10px' }}
+                  onClick={() => {
+                    const newItems = [...extraItems, { description: '', quantity: 1, unit_price: 0 }];
+                    setExtraItems(newItems);
+                  }}
+                >+ Regel toevoegen</button>
+              </div>
+
+              {extraItems.length === 0 && (
+                <div style={{ fontSize: 12, color: '#9090a0', fontStyle: 'italic', marginBottom: 8 }}>
+                  Geen extra regels. Klik op "Regel toevoegen" om bijv. laadkosten of andere diensten toe te voegen.
+                </div>
+              )}
+
+              {extraItems.map((it, idx) => (
+                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 56px 90px 32px', gap: 6, marginBottom: 8, alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    value={it.description}
+                    placeholder="Omschrijving"
+                    onChange={e => {
+                      const updated = extraItems.map((x, i) => i === idx ? { ...x, description: e.target.value } : x);
+                      setExtraItems(updated);
+                    }}
+                    style={{ padding: '6px 8px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 6, fontSize: 13 }}
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    value={it.quantity}
+                    title="Aantal"
+                    onChange={e => {
+                      const updated = extraItems.map((x, i) => i === idx ? { ...x, quantity: parseInt(e.target.value) || 1 } : x);
+                      setExtraItems(updated);
+                    }}
+                    style={{ padding: '6px 8px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 6, fontSize: 13, textAlign: 'right' }}
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={it.unit_price}
+                    title="Bedrag per stuk"
+                    onChange={e => {
+                      const updated = extraItems.map((x, i) => i === idx ? { ...x, unit_price: parseFloat(e.target.value) || 0 } : x);
+                      setExtraItems(updated);
+                    }}
+                    style={{ padding: '6px 8px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 6, fontSize: 13, textAlign: 'right' }}
+                  />
+                  <button
+                    onClick={() => {
+                      const updated = extraItems.filter((_, i) => i !== idx);
+                      setExtraItems(updated);
+                    }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c04040', padding: 0, display:'flex', alignItems:'center' }}
+                    title="Verwijder regel"
+                  ><XMarkIcon className="w-4 h-4" /></button>
+                </div>
+              ))}
+
+              {extraItems.length > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 10, borderTop: '0.5px solid rgba(10,34,64,0.1)' }}>
+                  <div style={{ fontSize: 12, color: '#7090b0' }}>
+                    Totaal extra: <strong style={{ color: '#0a2240' }}>
+                      € {extraItems.reduce((s, it) => s + (parseFloat(String(it.unit_price)) || 0) * (parseInt(String(it.quantity)) || 1), 0).toFixed(2)}
+                    </strong>
+                  </div>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    style={{ fontSize: 12 }}
+                    disabled={extraItemsSaving}
+                    onClick={() => saveExtraItems(extraItems)}
+                  >
+                    {extraItemsSaving ? 'Opslaan...' : '💾 Opslaan'}
+                  </button>
+                </div>
+              )}
+
+              {extraItems.length === 0 && (
+                <div style={{ fontSize: 11, color: '#9090a0' }}>
+                  Regels verschijnen op de factuur onder het parkeerbedrag.
+                </div>
+              )}
+            </div>
+
+            {/* Stripe betaaldetails */}
+            {stripeData?.hasStripe && (
+              <div className="card" style={{ padding: '18px 22px', marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#0a2240', display:'flex', alignItems:'center', gap:6 }}>
+                    <CreditCardIcon className="w-4 h-4" />Stripe betaling
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    {res.payment_status !== 'paid' && (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={doStripeSync}
+                        disabled={stripeSyncing}
+                        style={{ fontSize: 11, padding: '3px 9px' }}
+                      >
+                        {stripeSyncing ? '...' : <><ArrowPathIcon className="w-3 h-3" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Sync status</>}
+                      </button>
+                    )}
+                    <a
+                      href={`https://dashboard.stripe.com/payments/${stripeData.intentId}`}
+                      target="_blank" rel="noreferrer"
+                      style={{ fontSize: 11, color: '#635bff', fontWeight: 600, textDecoration: 'none', background: '#f0efff', borderRadius: 5, padding: '3px 9px' }}
+                    >
+                      Bekijk in Stripe →
+                    </a>
+                  </div>
+                </div>
+                {stripeData.fetchError && (
+                  <div style={{ fontSize: 12, color: '#8a5f00', background: '#fff8e6', border: '0.5px solid #e8c84a', borderRadius: 6, padding: '7px 10px', marginBottom: 12 }}>
+                    <ExclamationTriangleIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Stripe details konden niet worden opgehaald — mogelijk test/live modus verschil.<br />
+                    <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#555' }}>{stripeData.fetchError}</span>
+                  </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 13 }}>
+                  {[
+                    ['Intent ID', stripeData.intentId],
+                    ...(stripeData.intentStatus != null ? [['Status', stripeData.intentStatus]] : []),
+                    ...(stripeData.paymentMethodType != null ? [['Betaalmethode', stripeData.paymentMethodType || '—']] : []),
+                    ...(stripeData.amount != null ? [['Bedrag', `€ ${Number(stripeData.amount).toFixed(2)}`]] : []),
+                    ...(stripeData.amountReceived != null ? [['Ontvangen', `€ ${Number(stripeData.amountReceived).toFixed(2)}`]] : []),
+                    ...(stripeData.created != null ? [['Aangemaakt', new Date(stripeData.created * 1000).toLocaleString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })]] : []),
+                  ].map(([label, value]) => (
+                    <div key={String(label)}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>{label}</div>
+                      <div style={{ fontWeight: 600, fontFamily: label === 'Intent ID' ? 'monospace' : 'inherit', fontSize: label === 'Intent ID' ? 11 : 13, wordBreak: 'break-all' }}>{String(value)}</div>
+                    </div>
+                  ))}
+                </div>
+                {stripeData.charge && (
+                  <>
+                    <div style={{ borderTop: '0.5px solid rgba(10,34,64,0.08)', margin: '14px 0 12px' }} />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 13 }}>
+                      {stripeData.charge.paymentMethodDetails?.ideal && (
+                        <>
+                          <div>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>Bank (iDEAL)</div>
+                            <div style={{ fontWeight: 600 }}>{stripeData.charge.paymentMethodDetails.ideal.bank || '—'}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>BIC</div>
+                            <div style={{ fontWeight: 600 }}>{stripeData.charge.paymentMethodDetails.ideal.bic || '—'}</div>
+                          </div>
+                        </>
+                      )}
+                      {stripeData.charge.paymentMethodDetails?.card && (
+                        <>
+                          <div>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>Kaart</div>
+                            <div style={{ fontWeight: 600, textTransform: 'capitalize' }}>
+                              {stripeData.charge.paymentMethodDetails.card.brand} •••• {stripeData.charge.paymentMethodDetails.card.last4}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>Geldig t/m</div>
+                            <div style={{ fontWeight: 600 }}>
+                              {stripeData.charge.paymentMethodDetails.card.exp_month}/{stripeData.charge.paymentMethodDetails.card.exp_year}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                      {stripeData.charge.amountRefunded > 0 && (
+                        <div>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>Terugbetaald</div>
+                          <div style={{ fontWeight: 600, color: '#2a7a3a' }}>€ {Number(stripeData.charge.amountRefunded).toFixed(2)}</div>
+                        </div>
+                      )}
+                      {stripeData.charge.receiptUrl && (
+                        <div>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 3 }}>Betaalbewijs</div>
+                          <a href={stripeData.charge.receiptUrl} target="_blank" rel="noreferrer"
+                            style={{ color: '#0a7c6e', fontWeight: 600, fontSize: 12, textDecoration: 'none' }}>
+                            Bekijk bon →
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Admin notities */}
             <div className="card" style={{ padding: '18px 22px', marginBottom: 14 }}>
               <div style={{ fontWeight: 700, fontSize: 14, color: '#0a2240', marginBottom: 10 }}>Interne notities</div>
@@ -279,10 +1004,62 @@ export default function ReservationDetailPage({ params }: { params: { id: string
               />
             </div>
 
+            {/* Pending wijziging (openstaande betaling) */}
+            {modHistory.filter((m: any) => m.status === 'pending_payment').map((m: any) => {
+              const details = m.change_details
+                ? (typeof m.change_details === 'string' ? JSON.parse(m.change_details) : m.change_details)
+                : {};
+              const netDue = details.netDue || (parseFloat(m.price_difference || '0') + parseFloat(m.modification_fee || '0'));
+              return (
+                <div key={m.id} className="card" style={{ padding: '18px 22px', marginBottom: 14, border: '2px solid #ff9800', background: '#fff8e6' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#0a2240', marginBottom: 12, display:'flex', alignItems:'center', gap:6 }}>
+                    <ClockIcon className="w-4 h-4" />Openstaande wijziging — wacht op betaling
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 13, marginBottom: 14 }}>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', marginBottom: 4 }}>Nieuwe aankomst</div>
+                      <div style={{ fontWeight: 600, color: '#0a2240' }}>
+                        {new Date(String(m.new_arrival_date).slice(0, 10) + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', marginBottom: 4 }}>Nieuw vertrek</div>
+                      <div style={{ fontWeight: 600, color: '#0a2240' }}>
+                        {new Date(String(m.new_departure_date).slice(0, 10) + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', marginBottom: 4 }}>Nieuw totaal</div>
+                      <div style={{ fontWeight: 600, color: '#0a2240' }}>€ {parseFloat(m.new_total_price).toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', marginBottom: 4 }}>Te ontvangen (incl. toeslag)</div>
+                      <div style={{ fontWeight: 700, color: '#8a2020', fontSize: 15 }}>€ {Number(netDue).toFixed(2)}</div>
+                    </div>
+                  </div>
+                  {details.paymentMethod === 'on_site' && (
+                    <button
+                      className="btn btn-gold btn-sm"
+                      onClick={() => applyOnSitePayment(m.id)}
+                      disabled={applyingOnSite}
+                      style={{ width: '100%' }}
+                    >
+                      {applyingOnSite ? 'Verwerken...' : <><CheckIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Betaling ontvangen (contant)</>}
+                    </button>
+                  )}
+                  {details.paymentMethod === 'stripe' && (
+                    <div style={{ fontSize: 12, color: '#7090b0', padding: '8px 12px', background: 'white', borderRadius: 7 }}>
+                      Klant betaalt via Stripe — wacht op betaalbevestiging.
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
             {/* Wijzigingshistorie */}
             {modHistory.length > 0 && (
               <div className="card" style={{ padding: '18px 22px' }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: '#0a2240', marginBottom: 12 }}>✏ Wijzigingshistorie</div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#0a2240', marginBottom: 12, display:'flex', alignItems:'center', gap:6 }}><PencilSquareIcon className="w-4 h-4" />Wijzigingshistorie</div>
                 {modHistory.map((m: any) => (
                   <div key={m.id} style={{ padding: '10px 0', borderBottom: '0.5px solid rgba(10,34,64,0.06)', fontSize: 12 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -320,7 +1097,7 @@ export default function ReservationDetailPage({ params }: { params: { id: string
                 ['Referentie', res.reference],
                 ['Aankomst', new Date(res.arrival_date).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })],
                 ['Vertrek', new Date(res.departure_date).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })],
-                ['Nachten', res.nights],
+                ['Dagen', (res.nights ?? 0) + 1],
                 ['Betaalmethode', res.payment_method],
                 ['Aangemaakt', new Date(res.created_at).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })],
                 ...(res.checkin_at ? [['Ingecheckt om', new Date(res.checkin_at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })]] : []),
@@ -331,6 +1108,103 @@ export default function ReservationDetailPage({ params }: { params: { id: string
                   <span style={{ fontWeight: 600, fontFamily: k === 'Referentie' ? 'monospace' : 'inherit' }}>{v}</span>
                 </div>
               ))}
+            </div>
+
+            {/* Betaalstatus wijzigen */}
+            <div className="card" style={{ padding: '16px 18px', marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#0a2240', marginBottom: 10, display:'flex', alignItems:'center', gap:5 }}><CreditCardIcon className="w-4 h-4" />Betaalstatus</div>
+              <div style={{ fontSize: 12, color: '#7090b0', marginBottom: 10 }}>
+                Huidig: <strong style={{ color: '#0a2240' }}>
+                  {res.payment_status === 'paid' ? 'Betaald' : res.payment_status === 'pending' ? 'Openstaand' : res.payment_status === 'on_site' ? 'Ter plekke' : res.payment_status}
+                  {res.payment_method ? ` (${res.payment_method})` : ''}
+                </strong>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ justifyContent: 'flex-start', fontSize: 12 }}
+                  disabled={payStatusSaving}
+                  onClick={() => updatePaymentStatus('paid', 'contant')}
+                ><BanknotesIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:5}} />Contant betaald</button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ justifyContent: 'flex-start', fontSize: 12 }}
+                  disabled={payStatusSaving}
+                  onClick={() => updatePaymentStatus('paid', 'pin')}
+                ><CreditCardIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:5}} />Pin betaald</button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ justifyContent: 'flex-start', fontSize: 12 }}
+                  disabled={payStatusSaving}
+                  onClick={() => updatePaymentStatus('paid', 'tikkie')}
+                ><DevicePhoneMobileIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:5}} />Tikkie betaald</button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ justifyContent: 'flex-start', fontSize: 12 }}
+                  disabled={payStatusSaving}
+                  onClick={() => updatePaymentStatus('paid', 'ideal')}
+                ><BuildingLibraryIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:5}} />iDEAL betaald</button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ justifyContent: 'flex-start', fontSize: 12, borderTop: '0.5px solid rgba(10,34,64,0.1)', marginTop: 2, paddingTop: 8 }}
+                  disabled={payStatusSaving}
+                  onClick={() => updatePaymentStatus('pending', null)}
+                ><ClockIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:5}} />Openstaand</button>
+
+                {/* Betalen ter plekke toeslag */}
+                <div style={{ borderTop: '0.5px solid rgba(10,34,64,0.1)', marginTop: 4, paddingTop: 8 }}>
+                  {Number(res.on_site_surcharge) > 0 ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, background: '#fff8e6', border: '1px solid #e8c84a', borderRadius: 6, padding: '3px 8px', color: '#8a5f00', fontWeight: 700, flex: 1 }}>
+                        🏪 Ter plekke betalen — toeslag €{Number(res.on_site_surcharge).toFixed(2)} actief
+                      </span>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: 11, padding: '3px 8px', color: '#c83232' }}
+                        disabled={onSiteSurchargeSaving}
+                        onClick={() => toggleOnSiteSurcharge(true)}
+                        title="Toeslag verwijderen"
+                      ><X size={13} style={{ display:'inline', verticalAlign:'middle', marginRight:4 }} />Verwijder</button>
+                    </div>
+                  ) : (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ justifyContent: 'flex-start', fontSize: 12, width: '100%', background: '#fffbf0', borderColor: '#e8c84a', color: '#7a5500' }}
+                      disabled={onSiteSurchargeSaving}
+                      onClick={() => toggleOnSiteSurcharge(false)}
+                    >🏪 Betalen ter plekke (+€5)</button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Factuurdatum */}
+            <div className="card" style={{ padding: '16px 18px', marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#0a2240', marginBottom: 10, display:'flex', alignItems:'center', gap:5 }}><CalendarDaysIcon className="w-4 h-4" />Factuurdatum</div>
+              <div style={{ fontSize: 11, color: '#7090b0', marginBottom: 8 }}>
+                Standaard: reserveringsdatum ({res.created_at ? new Date(res.created_at).toLocaleDateString('nl-NL') : '—'})
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  type="date"
+                  value={invoiceDate}
+                  onChange={e => setInvoiceDate(e.target.value)}
+                  style={{ flex: 1, fontSize: 13, padding: '5px 8px', border: '1px solid #d0dbe8', borderRadius: 6, color: '#0a2240' }}
+                />
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ fontSize: 12, whiteSpace: 'nowrap' }}
+                  disabled={invoiceDateSaving}
+                  onClick={() => setInvoiceDate(res.created_at?.slice(0, 10) || '')}
+                  title="Reset naar reserveringsdatum"
+                ><ArrowUturnLeftIcon className="w-4 h-4" /></button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  style={{ fontSize: 12, whiteSpace: 'nowrap' }}
+                  disabled={invoiceDateSaving}
+                  onClick={saveInvoiceDate}
+                >{invoiceDateSaving ? '…' : 'Opslaan'}</button>
+              </div>
             </div>
 
             {/* WhatsApp quick actions */}
@@ -406,7 +1280,9 @@ export default function ReservationDetailPage({ params }: { params: { id: string
         {modPreview && (
           <div style={{ background: '#f4f6f9', borderRadius: 8, padding: '12px 14px', marginBottom: 12, fontSize: 12 }}>
             {[
-              ['Nieuw tarief', `€ ${parseFloat(modPreview.newPrice).toFixed(2)}${modOverridePrice ? ' (override)' : ''}`],
+              ['Nieuw tarief (datums)', `€ ${parseFloat(modPreview.newPrice).toFixed(2)}${modOverridePrice ? ' (override)' : ''}`],
+              ...(modPreview.onSiteSurcharge > 0 ? [['Toeslag ter plekke betalen', `€ ${parseFloat(modPreview.onSiteSurcharge).toFixed(2)}`]] : []),
+              ...(modPreview.onSiteSurcharge > 0 ? [['Nieuw totaal', `€ ${parseFloat(modPreview.newTotalWithSurcharge).toFixed(2)}`]] : []),
               ['Prijsverschil', `${modPreview.priceDifference > 0 ? '+' : ''}€ ${parseFloat(modPreview.priceDifference).toFixed(2)}`],
               ...(modPreview.modificationFee > 0 ? [['Wijzigingstoeslag', `€ ${modPreview.modificationFee.toFixed(2)}`]] : []),
               ...(modPreview.netAmountDue > 0 ? [['Bijbetaling klant', `€ ${modPreview.netAmountDue.toFixed(2)}`]] : []),
@@ -418,7 +1294,7 @@ export default function ReservationDetailPage({ params }: { params: { id: string
               </div>
             ))}
             {!modPreview.available && !modOverrideAvail && (
-              <div style={{ marginTop: 8, color: '#8a2020', fontWeight: 600 }}>⚠ Onvoldoende beschikbare plaatsen. Vink "overrulen" aan om toch te boeken.</div>
+              <div style={{ marginTop: 8, color: '#8a2020', fontWeight: 600, display:'flex', alignItems:'center', gap:5 }}><ExclamationTriangleIcon className="w-4 h-4" />Onvoldoende beschikbare plaatsen. Vink "overrulen" aan om toch te boeken.</div>
             )}
           </div>
         )}
@@ -434,16 +1310,55 @@ export default function ReservationDetailPage({ params }: { params: { id: string
               <button className="btn btn-ghost btn-sm" onClick={() => setModPreview(null)}>Herberekenen</button>
               <button className="btn btn-gold btn-sm" onClick={doModify}
                 disabled={modLoading || (!modPreview.available && !modOverrideAvail)}>
-                {modLoading ? 'Opslaan...' : '✓ Wijziging bevestigen'}
+                {modLoading ? 'Opslaan...' : <><CheckIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Wijziging bevestigen</>}
               </button>
             </>
           )}
         </div>
       </Modal>
 
+      {/* Bijbetaling modal — na datum-wijziging met meerprijs */}
+      <Modal open={pendingPayStep} onClose={() => setPendingPayStep(false)} title="Bijbetaling vereist">
+        <div style={{ background: '#fff4e0', borderRadius: 8, padding: '16px 18px', marginBottom: 18, textAlign: 'center' }}>
+          <div style={{ fontSize: 13, color: '#7a3f00', marginBottom: 4 }}>Te ontvangen van {res?.first_name} {res?.last_name}</div>
+          <div style={{ fontSize: 40, fontWeight: 900, color: '#c05000', lineHeight: 1.1 }}>€ {pendingPayAmt.toFixed(2)}</div>
+          <div style={{ fontSize: 12, color: '#7a3f00', marginTop: 4 }}>vanwege de gewijzigde reisdatum</div>
+        </div>
+        <div style={{ fontSize: 13, color: '#444', marginBottom: 18 }}>
+          Hoe wil je de bijbetaling regelen?
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 8 }}>
+          <button
+            onClick={doSendPaymentLink}
+            disabled={sendingPayLink}
+            style={{ background: '#0a2240', border: 'none', color: 'white', borderRadius: 8, padding: '12px 18px', cursor: sendingPayLink ? 'default' : 'pointer', fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: sendingPayLink ? 0.7 : 1 }}>
+            {sendingPayLink ? 'Versturen...' : <>✉ Betaallink sturen per e-mail</>}
+          </button>
+          <button
+            onClick={async () => {
+              if (!pendingPayModId) return;
+              try {
+                await api.modifications.applyOnSitePayment(pendingPayModId);
+                toast('Bijbetaling geregistreerd als contant/PIN ✓');
+                setPendingPayStep(false);
+                load();
+              } catch (e: any) { toastError((e as any).message); }
+            }}
+            style={{ background: '#e07b00', border: 'none', color: 'white', borderRadius: 8, padding: '12px 18px', cursor: 'pointer', fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <><Banknote size={14} style={{ display:'inline', verticalAlign:'middle', marginRight:4 }} />Contant / PIN ontvangen</>
+          </button>
+          <button
+            onClick={() => setPendingPayStep(false)}
+            style={{ background: 'none', border: '0.5px solid rgba(10,34,64,0.2)', color: '#7090b0', borderRadius: 8, padding: '10px 18px', cursor: 'pointer', fontSize: 13 }}>
+            Later regelen
+          </button>
+        </div>
+      </Modal>
+
       {/* Cancel modal */}
       <Modal open={cancelOpen} onClose={() => setCancelOpen(false)} title="Reservering annuleren">
         <div style={{ marginBottom: 14 }}>
+          <RefundPolicyInfo info={refundInfo} />
           <label style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 8 }}>
             Restitutiepercentage
           </label>

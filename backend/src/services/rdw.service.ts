@@ -28,9 +28,10 @@ export interface EvInfo {
   wltpRangeKm: number;        // WLTP EV bereik in km
   wltpConsumptionWhPerKm: number; // WLTP verbruik Wh/km
   batteryCapacityKwh: number; // Geschatte accucapaciteit in kWh
-  realisticKmPerKwh: number;  // Realistisch bereik per geladen kWh (×0.7)
-  suggestedKwh: number;       // Aanbevolen laadpakket (helft accu)
-  maxKwh: number;             // Max laden (= accucapaciteit)
+  realisticKmPerKwh: number;  // Realistisch bereik per geladen kWh (×0.85)
+  suggestedKwh: number;       // Aanbevolen laadpakket
+  maxKwh: number;             // Accucapaciteit (grens voor frontend filter)
+  isBev: boolean;             // true = volledig elektrisch, false = PHEV
 }
 
 export interface VehicleInfo {
@@ -107,15 +108,20 @@ export async function lookupRdw(rawPlate: string): Promise<VehicleInfo | null> {
           if (wltpRange > 0 && wltpConsumption > 0) {
             const batteryCapacity = Math.round((wltpRange * wltpConsumption / 1000) * 10) / 10;
             const realisticKmPerKwh = Math.round((1000 / wltpConsumption) * 0.85 * 10) / 10;
-            // Adviseer volledige lading, maximaal 30 kWh (afgerond omhoog)
-            const suggestedKwh = Math.min(Math.ceil(batteryCapacity), 30);
+            // BEV = heeft enkel-elektrisch WLTP veld; PHEV = heeft extern-opladen veld
+            const isBev = !!electricEntry.actie_radius_enkel_elektrisch_wltp;
+            // BEV: adviseer ~50% (rijdt nooit leeg); PHEV: adviseer volledige lading
+            const suggestedKwh = isBev
+              ? Math.round(batteryCapacity * 0.5 * 10) / 10
+              : batteryCapacity;
             evInfo = {
               wltpRangeKm: wltpRange,
               wltpConsumptionWhPerKm: wltpConsumption,
               batteryCapacityKwh: batteryCapacity,
               realisticKmPerKwh,
               suggestedKwh,
-              maxKwh: Math.floor(batteryCapacity),
+              maxKwh: batteryCapacity,
+              isBev,
             };
           }
         }

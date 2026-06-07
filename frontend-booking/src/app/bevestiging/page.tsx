@@ -1,6 +1,11 @@
 'use client';
 import { useEffect, useState, Suspense } from 'react';
+import {
+  CheckCircleIcon, XCircleIcon, ClipboardDocumentListIcon, MapPinIcon,
+  PhoneIcon, EnvelopeIcon, DocumentTextIcon, ArrowRightIcon,
+} from '@heroicons/react/24/outline';
 import { useSearchParams } from 'next/navigation';
+import { formatPlate } from '@/lib/plate';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
@@ -18,8 +23,11 @@ interface Reservation {
   ferry_outbound_time?: string;
   ferry_return_time?: string;
   ferry_return_custom_time?: string;
+  ferry_return_arrival_harlingen?: string;
+  on_site_surcharge?: string;
+  payment_surcharge?: string;
   vehicles: { license_plate: string }[];
-  services: { name: string; quantity: number; price_at_booking: string }[];
+  services: { name: string; quantity: number; unit_price: string; total_price: string }[];
 }
 
 function fmtDate(iso: string) {
@@ -30,11 +38,15 @@ function fmtDate(iso: string) {
 function fmtMoney(n: number) {
   return `€ ${n.toFixed(2).replace('.', ',')}`;
 }
+function fmtTime(t?: string) {
+  return t ? String(t).slice(0, 5) : null;
+}
 function daysBetween(a: string, b: string) {
-  return Math.max(1, Math.round(
+  // Tel aankomst- én vertrekdag mee (kalenderdag-model, niet nachten)
+  return Math.max(2, Math.round(
     (new Date(String(b).slice(0,10)+'T12:00:00').getTime() -
      new Date(String(a).slice(0,10)+'T12:00:00').getTime()) / 86400000
-  ));
+  ) + 1);
 }
 
 function BevestigingContent() {
@@ -67,7 +79,7 @@ function BevestigingContent() {
   if (state === 'failed') {
     return (
       <div style={{ maxWidth: 540, margin: '60px auto', padding: '0 20px', textAlign: 'center' }}>
-        <div style={{ fontSize: 52, marginBottom: 16 }}>❌</div>
+        <div style={{ marginBottom: 16, color: '#c83232', display: 'flex', justifyContent: 'center' }}><XCircleIcon className="w-14 h-14" /></div>
         <h1 style={{ color: '#c83232', fontSize: 24, fontWeight: 800, marginBottom: 12 }}>Betaling mislukt</h1>
         <p style={{ color: '#556070', fontSize: 15, marginBottom: 28 }}>
           Er is iets misgegaan bij de betaling. Probeer het opnieuw of neem contact met ons op.
@@ -85,20 +97,25 @@ function BevestigingContent() {
 
   const days = reservation ? daysBetween(reservation.arrival_date, reservation.departure_date) : 0;
   const servicesTotal = reservation
-    ? reservation.services.reduce((s, sv) => s + parseFloat(sv.price_at_booking) * (sv.quantity || 1), 0)
+    ? reservation.services.reduce((s, sv) => s + (parseFloat(sv.total_price) || 0), 0)
     : 0;
-  const parkTotal = reservation ? parseFloat(reservation.total_price) - servicesTotal : 0;
+  const paymentSurcharge = reservation ? (parseFloat(reservation.payment_surcharge || '0') || 0) : 0;
+  const onSiteSurcharge = reservation ? (parseFloat(reservation.on_site_surcharge || '0') || 0) : 0;
+  const parkTotal = reservation
+    ? parseFloat(reservation.total_price) - servicesTotal - paymentSurcharge - onSiteSurcharge
+    : 0;
 
   return (
     <div style={{ maxWidth: 600, margin: '0 auto', padding: '0 20px 60px' }}>
       {/* Succes header */}
       <div style={{ textAlign: 'center', marginBottom: 28 }}>
-        <div style={{ fontSize: 64, marginBottom: 10 }}>✅</div>
+        <div style={{ marginBottom: 10, color: '#0a7c6e', display: 'flex', justifyContent: 'center' }}><CheckCircleIcon className="w-16 h-16" /></div>
         <h1 style={{ color: '#0a2240', fontSize: 26, fontWeight: 800, marginBottom: 8 }}>
           {reservation ? `Bedankt, ${reservation.first_name}!` : 'Betaling geslaagd!'}
         </h1>
         <p style={{ color: '#556070', fontSize: 15, lineHeight: 1.6, margin: 0 }}>
-          Je reservering is bevestigd. Je ontvangt een bevestigingsmail{reservation ? ` op ${reservation.email}` : ''}.
+          Je reservering is bevestigd. Je ontvangt een bevestigingsmail
+          {reservation ? <> op<br /><strong style={{ color: '#0a2240', fontSize: 17 }}>{reservation.email}</strong></> : ''}.
         </p>
       </div>
 
@@ -106,32 +123,48 @@ function BevestigingContent() {
       {reservation && (
         <div style={{ background: 'white', border: '1px solid rgba(10,34,64,0.1)', borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}>
           <div style={{ background: '#0a2240', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: 'white', fontWeight: 700, fontSize: 15 }}>📋 Jouw reservering</span>
+            <span style={{ color: 'white', fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', gap: 6 }}><ClipboardDocumentListIcon className="w-4 h-4" />Jouw reservering</span>
             <span style={{ color: '#aab8cc', fontSize: 13 }}>Ref: {reservation.reference}</span>
           </div>
 
           <div style={{ padding: '18px 20px' }}>
-            {/* Datums */}
+            {/* Datums + boottijden */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
               <div style={{ background: '#f0faf8', borderRadius: 8, padding: '10px 14px' }}>
                 <div style={{ fontSize: 11, color: '#7090b0', fontWeight: 600, marginBottom: 3 }}>AANKOMST</div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#0a2240' }}>{fmtDate(reservation.arrival_date)}</div>
+                {fmtTime(reservation.ferry_outbound_time) && (
+                  <div style={{ fontSize: 12, color: '#0a6050', fontWeight: 700, marginTop: 4 }}>
+                    Boot vertrekt {fmtTime(reservation.ferry_outbound_time)}
+                  </div>
+                )}
               </div>
               <div style={{ background: '#f0faf8', borderRadius: 8, padding: '10px 14px' }}>
                 <div style={{ fontSize: 11, color: '#7090b0', fontWeight: 600, marginBottom: 3 }}>VERTREK</div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#0a2240' }}>{fmtDate(reservation.departure_date)}</div>
+                {(fmtTime(reservation.ferry_return_arrival_harlingen) || fmtTime(reservation.ferry_return_time)) && (
+                  <div style={{ fontSize: 12, color: '#0a6050', fontWeight: 700, marginTop: 4 }}>
+                    {fmtTime(reservation.ferry_return_arrival_harlingen)
+                      ? `Aankomst Harlingen ${fmtTime(reservation.ferry_return_arrival_harlingen)}`
+                      : `Boot vertrekt ${fmtTime(reservation.ferry_return_time)}`}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Voertuigen */}
+            {/* Voertuigen — EU-kentekenstijl */}
             {reservation.vehicles.length > 0 && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 11, color: '#7090b0', fontWeight: 600, marginBottom: 4 }}>VOERTUIG{reservation.vehicles.length > 1 ? 'EN' : ''}</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {reservation.vehicles.map((v, i) => (
-                    <span key={i} style={{ background: '#0a2240', color: 'white', padding: '3px 10px', borderRadius: 4, fontSize: 13, fontWeight: 700, letterSpacing: 1 }}>
-                      {v.license_plate}
-                    </span>
+                    <div key={i} style={{ display: 'inline-flex', alignItems: 'stretch', borderRadius: 5, border: '2px solid #111', overflow: 'hidden', background: '#f5c518', fontFamily: "'Arial Narrow', Arial, sans-serif", fontWeight: 800, fontSize: 18, letterSpacing: 2 }}>
+                      <div style={{ width: 14, background: '#003399', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 7, fontWeight: 700, letterSpacing: 0, paddingTop: 2 }}>
+                        <span style={{ fontSize: 8 }}>★</span>
+                        <span>NL</span>
+                      </div>
+                      <span style={{ padding: '4px 10px', color: '#111', textTransform: 'uppercase' }}>{formatPlate(v.license_plate)}</span>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -148,9 +181,21 @@ function BevestigingContent() {
                 {reservation.services.map((sv, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#444' }}>
                     <span>{sv.name}{sv.quantity > 1 ? ` ×${sv.quantity}` : ''}</span>
-                    <span>{fmtMoney(parseFloat(sv.price_at_booking) * (sv.quantity || 1))}</span>
+                    <span>{fmtMoney(parseFloat(sv.total_price) || 0)}</span>
                   </div>
                 ))}
+                {onSiteSurcharge > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#444' }}>
+                    <span>Toeslag ter plekke betalen</span>
+                    <span>{fmtMoney(onSiteSurcharge)}</span>
+                  </div>
+                )}
+                {paymentSurcharge > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#444' }}>
+                    <span>Toeslag PayPal</span>
+                    <span>{fmtMoney(paymentSurcharge)}</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 800, color: '#0a2240', borderTop: '1px solid rgba(10,34,64,0.12)', marginTop: 6, paddingTop: 6 }}>
                   <span>Totaal</span>
                   <span>{fmtMoney(parseFloat(reservation.total_price))}</span>
@@ -165,17 +210,17 @@ function BevestigingContent() {
       {invoiceUrl && (
         <a href={invoiceUrl} target="_blank" rel="noopener noreferrer"
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px 20px', background: '#f0faf8', border: '1.5px solid #0a7c6e', borderRadius: 10, color: '#0a7c6e', fontWeight: 700, fontSize: 14, textDecoration: 'none', marginBottom: 16 }}>
-          📄 Factuur downloaden (PDF)
+          <DocumentTextIcon className="w-4 h-4" />Factuur downloaden (PDF)
         </a>
       )}
 
       {/* Contact */}
       <div style={{ background: '#f8fafc', border: '1px solid rgba(10,34,64,0.08)', borderRadius: 10, padding: '16px 20px', marginBottom: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#0a2240', marginBottom: 6 }}>📍 Autostalling De Bazuin</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#0a2240', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}><MapPinIcon className="w-4 h-4" />Autostalling De Bazuin</div>
         <div style={{ fontSize: 13, color: '#556070', lineHeight: 1.7 }}>
           Zeilmakersstraat 2, 8861SE Harlingen<br />
-          📞 <a href="tel:0517412986" style={{ color: '#0a7c6e' }}>0517-412986</a>&nbsp;&nbsp;
-          ✉️ <a href="mailto:info@autostallingdebazuin.nl" style={{ color: '#0a7c6e' }}>info@autostallingdebazuin.nl</a>
+          <PhoneIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle' }} /> <a href="tel:0517412986" style={{ color: '#0a7c6e' }}>0517-412986</a>&nbsp;&nbsp;
+          <EnvelopeIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle' }} /> <a href="mailto:info@parkeren-harlingen.nl" style={{ color: '#0a7c6e' }}>info@parkeren-harlingen.nl</a>
         </div>
       </div>
 

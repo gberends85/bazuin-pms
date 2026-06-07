@@ -43,3 +43,7 @@ test.pdf
 
 # Next.js cache
 .next/cache/
+
+# backups
+*.bak*
+.env.bak*

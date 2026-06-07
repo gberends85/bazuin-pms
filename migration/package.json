@@ -5,8 +5,8 @@
     "migrate": "npx tsx migrate-from-umbraco.ts"
   },
   "dependencies": {
-    "pg": "^8.11.3",
     "dotenv": "^16.4.1",
+    "pg": "^8.20.0",
     "tsx": "^4.7.0"
   }
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import './globals.css';
 export const metadata: Metadata = {
   title: 'Parkeren Harlingen — Autostalling De Bazuin',
   description: 'Reserveer een parkeerplaats bij Autostalling De Bazuin, op loopafstand van de veerboten naar Terschelling en Vlieland.',

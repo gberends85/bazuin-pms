@@ -13,6 +13,7 @@ const DOEKSEN_API = 'https://api-2021.rederij-doeksen.nl';
 const VESSEL_TO_FERRY_ID: Record<string, string> = {
   FR:  'f0000000-0000-0000-0000-000000000001', // ms. Friesland (Veerdienst Terschelling)
   WDV: 'f0000000-0000-0000-0000-000000000001', // ms. Willem de Vlamingh (Veerdienst Terschelling)
+  WB:  'f0000000-0000-0000-0000-000000000001', // ms. Willem Barentsz (Veerdienst Terschelling)
   KW:  'f0000000-0000-0000-0000-000000000003', // Sneldienst Terschelling
   VL:  'f0000000-0000-0000-0000-000000000002', // ms. Vlieland (Veerdienst Vlieland)
   TI:  'f0000000-0000-0000-0000-000000000003', // Sneldienst Vlieland
@@ -146,14 +147,14 @@ export async function syncDoeksenSchedule(date: Date): Promise<{ inserted: numbe
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-// Sync voor vandaag + de komende N dagen
-export async function syncDoeksenScheduleDays(days = 7): Promise<void> {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+// Sync voor startDate (standaard vandaag) + de komende N dagen
+export async function syncDoeksenScheduleDays(days = 7, startDate?: Date): Promise<void> {
+  const start = startDate ? new Date(startDate) : new Date();
+  start.setHours(0, 0, 0, 0);
 
   for (let i = 0; i < days; i++) {
-    const date = new Date(today);
-    date.setDate(today.getDate() + i);
+    const date = new Date(start);
+    date.setDate(start.getDate() + i);
 
     const result = await syncDoeksenSchedule(date);
     const dateLabel = date.toISOString().slice(0, 10);

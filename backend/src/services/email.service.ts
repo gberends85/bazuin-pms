@@ -2,6 +2,26 @@ import nodemailer from 'nodemailer';
 import Handlebars from 'handlebars';
 import { query } from '../db/pool';
 
+// Nederlandse kenteken-formatter volgens de officiële zijcodes ("26XSJZ" → "26-XS-JZ")
+const NL_SIDECODE_GROUPS: Record<string, number[]> = {
+  LLDDDD: [2,2,2], DDDDLL: [2,2,2], DDLLDD: [2,2,2], LLDDLL: [2,2,2], LLLLDD: [2,2,2], DDLLLL: [2,2,2],
+  DDLLLD: [2,3,1], DLLLDD: [1,3,2], LLDDDL: [2,3,1], LDDDLL: [1,3,2], LLLDDL: [3,2,1], DLLDDD: [1,2,3], DDDLLD: [3,2,1],
+  LDDLLL: [1,2,3],
+};
+function formatPlate(raw: string): string {
+  if (!raw) return '';
+  const s = String(raw).replace(/[-\s]/g, '').toUpperCase();
+  if (s.length === 6) {
+    const sig = s.replace(/[A-Z]/g, 'L').replace(/[0-9]/g, 'D');
+    const groups = NL_SIDECODE_GROUPS[sig] || [2, 2, 2];
+    const parts: string[] = [];
+    let i = 0;
+    for (const g of groups) { parts.push(s.slice(i, i + g)); i += g; }
+    return parts.join('-');
+  }
+  return s.replace(/([A-Z]+)(\d)/g, '$1-$2').replace(/(\d+)([A-Z])/g, '$1-$2');
+}
+
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: parseInt(process.env.SMTP_PORT || '587'),
@@ -12,10 +32,33 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+// Whitelist: als EMAIL_WHITELIST is ingesteld, worden mails alleen naar deze adressen verstuurd.
+// Meerdere adressen scheiden met komma. Leeg = iedereen mag ontvangen.
+function isWhitelisted(to: string): boolean {
+  const raw = process.env.EMAIL_WHITELIST || '';
+  if (!raw.trim()) return true; // geen whitelist → alles doorlaten
+  const whitelist = raw.split(',').map(e => e.trim().toLowerCase());
+  return whitelist.includes(to.trim().toLowerCase());
+}
+
+export async function sendSimpleEmail(to: string, subject: string, html: string): Promise<void> {
+  if (!isWhitelisted(to)) {
+    console.log(`[EMAIL WHITELIST] Geblokkeerd: ${to} | ${subject}`);
+    return;
+  }
+  await transporter.sendMail({
+    from: `"${process.env.EMAIL_FROM_NAME || 'Autostalling De Bazuin'}" <${process.env.EMAIL_FROM_ADDRESS}>`,
+    to,
+    subject,
+    html,
+  });
+  console.log(`Simple email sent to ${to}: ${subject}`);
+}
+
 export async function sendTemplatedEmail(
   slug: string,
   to: string,
-  variables: Record<string, string | number | boolean | undefined>
+  variables: Record<string, any>
 ): Promise<void> {
   const templateResult = await query(
     'SELECT * FROM email_templates WHERE slug = $1 AND is_active = true',
@@ -35,6 +78,11 @@ export async function sendTemplatedEmail(
   const subject = subjectTemplate(variables);
   const html = bodyTemplate(variables);
 
+  if (!isWhitelisted(to)) {
+    console.log(`[EMAIL WHITELIST] Geblokkeerd: ${to} | template: ${slug}`);
+    return;
+  }
+
   await transporter.sendMail({
     from: `"${process.env.EMAIL_FROM_NAME || 'Autostalling De Bazuin'}" <${process.env.EMAIL_FROM_ADDRESS}>`,
     to,
@@ -45,13 +93,48 @@ export async function sendTemplatedEmail(
   console.log(`Email '${slug}' sent to ${to}`);
 }
 
-export async function sendBookingConfirmation(
+// Betaalstatus → klantvriendelijke tekst (voor check-in / bevestigingsmails)
+function paymentStatusText(method: string | null, status: string | null): string {
+  const m = (method || '').toLowerCase();
+  const s = (status || '').toLowerCase();
+  if (s === 'paid' || s === 'refunded') {
+    if (m === 'contant') return 'Reeds voldaan — contant bij afgeven.';
+    if (m === 'pin') return 'Reeds voldaan — gepind bij afgeven.';
+    return 'Reeds online voldaan.';
+  }
+  if (s === 'invoiced' || m === 'invoice') return 'Wordt per factuur afgehandeld.';
+  if (m === 'contant') return 'Nog te voldoen — contant bij afgeven.';
+  if (m === 'pin') return 'Nog te voldoen — pinnen bij afgeven.';
+  if (m === 'on_site' || s === 'on_site') return 'Nog te betalen bij afgeven (ter plekke).';
+  return 'Moet nog betaald worden.';
+}
+
+function addMinutesToTime(time: string, mins: number): string {
+  if (!time) return '';
+  const [h, m] = time.slice(0, 5).split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return '';
+  const total = (h * 60 + m + mins + 1440) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+// Bouwt alle template-variabelen voor de volledige bevestigingslayout.
+// Gedeeld door boekingsbevestiging, wijzigingsbevestiging en check-in.
+export async function buildConfirmationVars(
   reservationId: string
-): Promise<void> {
+): Promise<{ email: string; vars: Record<string, any> }> {
   const result = await query(
-    `SELECT r.*, c.first_name, c.last_name, c.email,
+    `SELECT r.*, c.first_name, c.last_name, c.email, c.phone,
             f_out.name as ferry_out_name,
-            f_ret.name as ferry_ret_name
+            f_ret.name as ferry_ret_name,
+            (SELECT TO_CHAR(fs.arrival_harlingen, 'HH24:MI')
+             FROM ferry_schedules fs
+             WHERE fs.schedule_date = r.departure_date AND fs.direction = 'return'
+               AND r.ferry_return_time IS NOT NULL
+               AND ABS(EXTRACT(EPOCH FROM (fs.departure_time - r.ferry_return_time)) / 60) <= 20
+               AND (COALESCE(r.ferry_return_destination, f_ret.destination) IS NULL
+                    OR fs.destination = COALESCE(r.ferry_return_destination, f_ret.destination))
+             ORDER BY ABS(EXTRACT(EPOCH FROM (fs.departure_time - r.ferry_return_time)))
+             LIMIT 1) as ferry_return_arrival_harlingen
      FROM reservations r
      JOIN customers c ON c.id = r.customer_id
      LEFT JOIN ferries f_out ON f_out.id = r.ferry_outbound_id
@@ -64,7 +147,7 @@ export async function sendBookingConfirmation(
   const res = result.rows[0];
 
   const vehiclesResult = await query(
-    'SELECT license_plate FROM vehicles WHERE reservation_id = $1 ORDER BY sort_order',
+    'SELECT license_plate, ev_kwh, ev_price FROM vehicles WHERE reservation_id = $1 ORDER BY sort_order',
     [reservationId]
   );
 
@@ -75,33 +158,173 @@ export async function sendBookingConfirmation(
     settingsResult.rows.map((r: { key: string; value: string }) => [r.key, r.value])
   );
 
-  const plates = vehiclesResult.rows.map((v: { license_plate: string }) => v.license_plate).join(', ');
+  const servicesResult = await query(
+    `SELECT s.name, rs.quantity, rs.unit_price, rs.total_price, rs.notes, v.license_plate
+     FROM reservation_services rs
+     JOIN services s ON s.id = rs.service_id
+     LEFT JOIN vehicles v ON v.id = rs.vehicle_id
+     WHERE rs.reservation_id = $1
+     ORDER BY s.name`,
+    [reservationId]
+  );
+
+  const platesArr = vehiclesResult.rows
+    .map((v: { license_plate: string }) => formatPlate(v.license_plate))
+    .filter(Boolean);
+  const plates = platesArr.join(', ');
   const baseUrl = settings['booking_url'] || 'https://parkeren-harlingen.nl';
 
-  await sendTemplatedEmail('booking_confirmed', res.email, {
-    voornaam: res.first_name,
-    reference: res.reference,
-    aankomst_datum: new Date(res.arrival_date).toLocaleDateString('nl-NL', {
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-    }),
-    vertrek_datum: new Date(res.departure_date).toLocaleDateString('nl-NL', {
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-    }),
-    kentekenlijst: plates,
-    veerboot_heen: res.ferry_out_name || '—',
-    vertrektijd_heen: res.ferry_outbound_time
-      ? res.ferry_outbound_time.slice(0, 5)
-      : '—',
-    veerboot_terug: res.ferry_ret_name || (res.ferry_return_custom ? 'Eigen tijd' : '—'),
-    vertrektijd_terug: res.ferry_return_time
-      ? res.ferry_return_time.slice(0, 5)
-      : (res.ferry_return_custom_time ? res.ferry_return_custom_time.slice(0, 5) : '—'),
-    totaal_bedrag: `€ ${parseFloat(res.total_price).toFixed(2).replace('.', ',')}`,
-    annuleringslink: `${baseUrl}/annuleren/${res.cancellation_token}`,
-    wijzigingslink: `${baseUrl}/wijzigen/${res.cancellation_token}`,
-    factuurlink: `${process.env.API_URL || 'https://api.booking.parkeren-harlingen.nl/api/v1'}/invoice/${res.cancellation_token}`,
-    whatsapp_nummer: settings['company_whatsapp'] || '31612345678',
-  });
+  // Bouw prijsoverzicht op: eerst parkeerkosten, dan toeslag, dan extra diensten
+  const nights = res.nights || Math.round(
+    (new Date(res.departure_date).getTime() - new Date(res.arrival_date).getTime()) / 86400000
+  );
+  const basePrice = parseFloat(res.base_price || '0');
+  const onSiteSurcharge = parseFloat(res.on_site_surcharge || '0');
+  const vehicleCount = vehiclesResult.rows.length || 1;
+
+  const paymentSurcharge = parseFloat(res.payment_surcharge || '0');
+  const totalPrice = parseFloat(res.total_price || '0');
+
+  // Eerst de losse diensten (EV-laden e.d.) opbouwen én sommeren
+  const serviceLines: any[] = [];
+  let servicesSum = 0;
+  for (const s of servicesResult.rows as any[]) {
+    const bedrag = parseFloat(s.total_price || '0');
+    servicesSum += bedrag;
+    serviceLines.push({
+      naam: s.name,
+      aantal: s.quantity > 1 ? `${s.quantity}×` : '',
+      bedrag: bedrag === 0 ? 'Inbegrepen' : `€ ${bedrag.toFixed(2).replace('.', ',')}`,
+      notitie: s.notes || '',
+      kenteken: s.license_plate || '',
+    });
+  }
+  // Fallback: EV-laaddiensten die direct op het voertuig staan maar niet in
+  // reservation_services (kan voorkomen bij oudere/geïmporteerde boekingen)
+  for (const v of vehiclesResult.rows as any[]) {
+    if (v.ev_kwh && v.ev_price && parseFloat(v.ev_price) > 0) {
+      const already = serviceLines.some(
+        d => d.kenteken === v.license_plate && d.naam.toLowerCase().includes('laden')
+      );
+      if (!already) {
+        const bedrag = parseFloat(v.ev_price);
+        servicesSum += bedrag;
+        serviceLines.push({
+          naam: `Auto laden — ${v.ev_kwh} kWh`,
+          aantal: '',
+          bedrag: `€ ${bedrag.toFixed(2).replace('.', ',')}`,
+          notitie: '',
+          kenteken: v.license_plate,
+        });
+      }
+    }
+  }
+
+  // Parkeerkosten = totaal − toeslagen − diensten. Zo telt de uitsplitsing
+  // ALTIJD op tot het totaalbedrag, ook na een wijziging die de prijs
+  // veranderde (anders zou een verouderde base_price een gat achterlaten).
+  let parkingPrice = Math.round((totalPrice - onSiteSurcharge - paymentSurcharge - servicesSum) * 100) / 100;
+  if (parkingPrice <= 0 && basePrice > 0) parkingPrice = basePrice; // veiligheidsnet
+
+  const extraDiensten: any[] = [];
+
+  // Regel 1: Parkeerkosten (X auto('s) × Y dagen) — kalenderdagen = nachten + 1
+  if (parkingPrice > 0) {
+    const dagen = nights + 1;
+    const dagLabel = dagen === 1 ? '1 dag' : `${dagen} dagen`;
+    const autoLabel = vehicleCount === 1 ? '1 auto' : `${vehicleCount} auto's`;
+    extraDiensten.push({
+      naam: `Auto parkeren — ${autoLabel}, ${dagLabel}`,
+      aantal: '',
+      bedrag: `€ ${parkingPrice.toFixed(2).replace('.', ',')}`,
+      notitie: '',
+      kenteken: '',
+    });
+  }
+
+  // Regel 2: Toeslag ter plekke betalen (indien van toepassing)
+  if (onSiteSurcharge > 0) {
+    extraDiensten.push({
+      naam: 'Toeslag ter plekke betalen',
+      aantal: '',
+      bedrag: `€ ${onSiteSurcharge.toFixed(2).replace('.', ',')}`,
+      notitie: '',
+      kenteken: '',
+    });
+  }
+
+  // Regel 2b: PayPal-toeslag (indien van toepassing)
+  if (paymentSurcharge > 0) {
+    extraDiensten.push({
+      naam: 'Toeslag PayPal',
+      aantal: '',
+      bedrag: `€ ${paymentSurcharge.toFixed(2).replace('.', ',')}`,
+      notitie: '',
+      kenteken: '',
+    });
+  }
+
+  // Regel 3: Overige diensten (EV-laden, etc.)
+  extraDiensten.push(...serviceLines);
+
+  const vertrektijd_terug = res.ferry_return_time
+    ? res.ferry_return_time.slice(0, 5)
+    : (res.ferry_return_custom_time ? res.ferry_return_custom_time.slice(0, 5) : '—');
+  const aankomsttijd_harlingen = res.ferry_return_arrival_harlingen || '';
+  // "Afhalen tot" = aankomst veerboot in Harlingen + 15 min marge
+  const afhaal_tot = aankomsttijd_harlingen ? addMinutesToTime(aankomsttijd_harlingen, 15) : '';
+
+  return {
+    email: res.email,
+    vars: {
+      voornaam: res.first_name,
+      achternaam: res.last_name,
+      naam_volledig: `${res.first_name} ${res.last_name}`.trim(),
+      reference: res.reference,
+      aankomst_datum: new Date(res.arrival_date).toLocaleDateString('nl-NL', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      }),
+      vertrek_datum: new Date(res.departure_date).toLocaleDateString('nl-NL', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      }),
+      kentekenlijst: plates,
+      kentekens: platesArr,
+      veerboot_heen: res.ferry_out_name || '—',
+      vertrektijd_heen: res.ferry_outbound_time
+        ? res.ferry_outbound_time.slice(0, 5)
+        : '—',
+      veerboot_terug: res.ferry_ret_name || (res.ferry_return_custom ? 'Eigen tijd' : '—'),
+      vertrektijd_terug,
+      aankomsttijd_harlingen,
+      afhaal_tot,
+      totaal_bedrag: `€ ${parseFloat(res.total_price).toFixed(2).replace('.', ',')}`,
+      betaalstatus_tekst: paymentStatusText(res.payment_method, res.payment_status),
+      telefoon: res.phone || '',
+      klant_email: res.email || '',
+      reserveer_datum: res.created_at
+        ? new Date(res.created_at).toLocaleDateString('nl-NL', { year: 'numeric', month: 'long', day: 'numeric' })
+        : '',
+      bericht: res.notes || '',
+      annuleringslink: `${baseUrl}/annuleren/${res.cancellation_token}`,
+      wijzigingslink: `${baseUrl}/wijzigen/${res.cancellation_token}`,
+      factuurlink: `${process.env.PUBLIC_API_URL || 'https://api.booking.parkeren-harlingen.nl/api/v1'}/invoice/${res.cancellation_token}`,
+      whatsapp_nummer: settings['company_whatsapp'] || '31612345678',
+      heeft_extra_diensten: extraDiensten.length > 0,
+      extra_diensten: extraDiensten,
+    },
+  };
+}
+
+export async function sendBookingConfirmation(reservationId: string): Promise<void> {
+  const { email, vars } = await buildConfirmationVars(reservationId);
+  await sendTemplatedEmail('booking_confirmed', email, vars);
+}
+
+// Wijzigingsbevestiging — identieke layout als de boekingsbevestiging,
+// alleen de kop/titel geeft aan dat het om een wijziging gaat.
+export async function sendModificationConfirmation(reservationId: string): Promise<void> {
+  const { email, vars } = await buildConfirmationVars(reservationId);
+  await sendTemplatedEmail('modification_confirmed', email, vars);
 }
 
 export async function sendCheckinMail(
@@ -109,36 +332,14 @@ export async function sendCheckinMail(
   parkingSpot?: string,
   extraMessage?: string
 ): Promise<void> {
-  const result = await query(
-    `SELECT r.*, c.first_name, c.email FROM reservations r
-     JOIN customers c ON c.id = r.customer_id WHERE r.id = $1`,
-    [reservationId]
-  );
-  if (result.rows.length === 0) throw new Error('Reservation not found');
-  const res = result.rows[0];
+  // Hergebruik de volledige bevestigingslayout-variabelen (kenteken, afhaalinfo,
+  // prijsoverzicht, betaalstatus, reserveringsinformatie).
+  const { email, vars } = await buildConfirmationVars(reservationId);
 
-  const vehicleResult = await query(
-    'SELECT license_plate FROM vehicles WHERE reservation_id = $1 ORDER BY sort_order LIMIT 1',
-    [reservationId]
-  );
-
-  const settings = await query(
-    "SELECT value FROM settings WHERE key = 'company_whatsapp'"
-  );
-
-  const now = new Date();
-  const inchecktijd = now.toLocaleTimeString('nl-NL', {
-    hour: '2-digit', minute: '2-digit',
-  });
-
-  await sendTemplatedEmail('checkin_confirmation', res.email, {
-    voornaam: res.first_name,
-    kenteken: vehicleResult.rows[0]?.license_plate || res.reference,
-    reference: res.reference,
-    inchecktijd,
+  await sendTemplatedEmail('checkin_confirmation', email, {
+    ...vars,
     vaknummer: parkingSpot || '',
     extra_bericht: extraMessage || '',
-    whatsapp_nummer: settings.rows[0]?.value || '31612345678',
   });
 
   // Update record
@@ -151,74 +352,58 @@ export async function sendCheckinMail(
 export async function sendCancellationMail(
   reservationId: string,
   refundAmount: number,
-  refundPct: number
+  refundPct: number,
+  refundReference?: string
 ): Promise<void> {
-  const result = await query(
-    `SELECT r.*, c.first_name, c.email FROM reservations r
-     JOIN customers c ON c.id = r.customer_id WHERE r.id = $1`,
+  // Gedeelde layout-variabelen (naam, kenteken, datums, boottijden, totaal)
+  const { email, vars } = await buildConfirmationVars(reservationId);
+
+  // Extra annulering-specifieke gegevens
+  const extra = await query(
+    `SELECT r.total_price, r.cancelled_at, r.arrival_date, r.reference,
+            c.first_name, c.last_name
+     FROM reservations r JOIN customers c ON c.id = r.customer_id
+     WHERE r.id = $1`,
     [reservationId]
   );
-  if (result.rows.length === 0) return;
-  const res = result.rows[0];
+  const e = extra.rows[0] || {};
 
-  const settings = await query(
-    "SELECT value FROM settings WHERE key = 'company_whatsapp'"
-  );
+  const verwerktOp = e.cancelled_at
+    ? new Date(e.cancelled_at).toLocaleString('nl-NL', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+      })
+    : '';
+  // Dagen tot aankomst op het moment van annuleren
+  let dagenTotAankomst = '';
+  if (e.cancelled_at && e.arrival_date) {
+    const diff = Math.round(
+      (new Date(e.arrival_date).getTime() - new Date(e.cancelled_at).getTime()) / 86400000
+    );
+    dagenTotAankomst = String(Math.max(0, diff));
+  }
 
-  await sendTemplatedEmail('cancellation_confirmed', res.email, {
-    voornaam: res.first_name,
-    reference: res.reference,
+  await sendTemplatedEmail('cancellation_confirmed', email, {
+    ...vars,
     restitutie_bedrag: `€ ${refundAmount.toFixed(2).replace('.', ',')}`,
     restitutie_pct: refundPct,
-    whatsapp_nummer: settings.rows[0]?.value || '31612345678',
+    originele_boeking: `€ ${parseFloat(e.total_price || '0').toFixed(2).replace('.', ',')}`,
+    heeft_restitutie: refundAmount > 0,
+    verwerkt_op: verwerktOp,
+    restitutie_referentie: refundReference || '',
+    dagen_tot_aankomst: dagenTotAankomst,
   });
 }
 
+// Behouden voor bestaande call-sites: stuurt nu de volledige wijzigingsbevestiging
+// (identieke layout als de boekingsbevestiging, met gewijzigde titel).
 export async function sendModificationMail(
   reservationId: string,
-  diff: {
+  _diff?: {
     oldArrival: string; oldDeparture: string;
     oldPrice: number; newPrice: number;
     netRefund: number; netDue: number; modFee: number;
   }
 ): Promise<void> {
-  const result = await query(
-    `SELECT r.*, c.first_name, c.email FROM reservations r
-     JOIN customers c ON c.id = r.customer_id WHERE r.id = $1`,
-    [reservationId]
-  );
-  if (result.rows.length === 0) return;
-  const res = result.rows[0];
-
-  const settingsResult = await query(
-    "SELECT key, value FROM settings WHERE key IN ('company_whatsapp','booking_url')"
-  );
-  const settings = Object.fromEntries(settingsResult.rows.map((r: any) => [r.key, r.value]));
-  const baseUrl = settings['booking_url'] || 'https://parkeren-harlingen.nl';
-
-  const fmtDate = (d: string) => new Date(d).toLocaleDateString('nl-NL', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-  });
-
-  let verschilType = 'geen';
-  let verschilBedrag = '€ 0,00';
-  if (diff.netDue > 0) { verschilType = 'bijbetaling'; verschilBedrag = `€ ${diff.netDue.toFixed(2).replace('.', ',')}` ; }
-  else if (diff.netRefund > 0) { verschilType = 'restitutie'; verschilBedrag = `€ ${diff.netRefund.toFixed(2).replace('.', ',')}`; }
-
-  await sendTemplatedEmail('reservation_modified', res.email, {
-    voornaam: res.first_name,
-    reference: res.reference,
-    oude_aankomst: fmtDate(diff.oldArrival),
-    oude_vertrek: fmtDate(diff.oldDeparture),
-    nieuwe_aankomst: fmtDate(res.arrival_date),
-    nieuwe_vertrek: fmtDate(res.departure_date),
-    oud_bedrag: `€ ${diff.oldPrice.toFixed(2).replace('.', ',')}`,
-    nieuw_bedrag: `€ ${diff.newPrice.toFixed(2).replace('.', ',')}`,
-    verschil_type: verschilType,
-    verschil_bedrag: verschilBedrag,
-    wijzigingstoeslag: diff.modFee > 0 ? `€ ${diff.modFee.toFixed(2).replace('.', ',')}` : 'geen',
-    annuleringslink: `${baseUrl}/annuleren/${res.cancellation_token}`,
-    wijzigingslink: `${baseUrl}/wijzigen/${res.cancellation_token}`,
-    whatsapp_nummer: settings['company_whatsapp'] || '31612345678',
-  });
+  await sendModificationConfirmation(reservationId);
 }

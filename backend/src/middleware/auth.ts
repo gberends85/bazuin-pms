@@ -8,10 +8,15 @@ export interface AdminPayload {
   role: 'admin' | 'staff';
 }
 
+export interface GuestPayload {
+  guestEmail: string;
+}
+
 declare global {
   namespace Express {
     interface Request {
       admin?: AdminPayload;
+      guest?: GuestPayload;
     }
   }
 }
@@ -54,6 +59,33 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     }
 
     req.admin = payload;
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Ongeldige of verlopen sessie' });
+  }
+}
+
+// ── Guest token helpers ───────────────────────────────────────────────────────
+
+export function signGuestToken(payload: GuestPayload): string {
+  return jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '30d' });
+}
+
+export function verifyGuestToken(token: string): GuestPayload {
+  return jwt.verify(token, process.env.JWT_SECRET!) as GuestPayload;
+}
+
+/** Middleware: require valid guest JWT */
+export async function requireGuestAuth(req: Request, res: Response, next: NextFunction) {
+  try {
+    const header = req.headers.authorization;
+    if (!header?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Niet geautoriseerd' });
+    }
+    const token = header.slice(7);
+    const payload = verifyGuestToken(token);
+    if (!payload.guestEmail) return res.status(401).json({ error: 'Geen gast-sessie' });
+    req.guest = payload;
     next();
   } catch {
     return res.status(401).json({ error: 'Ongeldige of verlopen sessie' });

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/layout/AdminLayout';
 import Toaster, { toast, toastError } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
+import { ChevronUpIcon, ChevronDownIcon, BoltIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 const UNITS = [
   { value: 'per_vehicle', label: 'Per voertuig' },
@@ -111,9 +112,9 @@ export default function ServicesPage() {
                 {/* Sorteer-knoppen */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingTop: 2, flexShrink: 0 }}>
                   <button onClick={() => move(s.id, -1)} disabled={idx === 0}
-                    style={{ border: '0.5px solid rgba(10,34,64,0.15)', background: 'white', borderRadius: 4, cursor: idx === 0 ? 'default' : 'pointer', fontSize: 11, color: idx === 0 ? '#ccc' : '#556070', padding: '2px 6px', lineHeight: 1.2 }}>▲</button>
+                    style={{ border: '0.5px solid rgba(10,34,64,0.15)', background: 'white', borderRadius: 4, cursor: idx === 0 ? 'default' : 'pointer', color: idx === 0 ? '#ccc' : '#556070', padding: '2px 6px', display:'flex', alignItems:'center' }}><ChevronUpIcon className="w-3 h-3" /></button>
                   <button onClick={() => move(s.id, 1)} disabled={idx === services.length - 1}
-                    style={{ border: '0.5px solid rgba(10,34,64,0.15)', background: 'white', borderRadius: 4, cursor: idx === services.length - 1 ? 'default' : 'pointer', fontSize: 11, color: idx === services.length - 1 ? '#ccc' : '#556070', padding: '2px 6px', lineHeight: 1.2 }}>▼</button>
+                    style={{ border: '0.5px solid rgba(10,34,64,0.15)', background: 'white', borderRadius: 4, cursor: idx === services.length - 1 ? 'default' : 'pointer', color: idx === services.length - 1 ? '#ccc' : '#556070', padding: '2px 6px', display:'flex', alignItems:'center' }}><ChevronDownIcon className="w-3 h-3" /></button>
                 </div>
 
                 {/* Naam + info */}
@@ -121,7 +122,7 @@ export default function ServicesPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
                     <input value={s.name} onChange={e => update(s.id, 'name', e.target.value)}
                       style={{ fontSize: 14, fontWeight: 700, border: 'none', borderBottom: '0.5px solid rgba(10,34,64,0.2)', padding: '2px 4px', color: '#0a2240', background: 'transparent', minWidth: 160 }} />
-                    {s.kwh && <span style={{ ...tag, color: '#0a7c6e', background: '#e6f7f5' }}>⚡ {s.kwh} kWh</span>}
+                    {s.kwh && <span style={{ ...tag, color: '#0a7c6e', background: '#e6f7f5', display:'inline-flex', alignItems:'center', gap:3 }}><BoltIcon className="w-3 h-3" />{s.kwh} kWh</span>}
                     {!s.kwh && <span style={{ ...tag, color: '#aab8cc', background: '#f4f6f9' }}>geen kWh</span>}
                     {s.admin_only && <span style={{ ...tag, color: '#7a5010', background: '#fef3dc' }}>Admin only</span>}
                     <span style={{ ...tag, color: '#185fa5', background: '#e6f1fb' }}>{unitLabel(s.unit || 'per_booking')}</span>
@@ -142,7 +143,7 @@ export default function ServicesPage() {
 
                   {/* kWh (optioneel, voor laaddiensten) */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{ color: '#7090b0', fontSize: 12 }}>⚡ kWh</span>
+                    <span style={{ color: '#7090b0', fontSize: 12, display:'flex', alignItems:'center', gap:2 }}><BoltIcon className="w-3 h-3" />kWh</span>
                     <input type="number" value={s.kwh || ''} onChange={e => update(s.id, 'kwh', e.target.value ? parseFloat(e.target.value) : null)} step="1" min="0"
                       placeholder="—"
                       style={{ width: 55, padding: '4px 7px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 6, fontSize: 13, textAlign: 'right' }} />
@@ -180,7 +181,7 @@ export default function ServicesPage() {
                     ) : (
                       <>
                         <button onClick={() => setConfirmDel(s.id)}
-                          style={{ background: 'none', border: '0.5px solid rgba(200,50,50,0.3)', color: '#c83232', borderRadius: 6, padding: '4px 9px', fontSize: 12, cursor: 'pointer' }}>🗑</button>
+                          style={{ background: 'none', border: '0.5px solid rgba(200,50,50,0.3)', color: '#c83232', borderRadius: 6, padding: '4px 9px', fontSize: 12, cursor: 'pointer', display:'flex', alignItems:'center' }}><TrashIcon className="w-4 h-4" /></button>
                         <button className="btn btn-primary btn-sm" onClick={() => save(s)} disabled={saving === s.id}>
                           {saving === s.id ? '...' : 'Opslaan'}
                         </button>

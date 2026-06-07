@@ -1,5 +1,6 @@
 'use client';
 import { useEffect } from 'react';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 
 interface ModalProps {
   open: boolean;
@@ -22,7 +23,7 @@ export default function Modal({ open, onClose, title, children, width = 440 }: M
       <div onClick={e=>e.stopPropagation()} style={{background:'white',borderRadius:12,padding:24,width,maxWidth:'95vw',border:'0.5px solid rgba(10,34,64,0.12)',boxShadow:'0 8px 32px rgba(10,34,64,0.2)',maxHeight:'90vh',overflowY:'auto'}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:18}}>
           <h3 style={{margin:0,fontSize:15,fontWeight:700,color:'#0a2240'}}>{title}</h3>
-          <button onClick={onClose} style={{background:'none',border:'none',fontSize:18,cursor:'pointer',color:'#888',padding:'0 4px',lineHeight:1}}>✕</button>
+          <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',color:'#888',padding:'0 4px',lineHeight:1,display:'flex',alignItems:'center'}}><XMarkIcon className="w-5 h-5" /></button>
         </div>
         {children}
       </div>

@@ -4,6 +4,7 @@ import AdminLayout from '@/components/layout/AdminLayout';
 import Modal from '@/components/ui/Modal';
 import Toaster, { toast, toastError } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
+import { PencilSquareIcon, EnvelopeIcon } from '@heroicons/react/24/outline';
 
 export default function EmailsPage() {
   const [templates, setTemplates] = useState<any[]>([]);
@@ -69,7 +70,7 @@ export default function EmailsPage() {
                 <div style={{ fontWeight: 700, fontSize: 14, color: '#0a2240', marginBottom: 2 }}>{t.name}</div>
                 <div style={{ fontSize: 12, color: '#7090b0' }}>{t.description}</div>
               </div>
-              <button className="btn btn-ghost btn-sm" onClick={() => openEdit(t.slug)}>✎ Bewerken</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => openEdit(t.slug)} style={{display:'flex',alignItems:'center',gap:5}}><PencilSquareIcon className="w-4 h-4" />Bewerken</button>
             </div>
           ))}
         </div>
@@ -90,7 +91,7 @@ export default function EmailsPage() {
       </div>
 
       {/* Edit modal */}
-      <Modal open={!!editing} onClose={() => setEditing(null)} title={`✎ ${editing?.name}`} width={720}>
+      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing?.name ?? ''} width={720}>
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 6 }}>Onderwerp</label>
           <input value={subject} onChange={e => setSubject(e.target.value)}
@@ -124,7 +125,7 @@ export default function EmailsPage() {
             />
             <button className="btn btn-ghost btn-sm" onClick={sendTest} disabled={sendingTest || !testEmail}
               style={{ whiteSpace: 'nowrap' }}>
-              {sendingTest ? 'Versturen...' : '📧 Verstuur test'}
+              {sendingTest ? 'Versturen...' : <><EnvelopeIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Verstuur test</>}
             </button>
           </div>
           <div style={{ fontSize: 11, color: '#7090b0', marginTop: 5 }}>

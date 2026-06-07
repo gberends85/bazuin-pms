@@ -6,13 +6,18 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import { router } from './routes/api';
-import { constructWebhookEvent } from './services/stripe.service';
+// partner.routes niet aanwezig op deze server — uitgeschakeld
+import { constructWebhookEvent, createCheckoutSessionForExtraPayment } from './services/stripe.service';
 import { query } from './db/pool';
-import { sendBookingConfirmation } from './services/email.service';
+import { sendBookingConfirmation, sendSimpleEmail } from './services/email.service';
 import { syncDoeksenScheduleDays } from './services/doeksen.service';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
+
+// Vertel Express dat hij achter een reverse proxy (nginx) draait.
+// Nodig voor express-rate-limit zodat X-Forwarded-For correct wordt verwerkt.
+app.set('trust proxy', 1);
 
 // ── Stripe webhook MUST come before body parser ───────────────
 app.post(
@@ -37,18 +42,84 @@ app.post(
         case 'payment_intent.succeeded': {
           const intent = event.data.object as any;
           const reservationId = intent.metadata?.reservation_id;
+          console.log(`[Webhook] payment_intent.succeeded — intent=${intent.id}, reservationId=${reservationId}`);
           if (reservationId) {
-            await query(
-              `UPDATE reservations
-               SET payment_status = 'paid', stripe_payment_intent_id = $1
-               WHERE id = $2 AND payment_status = 'pending'`,
-              [intent.id, reservationId]
+            // Haal huidige status op om onderscheid te maken
+            const currentRes = await query(
+              `SELECT status, payment_status FROM reservations WHERE id = $1`,
+              [reservationId]
             );
-            // Stuur bevestigingsmail (opnieuw als nog niet verzonden)
-            sendBookingConfirmation(reservationId).catch(err =>
-              console.error('Bevestigingsmail na betaling mislukt:', err)
-            );
-            console.log(`Betaling bevestigd voor reservering ${reservationId}`);
+            const currentStatus = currentRes.rows[0]?.status;
+
+            if (currentStatus === 'cancelled') {
+              // ── Betaling ontvangen voor GEANNULEERDE reservering ──────────────
+              // Niet automatisch heractiveren (risico op dubbele bezetting).
+              // Sla betaling op, markeer voor handmatige controle, en mail de klant.
+              const flagResult = await query(
+                `UPDATE reservations
+                 SET payment_status = 'paid',
+                     stripe_payment_intent_id = $1,
+                     admin_notes = COALESCE(admin_notes, '') || E'\n[⚠️ BETALING ONTVANGEN NA ANNULERING — Controleer en herstel handmatig indien gast nog komt]',
+                     updated_at = NOW()
+                 WHERE id = $2
+                   AND payment_status NOT IN ('paid', 'refunded', 'partial_refund')`,
+                [intent.id, reservationId]
+              );
+              if ((flagResult.rowCount ?? 0) > 0) {
+                console.warn(`[Webhook] ⚠️ Betaling ontvangen voor GEANNULEERDE reservering ${reservationId} — handmatige controle vereist`);
+                // Haal klantgegevens op voor de e-mail
+                const resData = await query(
+                  `SELECT r.reference, c.first_name, c.email, r.arrival_date, r.departure_date, r.total_price
+                   FROM reservations r JOIN customers c ON c.id = r.customer_id WHERE r.id = $1`,
+                  [reservationId]
+                );
+                if (resData.rows.length > 0) {
+                  const { first_name, email, reference, arrival_date, departure_date, total_price } = resData.rows[0];
+                  const fmt = (d: string) => new Date(d).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+                  sendSimpleEmail(
+                    email,
+                    `Uw betaling is ontvangen — wij nemen contact op (${reference})`,
+                    `<p>Beste ${first_name},</p>
+                    <p>Wij hebben uw betaling van <strong>€ ${Number(total_price).toFixed(2).replace('.', ',')}</strong> ontvangen voor reservering <strong>${reference}</strong> (${fmt(arrival_date)} – ${fmt(departure_date)}).</p>
+                    <p>Helaas was uw reservering op het moment van betaling al verlopen omdat de betalingstermijn was overschreden. Uw reservering staat daardoor op dit moment als geannuleerd.</p>
+                    <p><strong>Wij nemen zo spoedig mogelijk contact met u op</strong> om te bespreken hoe we dit voor u kunnen oplossen — of om uw betaling terug te storten als er geen plek meer beschikbaar is.</p>
+                    <p>Heeft u vragen? Bel of WhatsApp ons gerust.</p>
+                    <p>Met vriendelijke groet,<br>Autostalling De Bazuin</p>`
+                  ).catch(err => console.error('[Webhook] Klant-email na geannuleerde betaling mislukt:', err));
+                }
+              }
+            } else {
+              // ── Normale flow: reservering heractiveren na betaling ─────────────
+              // Tolerate 'failed' status (cleanup job may have run before payment arrived)
+              // but don't override already-paid or refunded reservations
+              const updateResult = await query(
+                `UPDATE reservations
+                 SET payment_status = 'paid',
+                     status = 'booked',
+                     stripe_payment_intent_id = $1,
+                     updated_at = NOW()
+                 WHERE id = $2
+                   AND payment_status NOT IN ('paid', 'refunded', 'partial_refund')`,
+                [intent.id, reservationId]
+              );
+              console.log(`[Webhook] UPDATE rows affected: ${updateResult.rowCount} (reservation=${reservationId})`);
+              if ((updateResult.rowCount ?? 0) > 0) {
+                // Stuur bevestigingsmail na succesvolle betaling
+                sendBookingConfirmation(reservationId).catch(err =>
+                  console.error('Bevestigingsmail na betaling mislukt:', err)
+                );
+                console.log(`[Webhook] Betaling bevestigd voor reservering ${reservationId}`);
+              } else {
+                // Controleer of reservering al betaald was
+                const check = await query(
+                  `SELECT payment_status, status FROM reservations WHERE id = $1`,
+                  [reservationId]
+                );
+                console.warn(`[Webhook] Geen update — huidige status:`, check.rows[0] ?? 'niet gevonden');
+              }
+            }
+          } else {
+            console.warn(`[Webhook] payment_intent.succeeded zonder reservation_id in metadata — intent=${intent.id}`);
           }
           break;
         }
@@ -62,6 +133,34 @@ app.post(
               [reservationId]
             );
             console.warn(`Betaling mislukt voor reservering ${reservationId}`);
+          }
+          break;
+        }
+
+        case 'checkout.session.completed': {
+          const session = event.data.object as any;
+          if (session.metadata?.type === 'extra_payment') {
+            const reservationId = session.metadata.reservation_id;
+            const modificationId = session.metadata.modification_id;
+            console.log(`[Webhook] checkout.session.completed extra_payment — reservation=${reservationId}, modification=${modificationId}`);
+            if (reservationId && modificationId) {
+              // Mark modification as completed (paid online)
+              await query(
+                `UPDATE reservation_modifications SET status='completed', accepted_at=NOW() WHERE id=$1 AND status='pending_payment'`,
+                [modificationId]
+              );
+              // Check if all pending payments for this reservation are resolved
+              const pending = await query(
+                `SELECT COUNT(*) as cnt FROM reservation_modifications WHERE reservation_id=$1 AND status='pending_payment'`,
+                [reservationId]
+              );
+              if (parseInt(pending.rows[0].cnt) === 0) {
+                await query(
+                  `UPDATE reservations SET payment_status='paid', updated_at=NOW() WHERE id=$1`,
+                  [reservationId]
+                );
+              }
+            }
           }
           break;
         }
@@ -108,6 +207,7 @@ app.use(cors({
       process.env.FRONTEND_ADMIN_URL || 'http://localhost:3002',
       'http://127.0.0.1:3000',
       'http://127.0.0.1:3002',
+      'https://cms.autostallingdebazuin.nl',
     ];
     // Allow no-origin requests (mobile apps, Postman, curl)
     if (!origin || allowed.includes(origin)) {
@@ -121,8 +221,14 @@ app.use(cors({
 
 // ── Rate limiting ─────────────────────────────────────────────
 const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, max: 500,
+  windowMs: 15 * 60 * 1000, max: 3000,
   standardHeaders: true, legacyHeaders: false,
+  // Interne/localhost-verzoeken (sync, backfill, health) niet meetellen,
+  // zodat ze het admin-/klantverkeer nooit kunnen blokkeren.
+  skip: (req) => {
+    const ip = req.ip || '';
+    return ip === '127.0.0.1' || ip === '::1' || ip.startsWith('::ffff:127.');
+  },
 });
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, max: 20,
@@ -143,6 +249,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // ── Routes ────────────────────────────────────────────────────
+// Partner-API (X-API-Key) — o.a. Harlingen Watertaxi, mag in de buffer boeken
+// app.use('/api/v1/partner', partnerRouter); // partner.routes niet aanwezig
 app.use('/api/v1', router);
 
 // ── Health check (no auth) ────────────────────────────────────
@@ -172,8 +280,96 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 // ── Doeksen sync ─────────────────────────────────────────────
-// Automatische sync uitgeschakeld — tijden worden handmatig geladen
-// via de knop in de boekingsflow of via het adminpaneel.
+// Dagelijkse achtergrond-sync: haal de komende 14 dagen op bij Doeksen
+// en sla ze op in ferry_schedules (ON CONFLICT DO NOTHING = bestaande data blijft).
+// Draait direct bij opstart en daarna elke 24 uur.
+async function runDoeksenSync() {
+  try {
+    console.log('[Doeksen] Dagelijkse sync gestart (14 dagen vooruit)...');
+    await syncDoeksenScheduleDays(14);
+    console.log('[Doeksen] Dagelijkse sync voltooid');
+  } catch (err: any) {
+    console.error('[Doeksen] Dagelijkse sync mislukt:', err.message);
+  }
+}
+// Direct bij opstart (na korte vertraging zodat de DB-verbinding klaar is)
+setTimeout(runDoeksenSync, 5000);
+// Elke 24 uur herhalen
+setInterval(runDoeksenSync, 24 * 60 * 60 * 1000);
+
+// ── Cleanup verlaten betalingen (elke minuut) ─────────────────
+// Reserveringen met status 'pending_payment' ouder dan 30 minuten
+// worden geannuleerd zodat de plekken weer vrijkomen.
+// De klant ontvangt een e-mail zodat hij weet wat er is misgegaan.
+setInterval(async () => {
+  try {
+    const result = await query(
+      `UPDATE reservations
+       SET status = 'cancelled', payment_status = 'failed',
+           admin_notes = COALESCE(admin_notes, '') || E'\n[Automatisch geannuleerd: betaling niet voltooid binnen 30 minuten]',
+           updated_at = NOW()
+       WHERE status = 'pending_payment'
+         AND created_at < NOW() - INTERVAL '30 minutes'
+       RETURNING id, reference`
+    );
+    if (result.rows.length > 0) {
+      console.log(`[Cleanup] ${result.rows.length} verlaten reservering(en) geannuleerd:`,
+        result.rows.map((r: any) => r.reference).join(', '));
+
+      // Stuur elke geannuleerde klant een e-mail
+      for (const row of result.rows as any[]) {
+        try {
+          const resData = await query(
+            `SELECT r.reference, r.arrival_date, r.departure_date, r.total_price,
+                    c.first_name, c.email
+             FROM reservations r JOIN customers c ON c.id = r.customer_id
+             WHERE r.id = $1`,
+            [row.id]
+          );
+          if (resData.rows.length === 0) continue;
+          const { first_name, email, reference, arrival_date, departure_date, total_price } = resData.rows[0];
+          const fmt = (d: string) => new Date(d).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+          await sendSimpleEmail(
+            email,
+            `Uw reservering is verlopen — ${reference}`,
+            `<p>Beste ${first_name},</p>
+            <p>Uw reservering <strong>${reference}</strong> (${fmt(arrival_date)} – ${fmt(departure_date)}, € ${Number(total_price).toFixed(2).replace('.', ',')}) is helaas verlopen omdat de betaling niet binnen 30 minuten is ontvangen.</p>
+            <p>Uw parkeerplek is daardoor vrijgegeven. Als u nog wilt parkeren, kunt u een <a href="${process.env.FRONTEND_BOOKING_URL || 'https://parkeren-harlingen.nl'}">nieuwe reservering</a> plaatsen.</p>
+            <p>Heeft u al wél betaald maar dit bericht ontvangen? Neem dan direct contact met ons op — dan lossen we dit samen op.</p>
+            <p>Met vriendelijke groet,<br>Autostalling De Bazuin</p>`
+          );
+        } catch (mailErr: any) {
+          console.error(`[Cleanup] E-mail aan klant mislukt voor ${row.reference}:`, mailErr.message);
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error('[Cleanup] Fout bij opruimen verlaten reserveringen:', err.message);
+  }
+}, 60 * 1000);
+
+// ── Auto-checkout: checked_in met verstreken vertrekdatum (elke nacht) ────────
+// Reserveringen die checked_in zijn maar waarvan de vertrekdatum al gepasseerd is
+// worden automatisch op 'completed' gezet zodat de bezetting klopt.
+setInterval(async () => {
+  try {
+    const result = await query(
+      `UPDATE reservations
+       SET status = 'completed',
+           admin_notes = COALESCE(admin_notes, '') || E'\n[Automatisch uitgecheckt: vertrekdatum verstreken]',
+           updated_at = NOW()
+       WHERE status = 'checked_in'
+         AND departure_date < CURRENT_DATE
+       RETURNING id, reference`
+    );
+    if (result.rows.length > 0) {
+      console.log(`[AutoCheckout] ${result.rows.length} reservering(en) automatisch uitgecheckt:`,
+        result.rows.map((r: any) => r.reference).join(', '));
+    }
+  } catch (err: any) {
+    console.error('[AutoCheckout] Fout bij automatisch uitchecken:', err.message);
+  }
+}, 60 * 60 * 1000); // elk uur
 
 // ── Start ─────────────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {

@@ -5,6 +5,7 @@ import Modal from '@/components/ui/Modal';
 import Toaster, { toast, toastError } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { format, addDays } from 'date-fns';
+import { MapIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 
 export default function FerriesPage() {
   const [ferries, setFerries] = useState<any[]>([]);
@@ -14,24 +15,27 @@ export default function FerriesPage() {
   const [form, setForm] = useState({ ferryId: '', departureTime: '09:00', direction: 'outbound', destination: 'terschelling', notes: '' });
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [syncDays, setSyncDays] = useState(14);
+  const [syncDays, setSyncDays] = useState(7);
 
   useEffect(() => { api.ferries.list().then(setFerries); }, []);
   useEffect(() => { loadSchedules(); }, [date]);
 
-  async function loadSchedules() {
-    const d = await api.ferries.schedules(date).catch(() => ({ schedules: [] }));
+  async function loadSchedules(bust = false) {
+    // bust=true omzeilt browser-cache (ETag/304) na sync
+    const dateParam = bust ? `${date}&_t=${Date.now()}` : date;
+    const d = await api.ferries.schedules(dateParam).catch(() => ({ schedules: [] }));
     setSchedules(d.schedules || []);
   }
 
   async function doeksenSync() {
     setSyncing(true);
     try {
-      const res = await api.ferries.syncDoeksen(syncDays);
-      toast(`Doeksen gesynchroniseerd voor ${syncDays} dagen ✓`);
-      loadSchedules();
-    } catch (e: any) { toastError(e.message); }
-    finally { setSyncing(false); }
+      // Sync start vanaf de geselecteerde datum zodat ook ver-weg datums werken
+      await api.ferries.syncDoeksen(syncDays, date);
+      toast(`Doeksen sync gestart — tijden voor geselecteerde datum verschijnen zo meteen ✓`);
+      // Wacht 3s (eerste dag is dan al klaar), herlaad met cache-busting
+      setTimeout(() => { loadSchedules(true); setSyncing(false); }, 3000);
+    } catch (e: any) { toastError(e.message); setSyncing(false); }
   }
 
   async function addSchedule() {
@@ -62,7 +66,7 @@ export default function FerriesPage() {
             {ferries.map(f => (
               <div key={f.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#f8f9fb', borderRadius: 8 }}>
                 <div>
-                  <span style={{ fontWeight: 600, fontSize: 14 }}>⛴ {f.name}</span>
+                  <span style={{ fontWeight: 600, fontSize: 14, display:'flex', alignItems:'center', gap:5 }}><MapIcon className="w-4 h-4" />{f.name}</span>
                   {f.is_fast && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: '#0a7c6e', background: '#e6f7f5', padding: '2px 8px', borderRadius: 20 }}>SNEL</span>}
                 </div>
                 <div style={{ fontSize: 12, color: '#7090b0' }}>{f.duration_min} minuten vaart · {f.destination}</div>
@@ -82,15 +86,15 @@ export default function FerriesPage() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f4f6f9', borderRadius: 7, padding: '4px 8px' }}>
-                <span style={{ fontSize: 12, color: '#7090b0', whiteSpace: 'nowrap' }}>Sync</span>
+                <span style={{ fontSize: 12, color: '#7090b0', whiteSpace: 'nowrap' }}>Vooruit laden</span>
                 <select value={syncDays} onChange={e => setSyncDays(Number(e.target.value))}
                   style={{ border: 'none', background: 'transparent', fontSize: 12, fontWeight: 600, color: '#0a2240', cursor: 'pointer' }}>
-                  {[7, 14, 21, 30].map(d => <option key={d} value={d}>{d} dagen</option>)}
+                  {[1, 3, 7, 14].map(d => <option key={d} value={d}>{d} dag{d !== 1 ? 'en' : ''}</option>)}
                 </select>
               </div>
               <button className="btn btn-ghost btn-sm" onClick={doeksenSync} disabled={syncing}
                 style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                {syncing ? '⏳' : '↻'} {syncing ? 'Laden…' : 'Laad Doeksen'}
+                <ArrowPathIcon className="w-4 h-4" />{syncing ? 'Laden…' : 'Laad Doeksen'}
               </button>
               <button className="btn btn-primary btn-sm" onClick={() => { setForm({ ferryId: ferries[0]?.id || '', departureTime: '09:00', direction: 'outbound', destination: 'terschelling', notes: '' }); setAddOpen(true); }}>
                 + Boottijd toevoegen
@@ -102,7 +106,7 @@ export default function FerriesPage() {
             {schedules.length === 0 && (
               <div style={{ textAlign: 'center', color: '#7090b0', padding: '24px 0', fontSize: 13 }}>
                 Geen dienstregeling voor deze datum.<br />
-                Klik <strong>↻ Laad Doeksen</strong> om actuele tijden op te halen, of voeg handmatig een boottijd toe.
+                Klik <strong>Laad Doeksen</strong> om actuele tijden op te halen, of voeg handmatig een boottijd toe.
               </div>
             )}
 

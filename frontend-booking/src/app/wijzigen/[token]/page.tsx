@@ -73,7 +73,7 @@ function DuringStayPaymentForm({
         disabled={paying || !stripe}
         style={{
           width: '100%', marginTop: 20, padding: '13px', borderRadius: 9,
-          background: paying ? '#ccc' : '#0a7c6e', color: 'white',
+          background: paying ? '#ccc' : '#19499e', color: 'white',
           border: 'none', fontSize: 15, fontWeight: 700,
           cursor: paying ? 'not-allowed' : 'pointer',
         }}
@@ -129,7 +129,7 @@ function PreStayPaymentForm({
         disabled={paying || !stripe}
         style={{
           width: '100%', marginTop: 20, padding: '13px', borderRadius: 9,
-          background: paying ? '#ccc' : '#0a7c6e', color: 'white',
+          background: paying ? '#ccc' : '#19499e', color: 'white',
           border: 'none', fontSize: 15, fontWeight: 700,
           cursor: paying ? 'not-allowed' : 'pointer',
         }}
@@ -168,8 +168,8 @@ function FerryPicker({
     scheduleItem: (selected: boolean): React.CSSProperties => ({
       display: 'flex', alignItems: 'center', gap: 10,
       padding: '9px 12px', borderRadius: 8, marginBottom: 6,
-      border: selected ? '1.5px solid #0a7c6e' : '0.5px solid rgba(10,34,64,0.18)',
-      background: selected ? '#e6f7f5' : 'white',
+      border: selected ? '1.5px solid #19499e' : '0.5px solid rgba(10,34,64,0.18)',
+      background: selected ? '#eaf1fb' : 'white',
       cursor: 'pointer',
     }),
   };
@@ -178,7 +178,7 @@ function FerryPicker({
     <div style={{ background: '#f4f6f9', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', marginBottom: 6 }}>{label}</div>
       {currentTime && (
-        <div style={{ fontSize: 13, color: '#0a2240', marginBottom: 8 }}>
+        <div style={{ fontSize: 13, color: '#142440', marginBottom: 8 }}>
           <span style={{ color: '#7090b0' }}>Huidige vertrektijd: </span><strong>{currentTime.slice(0, 5)}</strong>
         </div>
       )}
@@ -193,11 +193,11 @@ function FerryPicker({
             const selected = selectedTime === time;
             return (
               <div key={s.id || time} style={S.scheduleItem(selected)} onClick={() => onSelect(time)}>
-                <span style={{ fontWeight: 700, fontSize: 14, color: '#0a2240', minWidth: 40 }}>{time}</span>
+                <span style={{ fontWeight: 700, fontSize: 14, color: '#142440', minWidth: 40 }}>{time}</span>
                 <span style={{ fontSize: 12, color: '#556070' }}>
                   {s.isFast ? <><BoltIcon className="w-3 h-3" style={{ display: 'inline', verticalAlign: 'middle' }} /> Sneldienst</> : <><ArrowRightIcon className="w-3 h-3" style={{ display: 'inline', verticalAlign: 'middle' }} /> Veerdienst</>}
                 </span>
-                {selected && <CheckIcon className="w-4 h-4" style={{ marginLeft: 'auto', color: '#0a7c6e' }} />}
+                {selected && <CheckIcon className="w-4 h-4" style={{ marginLeft: 'auto', color: '#19499e' }} />}
               </div>
             );
           })}
@@ -220,7 +220,7 @@ function FerryPicker({
             type="time"
             value={selectedTime}
             onChange={e => onSelect(e.target.value)}
-            style={{ width: '100%', padding: '10px 12px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 8, fontSize: 14, color: '#0a2240', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '10px 12px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 8, fontSize: 14, color: '#142440', boxSizing: 'border-box' }}
           />
           {manualMode && schedules.length > 0 && (
             <button
@@ -539,16 +539,16 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
     page: { minHeight: '100vh', background: '#f4f6f9', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 } as const,
     card: { background: 'white', borderRadius: 14, padding: '32px 28px', maxWidth: 520, width: '100%', border: '0.5px solid rgba(10,34,64,0.1)', boxShadow: '0 4px 24px rgba(10,34,64,0.08)' } as const,
     label: { fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase' as const, letterSpacing: '0.5px', display: 'block', marginBottom: 6 },
-    input: { width: '100%', padding: '10px 12px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 8, fontSize: 14, color: '#0a2240', boxSizing: 'border-box' as const },
+    input: { width: '100%', padding: '10px 12px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 8, fontSize: 14, color: '#142440', boxSizing: 'border-box' as const },
     inputDisabled: { width: '100%', padding: '10px 12px', border: '0.5px solid rgba(10,34,64,0.1)', borderRadius: 8, fontSize: 14, color: '#7090b0', boxSizing: 'border-box' as const, background: '#f4f6f9', cursor: 'not-allowed' as const },
-    btnPrimary: { width: '100%', padding: '13px', borderRadius: 9, background: '#0a7c6e', color: 'white', border: 'none', fontSize: 15, fontWeight: 700, cursor: 'pointer' } as const,
-    btnGhost: { width: '100%', padding: '11px', borderRadius: 9, background: 'white', color: '#0a2240', border: '0.5px solid rgba(10,34,64,0.2)', fontSize: 14, fontWeight: 600, cursor: 'pointer', marginTop: 10 } as const,
+    btnPrimary: { width: '100%', padding: '13px', borderRadius: 9, background: '#19499e', color: 'white', border: 'none', fontSize: 15, fontWeight: 700, cursor: 'pointer' } as const,
+    btnGhost: { width: '100%', padding: '11px', borderRadius: 9, background: 'white', color: '#142440', border: '0.5px solid rgba(10,34,64,0.2)', fontSize: 14, fontWeight: 600, cursor: 'pointer', marginTop: 10 } as const,
   };
 
   const Logo = () => (
     <div style={{ textAlign: 'center', marginBottom: 24 }}>
-      <div style={{ width: 44, height: 44, background: '#e8a020', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, color: '#0a2240', margin: '0 auto 12px' }}>AB</div>
-      <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 800, color: '#0a2240' }}>Reservering wijzigen</h2>
+      <div style={{ width: 44, height: 44, background: '#19499e', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, color: '#ffffff', margin: '0 auto 12px' }}>AB</div>
+      <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 800, color: '#142440' }}>Reservering wijzigen</h2>
       <p style={{ margin: 0, color: '#7090b0', fontSize: 13 }}>Autostalling De Bazuin</p>
     </div>
   );
@@ -564,7 +564,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   // ── Reservation info block ────────────────────────────────────
   const ReservationInfo = () => (
     <div style={{ background: '#f4f6f9', borderRadius: 10, padding: '14px 18px', marginBottom: 20 }}>
-      <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 16, color: '#0a2240', marginBottom: 8 }}>{res?.reference}</div>
+      <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 16, color: '#142440', marginBottom: 8 }}>{res?.reference}</div>
       {[
         ['Naam', `${res?.first_name} ${res?.last_name}`],
         ['Aankomst', res?.arrival_date ? fmtDate(res.arrival_date.slice(0, 10)) : '—'],
@@ -596,7 +596,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fff8e6', color: '#e8a020', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
         <ArrowPathIcon className="w-7 h-7" />
       </div>
-      <h2 style={{ margin: '0 0 8px', color: '#0a2240' }}>Verzoek ontvangen!</h2>
+      <h2 style={{ margin: '0 0 8px', color: '#142440' }}>Verzoek ontvangen!</h2>
       <p style={{ color: '#7090b0', fontSize: 14, marginBottom: 20 }}>
         Uw wijzigingsverzoek is ontvangen. Wij verwerken dit zo spoedig mogelijk en sturen u een bevestiging.
       </p>
@@ -608,10 +608,10 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   // ── Ferry done (auto-applied) ─────────────────────────────────
   if (step === 'ferry-done') return (
     <div style={S.page}><div style={{ ...S.card, textAlign: 'center' }}>
-      <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#e6f7f5', color: '#0a7c6e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+      <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eaf1fb', color: '#19499e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
         <CheckIcon className="w-7 h-7" />
       </div>
-      <h2 style={{ margin: '0 0 8px', color: '#0a2240' }}>Boottijden bijgewerkt!</h2>
+      <h2 style={{ margin: '0 0 8px', color: '#142440' }}>Boottijden bijgewerkt!</h2>
       <p style={{ color: '#7090b0', fontSize: 14, marginBottom: 20 }}>
         Uw gewenste boottijden zijn direct verwerkt in uw reservering. U ontvangt een bevestiging per e-mail.
       </p>
@@ -623,10 +623,10 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   // ── Plate done ────────────────────────────────────────────────
   if (step === 'plate-done') return (
     <div style={S.page}><div style={{ ...S.card, textAlign: 'center' }}>
-      <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#e6f7f5', color: '#0a7c6e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+      <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eaf1fb', color: '#19499e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
         <CheckIcon className="w-7 h-7" />
       </div>
-      <h2 style={{ margin: '0 0 8px', color: '#0a2240' }}>Kenteken bijgewerkt!</h2>
+      <h2 style={{ margin: '0 0 8px', color: '#142440' }}>Kenteken bijgewerkt!</h2>
       <p style={{ color: '#7090b0', fontSize: 14, marginBottom: 20 }}>
         Uw kentekenwijziging is direct verwerkt. U ontvangt een bevestiging per e-mail.
       </p>
@@ -638,10 +638,10 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   // ── Phone done ────────────────────────────────────────────────
   if (step === 'phone-done') return (
     <div style={S.page}><div style={{ ...S.card, textAlign: 'center' }}>
-      <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#e6f7f5', color: '#0a7c6e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+      <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eaf1fb', color: '#19499e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
         <CheckIcon className="w-7 h-7" />
       </div>
-      <h2 style={{ margin: '0 0 8px', color: '#0a2240' }}>Telefoonnummer bijgewerkt!</h2>
+      <h2 style={{ margin: '0 0 8px', color: '#142440' }}>Telefoonnummer bijgewerkt!</h2>
       <p style={{ color: '#7090b0', fontSize: 14, marginBottom: 20 }}>
         Uw telefoonnummer is direct opgeslagen.
       </p>
@@ -655,7 +655,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#e6f1fb', color: '#1a6bb5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
         <EnvelopeIcon className="w-7 h-7" />
       </div>
-      <h2 style={{ margin: '0 0 8px', color: '#0a2240' }}>Verificatiemail verstuurd!</h2>
+      <h2 style={{ margin: '0 0 8px', color: '#142440' }}>Verificatiemail verstuurd!</h2>
       <p style={{ color: '#7090b0', fontSize: 14, marginBottom: 20 }}>
         We hebben een verificatiemail gestuurd naar <strong>{contactEmail}</strong>.<br />
         Klik op de link in de e-mail om uw nieuwe e-mailadres te bevestigen.
@@ -667,10 +667,10 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   // ── Dates done ────────────────────────────────────────────────
   if (step === 'dates-done') return (
     <div style={S.page}><div style={{ ...S.card, textAlign: 'center' }}>
-      <div style={{ width: 56, height: 56, borderRadius: '50%', background: doneData?.pending ? '#fff8e6' : '#e6f7f5', color: doneData?.pending ? '#e8a020' : '#0a7c6e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+      <div style={{ width: 56, height: 56, borderRadius: '50%', background: doneData?.pending ? '#fff8e6' : '#eaf1fb', color: doneData?.pending ? '#e8a020' : '#19499e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
         {doneData?.pending ? <ArrowPathIcon className="w-7 h-7" /> : <CheckIcon className="w-7 h-7" />}
       </div>
-      <h2 style={{ margin: '0 0 8px', color: '#0a2240' }}>
+      <h2 style={{ margin: '0 0 8px', color: '#142440' }}>
         {doneData?.duringStayPaid ? 'Verblijf verlengd! Betaling ontvangen.' : doneData?.pending ? 'Verzoek ontvangen!' : 'Wijziging bevestigd!'}
       </h2>
       <p style={{ color: '#7090b0', fontSize: 14, marginBottom: 20 }}>
@@ -691,7 +691,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         </div>
       )}
       {!doneData?.pending && doneData?.netRefundAmount > 0 && (
-        <div style={{ background: '#e6f7f5', border: '0.5px solid #0a7c6e', borderRadius: 8, padding: '12px 14px', fontSize: 13, color: '#0a7c6e', marginBottom: 16 }}>
+        <div style={{ background: '#eaf1fb', border: '0.5px solid #19499e', borderRadius: 8, padding: '12px 14px', fontSize: 13, color: '#19499e', marginBottom: 16 }}>
           U ontvangt <strong>€ {doneData.netRefundAmount.toFixed(2)}</strong> restitutie binnen 5–10 werkdagen.
         </div>
       )}
@@ -703,10 +703,10 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   // ── Dates on-site confirm ─────────────────────────────────────
   if (step === 'dates-on-site-confirm') return (
     <div style={S.page}><div style={{ ...S.card, textAlign: 'center' }}>
-      <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#e6f7f5', color: '#0a7c6e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+      <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eaf1fb', color: '#19499e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
         <CheckIcon className="w-7 h-7" />
       </div>
-      <h2 style={{ margin: '0 0 8px', color: '#0a2240' }}>Wijziging bevestigd!</h2>
+      <h2 style={{ margin: '0 0 8px', color: '#142440' }}>Wijziging bevestigd!</h2>
       <p style={{ color: '#7090b0', fontSize: 14, marginBottom: 16 }}>
         Uw reservering is direct bijgewerkt naar de nieuwe data.
       </p>
@@ -723,7 +723,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       <Logo />
       <div style={{ background: '#fff8e6', border: '1.5px solid #e8a020', borderRadius: 10, padding: '14px 18px', marginBottom: 20 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: '#7a5010', textTransform: 'uppercase', marginBottom: 6 }}>Verlenging tijdens verblijf</div>
-        <div style={{ fontSize: 14, color: '#0a2240' }}>
+        <div style={{ fontSize: 14, color: '#142440' }}>
           <strong>{stripeExtraDays} extra dag{stripeExtraDays !== 1 ? 'en' : ''}</strong>
           {' '}× € {stripeDailyRate.toFixed(2).replace('.', ',')} = <strong>€ {stripeAmount.toFixed(2).replace('.', ',')}</strong>
         </div>
@@ -761,7 +761,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       <Logo />
       <div style={{ background: '#f4f6f9', border: '1.5px solid rgba(10,34,64,0.15)', borderRadius: 10, padding: '14px 18px', marginBottom: 20 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', marginBottom: 6 }}>Bijbetaling datumwijziging</div>
-        <div style={{ fontSize: 14, color: '#0a2240' }}>
+        <div style={{ fontSize: 14, color: '#142440' }}>
           Totaal te betalen: <strong>€ {stripePreStayAmount.toFixed(2).replace('.', ',')}</strong>
         </div>
         <div style={{ fontSize: 12, color: '#7090b0', marginTop: 6 }}>
@@ -799,15 +799,15 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
         <div style={{ background: '#f4f6f9', borderRadius: 10, padding: '14px 16px' }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Huidige boeking</div>
-          <div style={{ fontSize: 12, color: '#0a2240', marginBottom: 4 }}><strong>Aankomst:</strong><br />{fmtDate(preview.currentArrival.slice(0, 10))}</div>
-          <div style={{ fontSize: 12, color: '#0a2240', marginBottom: 8 }}><strong>Vertrek:</strong><br />{fmtDate(preview.currentDeparture.slice(0, 10))}</div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#0a2240' }}>€ {parseFloat(preview.currentPrice).toFixed(2)}</div>
+          <div style={{ fontSize: 12, color: '#142440', marginBottom: 4 }}><strong>Aankomst:</strong><br />{fmtDate(preview.currentArrival.slice(0, 10))}</div>
+          <div style={{ fontSize: 12, color: '#142440', marginBottom: 8 }}><strong>Vertrek:</strong><br />{fmtDate(preview.currentDeparture.slice(0, 10))}</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#142440' }}>€ {parseFloat(preview.currentPrice).toFixed(2)}</div>
         </div>
-        <div style={{ background: '#e6f7f5', border: '1.5px solid #0a7c6e', borderRadius: 10, padding: '14px 16px' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#0a7c6e', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Nieuwe boeking</div>
-          <div style={{ fontSize: 12, color: '#0a2240', marginBottom: 4 }}><strong>Aankomst:</strong><br />{fmtDate(newArrival)}</div>
-          <div style={{ fontSize: 12, color: '#0a2240', marginBottom: 8 }}><strong>Vertrek:</strong><br />{fmtDate(newDeparture)}</div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#0a7c6e' }}>€ {parseFloat(preview.newPrice).toFixed(2)}</div>
+        <div style={{ background: '#eaf1fb', border: '1.5px solid #19499e', borderRadius: 10, padding: '14px 16px' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#19499e', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Nieuwe boeking</div>
+          <div style={{ fontSize: 12, color: '#142440', marginBottom: 4 }}><strong>Aankomst:</strong><br />{fmtDate(newArrival)}</div>
+          <div style={{ fontSize: 12, color: '#142440', marginBottom: 8 }}><strong>Vertrek:</strong><br />{fmtDate(newDeparture)}</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#19499e' }}>€ {parseFloat(preview.newPrice).toFixed(2)}</div>
         </div>
       </div>
 
@@ -822,12 +822,12 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
           ].map(([k, v]) => (
             <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12.5 }}>
               <span style={{ color: '#7090b0' }}>{k}</span>
-              <span style={{ fontWeight: 600, color: '#0a2240' }}>{v}</span>
+              <span style={{ fontWeight: 600, color: '#142440' }}>{v}</span>
             </div>
           ))}
           <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8, marginTop: 4, borderTop: '0.5px solid rgba(10,34,64,0.1)', fontSize: 13, fontWeight: 800 }}>
-            <span style={{ color: '#0a2240' }}>Totaal nieuw bedrag</span>
-            <span style={{ color: '#0a2240' }}>€ {parseFloat(preview.newPrice).toFixed(2)}</span>
+            <span style={{ color: '#142440' }}>Totaal nieuw bedrag</span>
+            <span style={{ color: '#142440' }}>€ {parseFloat(preview.newPrice).toFixed(2)}</span>
           </div>
         </div>
       )}
@@ -857,8 +857,8 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
             </>
           ) : preview.netRefundAmount > 0 ? (
             <>
-              <span style={{ color: '#0a7c6e' }}>Restitutie</span>
-              <span style={{ color: '#0a7c6e' }}>€ {preview.netRefundAmount.toFixed(2)}</span>
+              <span style={{ color: '#19499e' }}>Restitutie</span>
+              <span style={{ color: '#19499e' }}>€ {preview.netRefundAmount.toFixed(2)}</span>
             </>
           ) : (
             <>
@@ -1052,7 +1052,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         )}
 
         {isCheckedIn && !duringStay && (
-          <div style={{ background: '#e6f1fb', border: '1.5px solid #1a6bb5', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#0a2240', marginBottom: 16 }}>
+          <div style={{ background: '#e6f1fb', border: '1.5px solid #1a6bb5', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#142440', marginBottom: 16 }}>
             Uw voertuig is ingecheckt. U kunt alleen de vertrekdatum <strong>vervroegen</strong>. Voor verlenging, neem contact op.
           </div>
         )}
@@ -1112,7 +1112,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       <Logo />
       <ReservationInfo />
 
-      <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#0a2240' }}>Kenteken wijzigen</h3>
+      <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#142440' }}>Kenteken wijzigen</h3>
 
       {plateValues.length === 0 && (
         <p style={{ color: '#7090b0', fontSize: 13 }}>Geen voertuigen gevonden bij deze reservering.</p>
@@ -1120,7 +1120,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
 
       {plateValues.map((v, i) => (
         <div key={v.vehicleId} style={{ marginBottom: 16 }}>
-          <label style={S.label}>Voertuig {i + 1} — huidig kenteken: <span style={{ color: '#0a2240' }}>{v.oldPlate}</span></label>
+          <label style={S.label}>Voertuig {i + 1} — huidig kenteken: <span style={{ color: '#142440' }}>{v.oldPlate}</span></label>
           <input
             type="text"
             value={v.newPlate}
@@ -1144,7 +1144,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   if (step === 'all-reservations') return (
     <div style={S.page}><div style={S.card}>
       <Logo />
-      <h3 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 700, color: '#0a2240' }}>Mijn reserveringen</h3>
+      <h3 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 700, color: '#142440' }}>Mijn reserveringen</h3>
       <p style={{ margin: '0 0 16px', fontSize: 12, color: '#7090b0' }}>Alle reserveringen gekoppeld aan uw e-mailadres</p>
 
       {allReservations.length === 0 && (
@@ -1155,7 +1155,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         {allReservations.map(r => {
           const isCurrentRes = r.cancellation_token === params.token;
           const statusColor: Record<string, string> = {
-            booked: '#1a6bb5', checked_in: '#0a7c6e', completed: '#7090b0', cancelled: '#c83232',
+            booked: '#1a6bb5', checked_in: '#19499e', completed: '#7090b0', cancelled: '#c83232',
           };
           const statusLabel: Record<string, string> = {
             booked: 'Geboekt', checked_in: 'Ingecheckt', completed: 'Afgerond', cancelled: 'Geannuleerd',
@@ -1164,12 +1164,12 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
             <div key={r.id}
               style={{
                 padding: '12px 14px', borderRadius: 10,
-                border: isCurrentRes ? '1.5px solid #0a7c6e' : '0.5px solid rgba(10,34,64,0.15)',
-                background: isCurrentRes ? '#e6f7f5' : 'white',
+                border: isCurrentRes ? '1.5px solid #19499e' : '0.5px solid rgba(10,34,64,0.15)',
+                background: isCurrentRes ? '#eaf1fb' : 'white',
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-                <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 13, color: '#0a2240' }}>{r.reference}</span>
+                <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 13, color: '#142440' }}>{r.reference}</span>
                 <span style={{ fontSize: 11, fontWeight: 700, color: statusColor[r.status] || '#7090b0', background: '#f4f6f9', padding: '2px 8px', borderRadius: 20 }}>
                   {statusLabel[r.status] || r.status}
                 </span>
@@ -1191,11 +1191,11 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
                     </a>
                   )}
                   {isCurrentRes ? (
-                    <span style={{ fontSize: 11, color: '#0a7c6e', fontWeight: 700 }}>← huidig</span>
+                    <span style={{ fontSize: 11, color: '#19499e', fontWeight: 700 }}>← huidig</span>
                   ) : (
                     r.cancellation_token && !['cancelled', 'completed'].includes(r.status) && (
                       <a href={`/boeken/wijzigen/${r.cancellation_token}`}
-                        style={{ fontSize: 12, color: '#0a7c6e', fontWeight: 700, textDecoration: 'none' }}>
+                        style={{ fontSize: 12, color: '#19499e', fontWeight: 700, textDecoration: 'none' }}>
                         Wijzigen <ArrowRightIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle' }} />
                       </a>
                     )
@@ -1227,7 +1227,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       <Logo />
       <ReservationInfo />
 
-      <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#0a2240' }}>Persoonsgegevens wijzigen</h3>
+      <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#142440' }}>Persoonsgegevens wijzigen</h3>
 
       {/* Phone — direct save */}
       <div style={{ background: '#f4f6f9', borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
@@ -1288,9 +1288,9 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
             onClick={() => onChange(dest)}
             style={{
               flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 700,
-              border: value === dest ? '1.5px solid #0a7c6e' : '0.5px solid rgba(10,34,64,0.2)',
-              background: value === dest ? '#e6f7f5' : 'white',
-              color: value === dest ? '#0a7c6e' : '#7090b0',
+              border: value === dest ? '1.5px solid #19499e' : '0.5px solid rgba(10,34,64,0.2)',
+              background: value === dest ? '#eaf1fb' : 'white',
+              color: value === dest ? '#19499e' : '#7090b0',
               cursor: 'pointer',
             }}
           >
@@ -1306,14 +1306,14 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         <ReservationInfo />
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0a2240' }}>Boottijden wijzigen</h3>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#142440' }}>Boottijden wijzigen</h3>
           <button
             type="button"
             onClick={syncFerryDates}
             disabled={ferrySyncing}
             style={{
-              fontSize: 12, fontWeight: 600, color: '#0a7c6e',
-              background: '#e6f7f5', border: '1px solid #0a7c6e',
+              fontSize: 12, fontWeight: 600, color: '#19499e',
+              background: '#eaf1fb', border: '1px solid #19499e',
               borderRadius: 7, padding: '6px 12px', cursor: ferrySyncing ? 'not-allowed' : 'pointer',
               opacity: ferrySyncing ? 0.6 : 1,
             }}
@@ -1323,7 +1323,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         </div>
 
         {isCheckedIn && (
-          <div style={{ background: '#e6f1fb', border: '1.5px solid #1a6bb5', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#0a2240', marginBottom: 16 }}>
+          <div style={{ background: '#e6f1fb', border: '1.5px solid #1a6bb5', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#142440', marginBottom: 16 }}>
             U bent ingecheckt. Alleen de <strong>terugreis</strong> kan worden gewijzigd.
           </div>
         )}
@@ -1398,7 +1398,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       <div style={S.page}><div style={{ ...S.card, textAlign: 'center' }}>
         <Logo />
         <div style={{ background: '#f4f6f9', borderRadius: 10, padding: '14px 18px', marginBottom: 20, textAlign: 'left' }}>
-          <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 15, color: '#0a2240', marginBottom: 4 }}>{res?.reference}</div>
+          <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 15, color: '#142440', marginBottom: 4 }}>{res?.reference}</div>
           <div style={{ fontSize: 13, color: '#7090b0' }}>{res?.first_name} {res?.last_name}</div>
           <div style={{ fontSize: 12, color: '#7090b0', marginTop: 4 }}>
             {fmtDate(res.arrival_date?.slice(0, 10))} → {fmtDate(res.departure_date?.slice(0, 10))}
@@ -1408,7 +1408,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         <div style={{ width: 56, height: 56, borderRadius: '50%', background: isCancelled ? '#fdeaea' : '#f4f6f9', color: isCancelled ? '#c83232' : '#7090b0', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
           <LockClosedIcon className="w-7 h-7" />
         </div>
-        <h2 style={{ margin: '0 0 8px', color: '#0a2240', fontSize: 18 }}>
+        <h2 style={{ margin: '0 0 8px', color: '#142440', fontSize: 18 }}>
           {isCancelled ? 'Reservering geannuleerd' : 'Reservering afgelopen'}
         </h2>
         <p style={{ color: '#7090b0', fontSize: 14, marginBottom: 24 }}>
@@ -1425,7 +1425,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               padding: '12px 14px', borderRadius: 10, textDecoration: 'none', fontSize: 14, fontWeight: 600,
-              color: '#0a2240', border: '0.5px solid rgba(10,34,64,0.2)', background: 'white',
+              color: '#142440', border: '0.5px solid rgba(10,34,64,0.2)', background: 'white',
             }}
           >
             <DocumentTextIcon className="w-4 h-4" />Factuur bekijken
@@ -1449,7 +1449,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               padding: '12px 14px', borderRadius: 10, textDecoration: 'none', fontSize: 14, fontWeight: 600,
-              color: '#0a7c6e', border: '0.5px solid #0a7c6e', background: '#e6f7f5',
+              color: '#19499e', border: '0.5px solid #19499e', background: '#eaf1fb',
             }}
           >
             <PlusIcon className="w-4 h-4" />Nieuwe reservering maken
@@ -1499,7 +1499,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       <Logo />
 
       <div style={{ background: '#f4f6f9', borderRadius: 10, padding: '12px 18px', marginBottom: 24 }}>
-        <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 15, color: '#0a2240', marginBottom: 4 }}>{res?.reference}</div>
+        <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 15, color: '#142440', marginBottom: 4 }}>{res?.reference}</div>
         <div style={{ fontSize: 13, color: '#7090b0' }}>{res?.first_name} {res?.last_name}</div>
         {duringStay && (
           <div style={{ marginTop: 6, fontSize: 12, color: '#7a5010', background: '#fff8e6', borderRadius: 6, padding: '4px 8px', display: 'inline-block' }}>
@@ -1533,9 +1533,9 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
               opacity: disabled ? 0.6 : 1,
             }}
           >
-            <span style={{ flexShrink: 0, color: disabled ? '#7090b0' : '#0a2240' }}>{icon}</span>
+            <span style={{ flexShrink: 0, color: disabled ? '#7090b0' : '#142440' }}>{icon}</span>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: disabled ? '#7090b0' : '#0a2240', marginBottom: 2 }}>{label}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: disabled ? '#7090b0' : '#142440', marginBottom: 2 }}>{label}</div>
               <div style={{ fontSize: 12, color: disabled ? '#c0c8d4' : '#7090b0' }}>{sub}</div>
             </div>
             {!disabled && <ArrowRightIcon className="w-5 h-5" style={{ marginLeft: 'auto', color: '#7090b0' }} />}
@@ -1552,7 +1552,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
           style={{
             flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             padding: '11px 14px', borderRadius: 10, textDecoration: 'none', fontSize: 13, fontWeight: 600,
-            color: '#0a2240', border: '0.5px solid rgba(10,34,64,0.18)', background: 'white',
+            color: '#142440', border: '0.5px solid rgba(10,34,64,0.18)', background: 'white',
           }}
         >
           <DocumentTextIcon className="w-4 h-4" />Factuur
@@ -1562,7 +1562,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
           style={{
             flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             padding: '11px 14px', borderRadius: 10, textDecoration: 'none', fontSize: 13, fontWeight: 600,
-            color: '#0a7c6e', border: '0.5px solid #0a7c6e', background: '#e6f7f5',
+            color: '#19499e', border: '0.5px solid #19499e', background: '#eaf1fb',
           }}
         >
           <PlusIcon className="w-4 h-4" />Nieuwe reservering

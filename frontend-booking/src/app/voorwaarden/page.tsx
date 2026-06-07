@@ -22,10 +22,10 @@ export default function VoorwaardenPage() {
         {/* Header */}
         <div style={{ marginBottom: 28 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 6 }}>
-            <div style={{ width: 40, height: 40, background: '#0a2240', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, color: '#e8a020', flexShrink: 0 }}>AB</div>
+            <div style={{ width: 40, height: 40, background: '#142440', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, color: '#e8a020', flexShrink: 0 }}>AB</div>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: 0.5 }}>Autostalling De Bazuin</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#0a2240', lineHeight: 1.1 }}>Algemene Voorwaarden</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#142440', lineHeight: 1.1 }}>Algemene Voorwaarden</div>
             </div>
           </div>
           <div style={{ borderBottom: '1.5px solid rgba(10,34,64,0.08)', marginTop: 16 }} />
@@ -43,7 +43,7 @@ export default function VoorwaardenPage() {
           ) : (
             <div style={{ color: '#7090b0', fontSize: 14 }}>
               De algemene voorwaarden zijn nog niet beschikbaar. Neem contact op via{' '}
-              <a href="mailto:info@parkeren-harlingen.nl" style={{ color: '#0a7c6e' }}>info@parkeren-harlingen.nl</a>.
+              <a href="mailto:info@parkeren-harlingen.nl" style={{ color: '#19499e' }}>info@parkeren-harlingen.nl</a>.
             </div>
           )}
         </div>

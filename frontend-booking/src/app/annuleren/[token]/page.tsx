@@ -38,8 +38,8 @@ export default function CancellationPage({ params }: { params: { token: string }
   if (done) return (
     <div style={S.page}>
       <div style={{ ...S.card, textAlign: 'center' }}>
-        <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#e6f7f5', color: '#0a7c6e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}><CheckIcon className="w-7 h-7" /></div>
-        <h2 style={{ margin: '0 0 8px', color: '#0a2240' }}>Reservering geannuleerd</h2>
+        <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eaf1fb', color: '#19499e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}><CheckIcon className="w-7 h-7" /></div>
+        <h2 style={{ margin: '0 0 8px', color: '#142440' }}>Reservering geannuleerd</h2>
         <p style={{ color: '#7090b0', fontSize: 14 }}>U ontvangt een bevestiging per e-mail met informatie over de restitutie.</p>
         {data?.refundInfo && data.refundInfo.refundAmount > 0 && (
           <div style={{ marginTop: 16, padding: '12px 16px', background: '#f4f6f9', borderRadius: 8, fontSize: 13 }}>
@@ -71,13 +71,13 @@ export default function CancellationPage({ params }: { params: { token: string }
     <div style={S.page}>
       <div style={S.card}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <div style={{ width: 44, height: 44, background: '#e8a020', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, color: '#0a2240', margin: '0 auto 12px' }}>AB</div>
-          <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 800, color: '#0a2240' }}>Reservering annuleren</h2>
+          <div style={{ width: 44, height: 44, background: '#19499e', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, color: '#ffffff', margin: '0 auto 12px' }}>AB</div>
+          <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 800, color: '#142440' }}>Reservering annuleren</h2>
           <p style={{ margin: 0, color: '#7090b0', fontSize: 13 }}>Autostalling De Bazuin</p>
         </div>
 
         <div style={{ background: '#f4f6f9', borderRadius: 10, padding: '16px 18px', marginBottom: 20 }}>
-          <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 16, color: '#0a2240', marginBottom: 10 }}>{res.reference}</div>
+          <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 16, color: '#142440', marginBottom: 10 }}>{res.reference}</div>
           {[
             ['Naam', `${res.first_name} ${res.last_name}`],
             ['Aankomst', new Date(res.arrival_date).toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })],
@@ -105,8 +105,8 @@ export default function CancellationPage({ params }: { params: { token: string }
 
         {res.refundInfo && !isLocked && !isImported && (
           <div style={{
-            background: res.payment_status !== 'paid' ? '#f4f6f9' : res.refundInfo.refundPct > 0 ? '#e6f7f5' : '#fdeaea',
-            border: `0.5px solid ${res.payment_status !== 'paid' ? 'rgba(10,34,64,0.15)' : res.refundInfo.refundPct > 0 ? '#0a7c6e' : '#8a2020'}`,
+            background: res.payment_status !== 'paid' ? '#f4f6f9' : res.refundInfo.refundPct > 0 ? '#eaf1fb' : '#fdeaea',
+            border: `0.5px solid ${res.payment_status !== 'paid' ? 'rgba(10,34,64,0.15)' : res.refundInfo.refundPct > 0 ? '#19499e' : '#8a2020'}`,
             borderRadius: 8, padding: '12px 14px', marginBottom: 20, fontSize: 13,
           }}>
             {res.payment_status !== 'paid' ? (
@@ -116,7 +116,7 @@ export default function CancellationPage({ params }: { params: { token: string }
               </>
             ) : (
               <>
-                <div style={{ fontWeight: 700, marginBottom: 4, color: res.refundInfo.refundPct > 0 ? '#0a7c6e' : '#8a2020' }}>
+                <div style={{ fontWeight: 700, marginBottom: 4, color: res.refundInfo.refundPct > 0 ? '#19499e' : '#8a2020' }}>
                   {res.refundInfo.refundPct > 0 ? `Restitutie: € ${res.refundInfo.refundAmount.toFixed(2)} (${res.refundInfo.refundPct}%)` : 'Geen restitutie van toepassing'}
                 </div>
                 <div style={{ color: '#7090b0', fontSize: 12 }}>{res.refundInfo.policyDescription}</div>
@@ -129,7 +129,7 @@ export default function CancellationPage({ params }: { params: { token: string }
         {isImported ? (
           <div style={{ background: '#fff8e6', border: '1.5px solid #e8a020', borderRadius: 10, padding: '18px 20px', textAlign: 'center' }}>
             <div style={{ fontSize: 24, marginBottom: 10 }}>📧</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#0a2240', marginBottom: 8 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#142440', marginBottom: 8 }}>
               Annuleer via uw originele bevestigingsmail
             </div>
             <div style={{ fontSize: 13, color: '#556070', lineHeight: 1.6 }}>
@@ -142,8 +142,8 @@ export default function CancellationPage({ params }: { params: { token: string }
           </div>
         ) : isLocked ? (
           <div style={{ background: '#f4f6f9', border: '1.5px solid rgba(10,34,64,0.15)', borderRadius: 10, padding: '16px 18px', textAlign: 'center' }}>
-            <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center', color: '#0a2240' }}><LockClosedIcon className="w-7 h-7" /></div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#0a2240', marginBottom: 6 }}>Annuleren niet meer mogelijk</div>
+            <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center', color: '#142440' }}><LockClosedIcon className="w-7 h-7" /></div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#142440', marginBottom: 6 }}>Annuleren niet meer mogelijk</div>
             <div style={{ fontSize: 13, color: '#7090b0' }}>
               {isDuringStay
                 ? 'Annuleren is niet mogelijk tijdens uw verblijf.'

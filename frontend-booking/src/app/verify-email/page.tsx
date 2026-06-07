@@ -37,27 +37,27 @@ export default function VerifyEmailPage() {
     <div style={S.page}>
       <div style={S.card}>
         {/* Logo */}
-        <div style={{ width: 44, height: 44, background: '#e8a020', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, color: '#0a2240', margin: '0 auto 20px' }}>AB</div>
+        <div style={{ width: 44, height: 44, background: '#19499e', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, color: '#ffffff', margin: '0 auto 20px' }}>AB</div>
         <p style={{ margin: '0 0 24px', color: '#7090b0', fontSize: 13 }}>Autostalling De Bazuin</p>
 
         {status === 'loading' && (
           <>
             <div style={{ fontSize: 32, marginBottom: 16 }}>⏳</div>
-            <h2 style={{ margin: '0 0 8px', color: '#0a2240' }}>Verificatie bezig...</h2>
+            <h2 style={{ margin: '0 0 8px', color: '#142440' }}>Verificatie bezig...</h2>
             <p style={{ color: '#7090b0', fontSize: 14 }}>Even geduld a.u.b.</p>
           </>
         )}
 
         {status === 'success' && (
           <>
-            <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#e6f7f5', color: '#0a7c6e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: 26 }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eaf1fb', color: '#19499e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: 26 }}>
               ✓
             </div>
-            <h2 style={{ margin: '0 0 8px', color: '#0a2240' }}>E-mailadres bevestigd!</h2>
+            <h2 style={{ margin: '0 0 8px', color: '#142440' }}>E-mailadres bevestigd!</h2>
             <p style={{ color: '#7090b0', fontSize: 14, marginBottom: 12 }}>
               Uw e-mailadres is succesvol gewijzigd naar:
             </p>
-            <div style={{ background: '#e6f7f5', borderRadius: 8, padding: '10px 16px', fontSize: 14, fontWeight: 700, color: '#0a7c6e', marginBottom: 24 }}>
+            <div style={{ background: '#eaf1fb', borderRadius: 8, padding: '10px 16px', fontSize: 14, fontWeight: 700, color: '#19499e', marginBottom: 24 }}>
               {newEmail}
             </div>
             <p style={{ color: '#7090b0', fontSize: 13 }}>U kunt dit venster sluiten.</p>
@@ -69,7 +69,7 @@ export default function VerifyEmailPage() {
             <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fdeaea', color: '#c83232', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: 26 }}>
               ✗
             </div>
-            <h2 style={{ margin: '0 0 8px', color: '#0a2240' }}>Verificatie mislukt</h2>
+            <h2 style={{ margin: '0 0 8px', color: '#142440' }}>Verificatie mislukt</h2>
             <p style={{ color: '#8a2020', fontSize: 14, marginBottom: 20 }}>{errorMsg}</p>
             <p style={{ color: '#7090b0', fontSize: 12 }}>
               De link is mogelijk verlopen of al eerder gebruikt.<br />

@@ -58,7 +58,7 @@ function FerryPicker({ label, date, destination, direction, currentTime, selecte
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>{label}</div>
-      {currentTime && <div style={{ fontSize: 12, color: '#7090b0', marginBottom: 8 }}>Huidig: <strong style={{ color: '#0a2240' }}>{fmtTime(currentTime)}</strong></div>}
+      {currentTime && <div style={{ fontSize: 12, color: '#7090b0', marginBottom: 8 }}>Huidig: <strong style={{ color: '#142440' }}>{fmtTime(currentTime)}</strong></div>}
       {loading && <div style={{ fontSize: 12, color: '#7090b0' }}>Laden…</div>}
       {!loading && !manual && schedules.length > 0 && (
         <>
@@ -67,10 +67,10 @@ function FerryPicker({ label, date, destination, direction, currentTime, selecte
               const time = s.departureTime?.slice(0, 5) || '';
               const sel = selectedTime === time;
               return (
-                <button key={s.id || time} onClick={() => onSelect(time)} style={{ padding: '8px 14px', borderRadius: 8, cursor: 'pointer', border: sel ? '2px solid #0a7c6e' : '1px solid rgba(10,34,64,0.15)', background: sel ? '#e6f7f5' : 'white', fontWeight: sel ? 800 : 600, color: sel ? '#0a7c6e' : '#0a2240', fontSize: 15, minWidth: 64, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                <button key={s.id || time} onClick={() => onSelect(time)} style={{ padding: '8px 14px', borderRadius: 8, cursor: 'pointer', border: sel ? '2px solid #19499e' : '1px solid rgba(10,34,64,0.15)', background: sel ? '#eaf1fb' : 'white', fontWeight: sel ? 800 : 600, color: sel ? '#19499e' : '#142440', fontSize: 15, minWidth: 64, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                   {time}
-                  {s.isFast && <span style={{ fontSize: 9, color: '#0a7c6e', fontWeight: 700 }}>SNEL</span>}
-                  {sel && <CheckIcon style={{ width: 11, height: 11, color: '#0a7c6e' }} />}
+                  {s.isFast && <span style={{ fontSize: 9, color: '#19499e', fontWeight: 700 }}>SNEL</span>}
+                  {sel && <CheckIcon style={{ width: 11, height: 11, color: '#19499e' }} />}
                 </button>
               );
             })}
@@ -81,12 +81,12 @@ function FerryPicker({ label, date, destination, direction, currentTime, selecte
       {(!loading && (schedules.length === 0 || manual)) && (
         <>
           {schedules.length === 0 && !loading && <div style={{ fontSize: 12, color: '#7090b0', marginBottom: 6 }}>Geen rooster gevonden — voer handmatig in:</div>}
-          <input type="time" value={selectedTime} onChange={e => onSelect(e.target.value)} style={{ width: '100%', padding: '9px 12px', border: '1px solid rgba(10,34,64,0.2)', borderRadius: 8, fontSize: 14, color: '#0a2240', boxSizing: 'border-box' }} />
+          <input type="time" value={selectedTime} onChange={e => onSelect(e.target.value)} style={{ width: '100%', padding: '9px 12px', border: '1px solid rgba(10,34,64,0.2)', borderRadius: 8, fontSize: 14, color: '#142440', boxSizing: 'border-box' }} />
           {manual && schedules.length > 0 && <button type="button" onClick={() => setManual(false)} style={{ fontSize: 12, color: '#9aafbf', background: 'none', border: 'none', cursor: 'pointer', marginTop: 4 }}>Terug naar rooster</button>}
         </>
       )}
       {selectedTime && (
-        <div style={{ marginTop: 8, fontSize: 13, color: '#0a7c6e', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>
+        <div style={{ marginTop: 8, fontSize: 13, color: '#19499e', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>
           <CheckIcon style={{ width: 14, height: 14 }} />Geselecteerd: {selectedTime}
         </div>
       )}
@@ -109,7 +109,7 @@ function FerryModal({ res, groupToken, onSaved, onClose }: {
   const DestToggle = ({ value, onChange }: { value: 'terschelling' | 'vlieland'; onChange: (d: 'terschelling' | 'vlieland') => void }) => (
     <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
       {(['terschelling', 'vlieland'] as const).map(d => (
-        <button key={d} type="button" onClick={() => onChange(d)} style={{ flex: 1, padding: '7px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: value === d ? '1.5px solid #0a7c6e' : '1px solid rgba(10,34,64,0.15)', background: value === d ? '#e6f7f5' : 'white', color: value === d ? '#0a7c6e' : '#7090b0', cursor: 'pointer' }}>
+        <button key={d} type="button" onClick={() => onChange(d)} style={{ flex: 1, padding: '7px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, border: value === d ? '1.5px solid #19499e' : '1px solid rgba(10,34,64,0.15)', background: value === d ? '#eaf1fb' : 'white', color: value === d ? '#19499e' : '#7090b0', cursor: 'pointer' }}>
           {d === 'terschelling' ? 'Terschelling' : 'Vlieland'}
         </button>
       ))}
@@ -130,7 +130,7 @@ function FerryModal({ res, groupToken, onSaved, onClose }: {
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto', padding: '20px 18px 28px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#0a2240' }}>⛴ Boottijden wijzigen</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#142440' }}>⛴ Boottijden wijzigen</div>
           <button onClick={onClose} style={{ background: '#f0f2f5', border: 'none', borderRadius: 20, width: 28, height: 28, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <XMarkIcon style={{ width: 14, height: 14, color: '#556070' }} />
           </button>
@@ -156,7 +156,7 @@ function FerryModal({ res, groupToken, onSaved, onClose }: {
           currentTime={res.ferry_return_time} selectedTime={returnTime} onSelect={setReturnTime}
         />
 
-        <button onClick={save} disabled={saving || (!outboundTime && !returnTime)} style={{ width: '100%', padding: '13px', borderRadius: 10, background: (saving || (!outboundTime && !returnTime)) ? '#ccc' : '#0a2240', color: 'white', border: 'none', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+        <button onClick={save} disabled={saving || (!outboundTime && !returnTime)} style={{ width: '100%', padding: '13px', borderRadius: 10, background: (saving || (!outboundTime && !returnTime)) ? '#ccc' : '#142440', color: 'white', border: 'none', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
           {saving ? 'Opslaan…' : <><CheckIcon style={{ width: 16, height: 16 }} />Boottijden opslaan</>}
         </button>
       </div>
@@ -198,7 +198,7 @@ function EvModal({ res, evServices, groupToken, onSaved, onClose }: {
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto', padding: '20px 18px 28px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#0a2240' }}>⚡ Auto opladen</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#142440' }}>⚡ Auto opladen</div>
           <button onClick={onClose} style={{ background: '#f0f2f5', border: 'none', borderRadius: 20, width: 28, height: 28, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <XMarkIcon style={{ width: 14, height: 14, color: '#556070' }} />
           </button>
@@ -237,7 +237,7 @@ function EvModal({ res, evServices, groupToken, onSaved, onClose }: {
                 <>
                   {battKwh && <div style={{ fontSize: 12, color: '#556070', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 5 }}><Battery50Icon style={{ width: 14, height: 14 }} />~{battKwh} kWh{kmPerKwh ? ` · ca. ${kmPerKwh} km/kWh` : ''}{!isBev ? ' · plug-in hybride' : ''}</div>}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 10, paddingTop: 4 }}>
-                    <button onClick={() => setEvSelections(prev => ({ ...prev, [v.id]: { serviceId: null } }))} style={{ padding: '8px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, border: !sel.serviceId ? '2px solid #0a2240' : '1px solid rgba(10,34,64,0.15)', background: !sel.serviceId ? '#0a2240' : 'white', color: !sel.serviceId ? 'white' : '#0a2240' }}>Geen laden</button>
+                    <button onClick={() => setEvSelections(prev => ({ ...prev, [v.id]: { serviceId: null } }))} style={{ padding: '8px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, border: !sel.serviceId ? '2px solid #142440' : '1px solid rgba(10,34,64,0.15)', background: !sel.serviceId ? '#142440' : 'white', color: !sel.serviceId ? 'white' : '#142440' }}>Geen laden</button>
                     {evServices.map((s: any) => {
                       const isSuggested = suggestedTier !== null && s.kwh === suggestedTier.kwh;
                       const isExtraTier = suggestedTier !== null && maxTier !== null && maxTier.kwh !== suggestedTier.kwh && s.kwh === maxTier.kwh;
@@ -245,12 +245,12 @@ function EvModal({ res, evServices, groupToken, onSaved, onClose }: {
                       const extraKm = battKwh && kmPerKwh ? Math.round(Math.min(s.kwh, battKwh) * kmPerKwh) : Math.round(s.kwh * 5);
                       return (
                         <button key={s.id} onClick={() => setEvSelections(prev => ({ ...prev, [v.id]: { serviceId: s.id, kwh: s.kwh } }))}
-                          style={{ position: 'relative', padding: '10px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, border: isSel ? '2px solid #0a7c6e' : '1px solid rgba(10,34,64,0.15)', background: isSel ? '#e6f7f5' : 'white', color: isSel ? '#0a7c6e' : '#0a2240' }}>
+                          style={{ position: 'relative', padding: '10px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, border: isSel ? '2px solid #19499e' : '1px solid rgba(10,34,64,0.15)', background: isSel ? '#eaf1fb' : 'white', color: isSel ? '#19499e' : '#142440' }}>
                           {isSuggested && !isSel && <div style={{ position: 'absolute', top: -9, left: '50%', transform: 'translateX(-50%)', background: '#3a80c0', color: 'white', fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 10, whiteSpace: 'nowrap' }}>aanbevolen</div>}
                           {isExtraTier && !isSel && <div style={{ position: 'absolute', top: -9, left: '50%', transform: 'translateX(-50%)', background: '#8a6020', color: 'white', fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 10, whiteSpace: 'nowrap' }}>{isBev ? 'meer bereik' : 'zeker vol'}</div>}
                           <div style={{ fontWeight: 800 }}>{s.kwh} kWh</div>
-                          <div style={{ fontSize: 11, color: isSel ? '#0a7c6e' : '#7090b0' }}>+€{parseFloat(s.price).toFixed(2)}</div>
-                          {extraKm > 0 && <div style={{ fontSize: 10, color: isSel ? '#0a7c6e' : '#7090b0', marginTop: 1 }}>+{extraKm} km</div>}
+                          <div style={{ fontSize: 11, color: isSel ? '#19499e' : '#7090b0' }}>+€{parseFloat(s.price).toFixed(2)}</div>
+                          {extraKm > 0 && <div style={{ fontSize: 10, color: isSel ? '#19499e' : '#7090b0', marginTop: 1 }}>+{extraKm} km</div>}
                         </button>
                       );
                     })}
@@ -266,12 +266,12 @@ function EvModal({ res, evServices, groupToken, onSaved, onClose }: {
                         <div>De geselecteerde hoeveelheid is groter dan de accucapaciteit. Wij laden wat er in past — doorgaans tot 100%. Het extra bereik bedraagt ca. +{realisticKm} km. Mocht er onverhoopt minder ingaan dan besteld, vindt er geen restitutie plaats.</div>
                       </div>
                     ) : (
-                      <div style={{ background: '#e6f7f5', border: '1px solid #0a7c6e', borderRadius: 8, padding: '9px 12px', fontSize: 12, color: '#0a5040', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 10 }}>
+                      <div style={{ background: '#eaf1fb', border: '1px solid #19499e', borderRadius: 8, padding: '9px 12px', fontSize: 12, color: '#123a80', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 10 }}>
                         <CheckIcon style={{ width: 13, height: 13, flexShrink: 0 }} />{svc.kwh} kWh laden · +{realisticKm} km realistisch extra bereik
                       </div>
                     );
                   })()}
-                  <button onClick={() => saveEv(v.id)} disabled={saving === v.id} style={{ width: '100%', padding: '10px', borderRadius: 9, background: saving === v.id ? '#ccc' : '#0a7c6e', color: 'white', border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  <button onClick={() => saveEv(v.id)} disabled={saving === v.id} style={{ width: '100%', padding: '10px', borderRadius: 9, background: saving === v.id ? '#ccc' : '#19499e', color: 'white', border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                     {saving === v.id ? 'Opslaan…' : <><CheckIcon style={{ width: 14, height: 14 }} />Laadkeuze opslaan</>}
                   </button>
                 </>
@@ -292,7 +292,7 @@ function Field({ label, value, onChange, placeholder, type = 'text' }: {
     <div>
       <div style={{ fontSize: 10, fontWeight: 700, color: '#9aafbf', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 3 }}>{label}</div>
       <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        style={{ width: '100%', padding: '9px 11px', border: '1px solid rgba(10,34,64,0.14)', borderRadius: 8, fontSize: 13, color: '#0a2240', background: 'white', boxSizing: 'border-box' as const, outline: 'none', fontWeight: 500 }} />
+        style={{ width: '100%', padding: '9px 11px', border: '1px solid rgba(10,34,64,0.14)', borderRadius: 8, fontSize: 13, color: '#142440', background: 'white', boxSizing: 'border-box' as const, outline: 'none', fontWeight: 500 }} />
     </div>
   );
 }
@@ -356,7 +356,7 @@ function ReservationCard({ res, evServices, groupToken, onSaved }: {
 
   const statusCfg: Record<string, { bg: string; color: string; label: string }> = {
     booked:     { bg: '#e8f0fe', color: '#1a4fa0', label: 'Geboekt' },
-    checked_in: { bg: '#e6f7f5', color: '#0a7c6e', label: 'Ingecheckt' },
+    checked_in: { bg: '#eaf1fb', color: '#19499e', label: 'Ingecheckt' },
     cancelled:  { bg: '#fdeaea', color: '#8a2020', label: 'Geannuleerd' },
     completed:  { bg: '#f4f6f9', color: '#7090b0', label: 'Afgerond' },
   };
@@ -371,9 +371,9 @@ function ReservationCard({ res, evServices, groupToken, onSaved }: {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: 800, fontSize: 13, color: '#0a2240' }}>{fmtDate(res.arrival_date)}</span>
+                <span style={{ fontWeight: 800, fontSize: 13, color: '#142440' }}>{fmtDate(res.arrival_date)}</span>
                 <span style={{ color: '#bcc8d4', fontSize: 11 }}>→</span>
-                <span style={{ fontWeight: 800, fontSize: 13, color: '#0a2240' }}>{fmtDate(res.departure_date)}</span>
+                <span style={{ fontWeight: 800, fontSize: 13, color: '#142440' }}>{fmtDate(res.departure_date)}</span>
                 {res.nights != null && <span style={{ fontSize: 10, background: '#eef1f6', borderRadius: 20, padding: '1px 7px', color: '#7090b0' }}>{res.nights + 1} dagen</span>}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
@@ -410,7 +410,7 @@ function ReservationCard({ res, evServices, groupToken, onSaved }: {
         <div style={{ padding: '14px' }}>
           {error && <div style={{ background: '#fdeaea', borderRadius: 8, padding: '8px 12px', color: '#8a2020', fontSize: 13, marginBottom: 12 }}>{error}</div>}
           {saved && (
-            <div style={{ background: '#e6f7f5', border: '1px solid #0a7c6e', borderRadius: 8, padding: '7px 12px', fontSize: 13, color: '#0a7c6e', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ background: '#eaf1fb', border: '1px solid #19499e', borderRadius: 8, padding: '7px 12px', fontSize: 13, color: '#19499e', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
               <CheckIcon style={{ width: 14, height: 14 }} />Opgeslagen ✓
             </div>
           )}
@@ -441,9 +441,9 @@ function ReservationCard({ res, evServices, groupToken, onSaved }: {
                   />
                 ))}
                 {isEditable && evServices.length > 0 && (res.vehicles || []).some((v: any) => vehicleEvStatus[v.id] !== false) && (
-                  <button onClick={() => setEvModal(true)} style={{ padding: '6px 11px', borderRadius: 8, border: '1px solid rgba(10,34,64,0.14)', background: '#f8fafc', color: '#0a7c6e', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <button onClick={() => setEvModal(true)} style={{ padding: '6px 11px', borderRadius: 8, border: '1px solid rgba(10,34,64,0.14)', background: '#f8fafc', color: '#19499e', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                     <BoltIcon style={{ width: 13, height: 13 }} />Opladen
-                    {res.vehicles?.some((v: any) => v.ev_service_id) && <CheckIcon style={{ width: 11, height: 11, color: '#0a7c6e' }} />}
+                    {res.vehicles?.some((v: any) => v.ev_service_id) && <CheckIcon style={{ width: 11, height: 11, color: '#19499e' }} />}
                   </button>
                 )}
                 {isEditable && hasChanges && (
@@ -489,7 +489,7 @@ export default function GroepWijzigenSinglePage({ params }: { params: { token: s
     <div style={{ minHeight: '100vh', background: '#f0f2f5', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div style={{ background: 'white', borderRadius: 14, padding: '32px 28px', maxWidth: 440, width: '100%', textAlign: 'center' }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
-        <h2 style={{ margin: '0 0 8px', color: '#0a2240' }}>Link niet gevonden</h2>
+        <h2 style={{ margin: '0 0 8px', color: '#142440' }}>Link niet gevonden</h2>
         <p style={{ color: '#7090b0', fontSize: 14 }}>{error}</p>
       </div>
     </div>
@@ -502,7 +502,7 @@ export default function GroepWijzigenSinglePage({ params }: { params: { token: s
     <div style={{ minHeight: '100vh', background: '#f0f2f5', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div style={{ background: 'white', borderRadius: 14, padding: '32px 28px', maxWidth: 440, width: '100%', textAlign: 'center' }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
-        <h2 style={{ margin: '0 0 8px', color: '#0a2240' }}>Boeking niet gevonden</h2>
+        <h2 style={{ margin: '0 0 8px', color: '#142440' }}>Boeking niet gevonden</h2>
         <p style={{ color: '#7090b0', fontSize: 14 }}>Deze link is niet geldig of de boeking bestaat niet meer.</p>
       </div>
     </div>
@@ -512,9 +512,9 @@ export default function GroepWijzigenSinglePage({ params }: { params: { token: s
     <div style={{ minHeight: '100vh', background: '#f0f2f5', padding: '20px 16px 48px' }}>
       <div style={{ maxWidth: 520, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-          <div style={{ width: 40, height: 40, background: '#0a2240', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, color: '#FFDD00', flexShrink: 0 }}>AB</div>
+          <div style={{ width: 40, height: 40, background: '#142440', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13, color: '#FFDD00', flexShrink: 0 }}>AB</div>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: '#0a2240', lineHeight: 1.2 }}>Gegevens wijzigen</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#142440', lineHeight: 1.2 }}>Gegevens wijzigen</div>
             <div style={{ fontSize: 12, color: '#9aafbf', marginTop: 1 }}>Autostalling De Bazuin · {group?.reference}</div>
           </div>
         </div>
@@ -522,7 +522,7 @@ export default function GroepWijzigenSinglePage({ params }: { params: { token: s
         <ReservationCard res={res} evServices={evServices} groupToken={params.token} onSaved={load} />
 
         <div style={{ textAlign: 'center', marginTop: 20, fontSize: 12, color: '#9aafbf' }}>
-          Vragen? Mail <a href="mailto:info@parkeren-harlingen.nl" style={{ color: '#0a7c6e', fontWeight: 600 }}>info@parkeren-harlingen.nl</a>
+          Vragen? Mail <a href="mailto:info@parkeren-harlingen.nl" style={{ color: '#19499e', fontWeight: 600 }}>info@parkeren-harlingen.nl</a>
         </div>
       </div>
     </div>

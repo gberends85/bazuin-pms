@@ -85,12 +85,11 @@ app.post(
                   const fmt = (d: string) => new Date(d).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
                   sendSimpleEmail(
                     email,
-                    `Uw betaling is ontvangen — wij nemen contact op (${reference})`,
+                    `Uw betaling is ontvangen — neem contact met ons op (${reference})`,
                     `<p>Beste ${escapeHtml(first_name)},</p>
                     <p>Wij hebben uw betaling van <strong>€ ${Number(total_price).toFixed(2).replace('.', ',')}</strong> ontvangen voor reservering <strong>${reference}</strong> (${fmt(arrival_date)} – ${fmt(departure_date)}).</p>
                     <p>Helaas was uw reservering op het moment van betaling al verlopen omdat de betalingstermijn was overschreden. Uw reservering staat daardoor op dit moment als geannuleerd.</p>
-                    <p><strong>Wij nemen zo spoedig mogelijk contact met u op</strong> om te bespreken hoe we dit voor u kunnen oplossen — of om uw betaling terug te storten als er geen plek meer beschikbaar is.</p>
-                    <p>Heeft u vragen? Bel of WhatsApp ons gerust.</p>
+                    <p><strong>Neem zo spoedig mogelijk contact met ons op via WhatsApp op 0517-412986</strong>, dan bespreken we hoe we dit voor u kunnen oplossen — of storten we uw betaling terug als er geen plek meer beschikbaar is.</p>
                     <p>Met vriendelijke groet,<br>Autostalling De Bazuin</p>`
                   ).catch(err => console.error('[Webhook] Klant-email na geannuleerde betaling mislukt:', err));
                 }

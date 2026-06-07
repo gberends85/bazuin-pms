@@ -103,9 +103,9 @@ function paymentStatusText(method: string | null, status: string | null): string
     return 'Reeds online voldaan.';
   }
   if (s === 'invoiced' || m === 'invoice') return 'Wordt per factuur afgehandeld.';
-  if (m === 'contant') return 'Nog te voldoen — contant bij afgeven.';
-  if (m === 'pin') return 'Nog te voldoen — pinnen bij afgeven.';
-  if (m === 'on_site' || s === 'on_site') return 'Nog te betalen bij afgeven (ter plekke).';
+  if (m === 'contant') return 'Nog te voldoen — contant bij afhalen.';
+  if (m === 'pin') return 'Nog te voldoen — pinnen bij afhalen.';
+  if (m === 'on_site' || s === 'on_site') return 'Nog te betalen bij afhalen (ter plekke).';
   return 'Moet nog betaald worden.';
 }
 

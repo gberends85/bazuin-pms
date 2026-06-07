@@ -96,11 +96,13 @@ router.get('/public/terms', async (_req, res: Response) => {
 
 // GET /public/reservation-name/:id — haal naam + referentie op (geen auth, UUID is de sleutel)
 router.get('/public/reservation-name/:id', async (req: Request, res: Response) => {
+  // Bewust GEEN e-mail/telefoon teruggeven: dit endpoint heeft geen auth (alleen de UUID),
+  // dus PII zou anders lekken aan iedereen die een reserverings-UUID kent. De gast-naam-UI
+  // gebruikt enkel referentie, datums en naam.
   const r = await query(
     `SELECT r.reference, r.arrival_date::text, r.departure_date::text,
             COALESCE(r.guest_first_name, c.first_name) AS first_name,
-            COALESCE(r.guest_last_name,  c.last_name)  AS last_name,
-            c.email, c.phone
+            COALESCE(r.guest_last_name,  c.last_name)  AS last_name
      FROM reservations r JOIN customers c ON c.id = r.customer_id
      WHERE r.id = $1 AND r.status NOT IN ('cancelled')`,
     [req.params.id]
@@ -3865,16 +3867,17 @@ router.get('/verify-email', async (req: Request, res: Response) => {
     'SELECT id FROM customers WHERE LOWER(email) = $1', [newEmail]
   );
   if (existing.rows.length > 0 && existing.rows[0].id !== details.customerId) {
-    // Koppel deze reservering aan de bestaande klant met dit e-mailadres
-    // (i.p.v. het adres te dubbelen → zou de unique-constraint schenden)
-    await query(
-      'UPDATE reservations SET customer_id = $1, updated_at = NOW() WHERE id = $2',
-      [existing.rows[0].id, mod.reservation_id]
-    );
-  } else {
-    // Werk het e-mailadres van de huidige klant bij
-    await query('UPDATE customers SET email = $1, updated_at = NOW() WHERE id = $2', [newEmail, details.customerId]);
+    // Veiligheid: NIET automatisch samenvoegen met een bestaand account.
+    // Anders zou deze reservering onder een ander (mogelijk gedeeld/hergebruikt)
+    // klantaccount belanden, waarmee diens hele boekingsgeschiedenis + tokens
+    // toegankelijk worden (zie all-for-email). Vereist handmatige afhandeling.
+    return res.status(409).json({
+      error: 'Dit e-mailadres is al in gebruik bij een ander account. Neem contact met ons op om de wijziging te voltooien.',
+    });
   }
+
+  // Werk het e-mailadres van de huidige klant bij
+  await query('UPDATE customers SET email = $1, updated_at = NOW() WHERE id = $2', [newEmail, details.customerId]);
   await query(`UPDATE reservation_modifications SET status = 'completed' WHERE id = $1`, [mod.id]);
 
   return res.json({ success: true, newEmail });
@@ -3884,9 +3887,14 @@ router.get('/verify-email', async (req: Request, res: Response) => {
 // CUSTOMER — ALL RESERVATIONS FOR SAME EMAIL
 // ============================================================
 router.get('/reservations/token/:token/all-for-email', async (req: Request, res: Response) => {
+  // Geef het cancellation_token ALLEEN terug voor de reservering waarvan de aanvrager
+  // het token al heeft. Andere reserveringen van dezelfde klant worden wel getoond
+  // (referentie/datums/status), maar zonder hun token — anders zou één token cancel/
+  // wijzig/factuur-toegang geven tot álle boekingen van die klant.
   const result = await query(
     `SELECT r.id, r.reference, r.arrival_date, r.departure_date, r.status,
-            r.total_price, r.cancellation_token, r.refund_amount, r.cancelled_at
+            r.total_price, r.refund_amount, r.cancelled_at,
+            CASE WHEN r.cancellation_token = $1 THEN r.cancellation_token ELSE NULL END AS cancellation_token
      FROM reservations r
      JOIN customers c ON c.id = r.customer_id
      WHERE c.id = (

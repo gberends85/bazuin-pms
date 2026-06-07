@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { api } from '@/lib/api';
+import { api, getToken } from '@/lib/api';
 import { Home, Lightbulb, X } from 'lucide-react';
 
 // ── Types ────────────────────────────────────────────────────
@@ -335,7 +335,7 @@ export default function WebsiteContentPage() {
 
   useEffect(() => {
     fetch('/api/v1/admin/website-content', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('bazuin_token')}` },
+      headers: { Authorization: `Bearer ${(getToken() || '')}` },
     })
       .then(r => r.json())
       .then(d => {
@@ -353,7 +353,7 @@ export default function WebsiteContentPage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('bazuin_token')}`,
+          Authorization: `Bearer ${(getToken() || '')}`,
         },
         body: JSON.stringify(data),
       });

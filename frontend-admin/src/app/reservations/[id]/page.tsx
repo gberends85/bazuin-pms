@@ -5,7 +5,7 @@ import PlateTooltip from '@/components/ui/PlateTooltip';
 import Modal from '@/components/ui/Modal';
 import Toaster, { toast, toastError } from '@/components/ui/Toast';
 import RefundPolicyInfo from '@/components/ui/RefundPolicyInfo';
-import { api } from '@/lib/api';
+import { api, getToken } from '@/lib/api';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -111,8 +111,8 @@ export default function ReservationDetailPage({ params }: { params: { id: string
     setFerryScheduleLoading(true);
     try {
       const [outRes, retRes] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/ferries?date=${outDate}&destination=${outDest}&direction=outbound`, { headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('bazuin_token') : ''}` } }),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/ferries?date=${retDate}&destination=${retDest}&direction=return`, { headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('bazuin_token') : ''}` } }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/ferries?date=${outDate}&destination=${outDest}&direction=outbound`, { headers: { Authorization: `Bearer ${getToken() || ''}` } }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/ferries?date=${retDate}&destination=${retDest}&direction=return`, { headers: { Authorization: `Bearer ${getToken() || ''}` } }),
       ]);
       const outData = await outRes.json().catch(() => ({}));
       const retData = await retRes.json().catch(() => ({}));

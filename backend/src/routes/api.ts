@@ -697,6 +697,7 @@ const CreateReservationSchema = z.object({
     lastName: z.string().min(1),
     email: z.string().email(),
     phone: z.string().optional(),
+    company: z.string().optional(),
   }),
   vehicles: z.array(z.object({
     licensePlate: z.string().min(1),
@@ -845,6 +846,11 @@ router.post('/reservations', async (req: Request, res: Response) => {
     );
 
     const reservation = resResult.rows[0];
+
+    // Bedrijfsnaam (factuur op bedrijfsnaam) per reservering vastleggen
+    if (data.customer.company && data.customer.company.trim()) {
+      await client.query(`UPDATE reservations SET guest_company = $1 WHERE id = $2`, [data.customer.company.trim(), reservation.id]);
+    }
 
     // Create vehicles
     for (let i = 0; i < data.vehicles.length; i++) {
@@ -6308,6 +6314,7 @@ router.post('/admin/umbraco/vehicle-repair-scan', requireAuth, async (req: Reque
     await query(`ALTER TABLE contract_invoices ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`);
     await query(`ALTER TABLE contract_invoices ADD COLUMN IF NOT EXISTS payment_link_url TEXT`);
     await query(`ALTER TABLE contract_invoices ADD COLUMN IF NOT EXISTS stripe_payment_link_id VARCHAR(60)`);
+    await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS guest_company VARCHAR(160)`);
     await query(`CREATE TABLE IF NOT EXISTS pending_contract_invoices (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       contract_customer_id UUID REFERENCES contract_customers(id) ON DELETE CASCADE,

@@ -204,6 +204,7 @@ export async function generateInvoiceHtml(token: string): Promise<string | null>
 
   <table class="meta-table">
     <tbody>
+      ${r.guest_company ? `<tr><td>Bedrijf</td><td><strong>${esc(r.guest_company)}</strong></td></tr>` : ''}
       <tr><td>Klant</td><td><strong>${esc(r.first_name)} ${esc(r.last_name)}</strong></td></tr>
       <tr><td>E-mail</td><td>${esc(r.email)}</td></tr>
       ${r.phone ? `<tr><td>Telefoon</td><td>${esc(r.phone)}</td></tr>` : ''}
@@ -341,6 +342,7 @@ export async function generateCreditNoteHtml(token: string): Promise<string | nu
 
   <table class="meta-table">
     <tbody>
+      ${r.guest_company ? `<tr><td>Bedrijf</td><td><strong>${esc(r.guest_company)}</strong></td></tr>` : ''}
       <tr><td>Klant</td><td><strong>${esc(r.first_name)} ${esc(r.last_name)}</strong></td></tr>
       <tr><td>E-mail</td><td>${esc(r.email)}</td></tr>
       <tr><td style="padding-top:4mm">Creditnotadatum</td><td style="padding-top:4mm">${creditDate}</td></tr>

@@ -224,6 +224,8 @@ interface BookingState {
   phone: string;
   payMethod: string;
   note: string;
+  companyInvoice: boolean;
+  billingCompany: string;
 }
 
 const INIT: BookingState = {
@@ -236,6 +238,7 @@ const INIT: BookingState = {
   firstName: '', lastName: '', email: '', phone: '',
   payMethod: 'ideal',
   note: '',
+  companyInvoice: false, billingCompany: '',
 };
 
 // ── Officiële betaallogo's ────────────────────────────────────
@@ -561,7 +564,7 @@ export default function BookingPage() {
         ferryReturnCustomTime: state.ferryRetCustomTime || undefined,
         paymentMethod: state.payMethod,
         customerNote: state.note || undefined,
-        customer: { firstName: state.firstName, lastName: state.lastName, email: state.email, phone: state.phone },
+        customer: { firstName: state.firstName, lastName: state.lastName, email: state.email, phone: state.phone, company: state.companyInvoice && state.billingCompany.trim() ? state.billingCompany.trim() : undefined },
         vehicles: state.vehicles.map(v => {
           const evSvc = evServices.find(s => s.kwh === v.evKwh);
           return { licensePlate: v.plate, evServiceId: evSvc?.id, evKwh: v.evKwh };
@@ -1255,6 +1258,20 @@ export default function BookingPage() {
               <div>
                 <label style={S.label}>Telefoonnummer</label>
                 <input type="tel" value={state.phone} onChange={e => upd('phone', e.target.value)} placeholder="+31 6 12345678" style={S.input} />
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#142440', fontWeight: 600 }}>
+                  <input type="checkbox" checked={state.companyInvoice}
+                    onChange={e => { upd('companyInvoice', e.target.checked); if (!e.target.checked) upd('billingCompany', ''); }}
+                    style={{ width: 16, height: 16, accentColor: '#19499e', cursor: 'pointer' }} />
+                  Factuur op bedrijfsnaam
+                </label>
+                {state.companyInvoice && (
+                  <div style={{ marginTop: 8 }}>
+                    <label style={S.label}>Bedrijfsnaam</label>
+                    <input value={state.billingCompany} onChange={e => upd('billingCompany', e.target.value)} placeholder="Bedrijfsnaam B.V." style={S.input} />
+                  </div>
+                )}
               </div>
               <div style={{ marginTop: 12 }}>
                 <label style={S.label}>Opmerking <span style={{ fontWeight: 400, color: '#7090b0' }}>(optioneel)</span></label>

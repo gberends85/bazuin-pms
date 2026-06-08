@@ -37,8 +37,8 @@ export default async function RoutePage() {
 
       <div style={{ height: 450, width: '100%' }}>
         <iframe
-          title={`Locatie ${business.name}`}
-          src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2355.2!2d5.4131!3d53.1741!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x47f4f94b9ba7b7d9%3A0x3a7a858d2a504e3c!2sAutostalling+De+Bazuin!5e0!3m2!1snl!2snl!4v1700000000000"
+          title={`Autoroute vanaf de veerbootterminal naar ${business.name}`}
+          src="https://maps.google.com/maps?saddr=Waddenpromenade,+Harlingen&daddr=Zeilmakersstraat+2,+8861+SE+Harlingen&dirflg=d&output=embed"
           width="100%" height="450" style={{ border: 0, display: 'block' }}
           allowFullScreen loading="lazy" referrerPolicy="no-referrer-when-downgrade"
         />

@@ -1567,7 +1567,7 @@ function SuccessScreen({ result, email, state, grandTotal, onNew }: { result: an
         · Check uw e-mail voor alle details en de annuleringslink<br />
         · Parkeer bij aankomst op de <strong>geel gemarkeerde vakken</strong> op het buitenterrein<br />
         · Werp de <strong>kale autosleutel</strong> in de beveiligde afgiftekluis — geen hoesje of envelop<br />
-        · Bij vertrek staat uw auto klaar — bel aan bij de intercom als de deur gesloten is
+        · We zetten uw auto voor vertrek klaar, vaak zijn we aanwezig en soms sturen we een code voor de sleutel. Geen code en de deur dicht? Dan belt u aan bij de intercom.
       </div>
       <button
         onClick={onNew}

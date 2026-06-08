@@ -200,6 +200,7 @@ export const api = {
     addVehicleStay: (id: string, d: any) => req<any>(`/admin/contract-customers/${id}/vehicle-stays`, { method: 'POST', body: JSON.stringify(d) }),
     finalizeInvoice: (id: string, from: string, to: string, evLines?: { description: string; kwh: number; ratePerKwh: number }[]) => req<any>(`/admin/contract-customers/${id}/invoice`, { method: 'POST', body: JSON.stringify({ from, to, evLines: evLines ?? [] }) }),
     invoicedPeriods: (id: string) => req<{ invoice_number: string; period_from: string; period_to: string }[]>(`/admin/contract-customers/${id}/invoiced-periods`),
+    setAutoInvoice: (id: string, d: { enabled: boolean; intervalMonths: number; startDate: string | null }) => req<{ ok: boolean }>(`/admin/contract-customers/${id}/auto-invoice`, { method: 'PUT', body: JSON.stringify(d) }),
   },
   contractVehicleStays: {
     update: (id: string, d: any) => req<any>(`/admin/contract-vehicle-stays/${id}`, { method: 'PUT', body: JSON.stringify(d) }),
@@ -208,6 +209,13 @@ export const api = {
   contractInvoices: {
     list: (customerId?: string) => req<any[]>(`/admin/contract-invoices${customerId ? '?customer_id=' + customerId : ''}`),
     remove: (id: string) => req<any>(`/admin/contract-invoices/${id}`, { method: 'DELETE' }),
+    sendEmail: (id: string) => req<{ ok: boolean; email: string }>(`/admin/contract-invoices/${id}/send-email`, { method: 'POST' }),
+  },
+  pendingContractInvoices: {
+    list: () => req<any[]>('/admin/pending-contract-invoices'),
+    run: () => req<{ created: number; details: string[] }>('/admin/pending-contract-invoices/run', { method: 'POST' }),
+    reject: (id: string) => req<{ ok: boolean }>(`/admin/pending-contract-invoices/${id}/reject`, { method: 'POST' }),
+    markApproved: (id: string, invoiceNumber: string) => req<{ ok: boolean }>(`/admin/pending-contract-invoices/${id}/mark-approved`, { method: 'POST', body: JSON.stringify({ invoiceNumber }) }),
   },
   contractEvSessions: {
     list: (customerId: string, from: string, to: string) =>

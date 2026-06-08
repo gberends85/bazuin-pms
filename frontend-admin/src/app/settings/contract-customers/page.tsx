@@ -51,7 +51,17 @@ export default function ContractCustomersPage() {
         next_year_high_season_rate: parseFloat(c.next_year_high_season_rate) || 0,
         season_start_date: c.season_start_date || null,
       });
-      setItems(prev => prev.map(x => x.id === c.id ? { ...updated, invoice_count: c.invoice_count } : x));
+      await api.contractCustomers.setAutoInvoice(c.id, {
+        enabled: !!c.auto_invoice_enabled,
+        intervalMonths: parseInt(c.auto_invoice_interval_months) || 3,
+        startDate: c.auto_invoice_start_date || null,
+      });
+      setItems(prev => prev.map(x => x.id === c.id ? {
+        ...updated, invoice_count: c.invoice_count,
+        auto_invoice_enabled: c.auto_invoice_enabled,
+        auto_invoice_interval_months: c.auto_invoice_interval_months,
+        auto_invoice_start_date: c.auto_invoice_start_date,
+      } : x));
       toast(`${c.name} opgeslagen ✓`);
     } catch (e: any) { toastError(e.message); }
     finally { setSaving(null); }
@@ -285,6 +295,26 @@ export default function ContractCustomersPage() {
                       </label>
                     </>
                   )}
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: '0.5px solid rgba(10,34,64,0.08)', width: '100%' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#0a2240', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={!!c.auto_invoice_enabled} onChange={e => update(c.id, 'auto_invoice_enabled', e.target.checked)} />
+                      Automatisch factureren (concept ter goedkeuring)
+                    </label>
+                    {!!c.auto_invoice_enabled && (
+                      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8 }}>
+                        <label style={lblSt}>Elke (maanden)
+                          <input type="number" min="1" max="12" value={c.auto_invoice_interval_months ?? 3}
+                            onChange={e => update(c.id, 'auto_invoice_interval_months', e.target.value)}
+                            style={{ ...inputSt, width: 60, textAlign: 'right' }} />
+                        </label>
+                        <label style={lblSt}>Startdatum eerste periode
+                          <input type="date" value={(c.auto_invoice_start_date || '').slice(0, 10)}
+                            onChange={e => update(c.id, 'auto_invoice_start_date', e.target.value)}
+                            style={{ ...inputSt, width: 150 }} />
+                        </label>
+                      </div>
+                    )}
+                  </div>
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                     {confirmDel === c.id ? (
                       <>

@@ -39,6 +39,7 @@ const nav = [
   { href: '/tools', icon: WrenchScrewdriverIcon, label: 'Importtools' },
   { href: '/facturen', icon: BuildingOfficeIcon, label: 'Facturen' },
   { href: '/contract-invoices', icon: ClipboardDocumentListIcon, label: 'Contractfacturatie' },
+  { href: '/facturen-goedkeuren', icon: DocumentTextIcon, label: 'Facturen goedkeuren' },
 ];
 const settings = [
   { href: '/settings/algemeen', icon: Cog6ToothIcon, label: 'Algemeen' },

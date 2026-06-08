@@ -409,13 +409,13 @@ export function buildContractInvoiceHtml(input: ContractInvoiceInput): string {
   .items-table .num { text-align: right; white-space: nowrap; }
   .total-row { font-weight: 900; font-size: 12pt; }
   .footer { margin-top: 8mm; font-size: 8.5pt; color: #777; border-top: 0.3mm solid #ddd; padding-top: 4mm; line-height: 1.6; }
-  .paybox { margin-top: 10mm; border: 0.4mm solid #0a2240; border-left: 2.2mm solid #0a2240; border-radius: 1.5mm; padding: 4mm 6mm; background: #f7f9fc; }
-  .paybox-label { font-size: 8pt; font-weight: 700; letter-spacing: 1.5px; color: #0a2240; margin-bottom: 2mm; }
+  .paybox { margin-top: 10mm; border: 0.3mm solid #dde3ec; border-radius: 1.5mm; padding: 4mm 5mm; background: #fafbfd; }
+  .paybox-label { font-size: 8pt; font-weight: 700; letter-spacing: 1.2px; color: #8895a7; margin-bottom: 2.5mm; }
   .paybox-table { border-collapse: collapse; }
-  .paybox-table td { padding: 0.6mm 0; font-size: 10pt; vertical-align: middle; }
-  .paybox-table td:first-child { width: 22mm; color: #555; }
-  .paybox .iban { font-size: 14pt; font-weight: 800; letter-spacing: 1.5px; color: #0a2240; }
-  .paybox-note { font-size: 8.5pt; color: #555; margin-top: 2.5mm; }
+  .paybox-table td { padding: 0.8mm 0; font-size: 9.5pt; vertical-align: middle; color: #1a2e48; }
+  .paybox-table td:first-child { width: 20mm; color: #8895a7; font-weight: 400; }
+  .paybox .iban { font-weight: 700; letter-spacing: 0.6px; }
+  .paybox-note { font-size: 9pt; color: #8895a7; margin-top: 3mm; }
   .logo { height: 56px; width: auto; }
 </style>
 </head>

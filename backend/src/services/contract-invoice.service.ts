@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer-core';
+import QRCode from 'qrcode';
 import { query } from '../db/pool';
 import { LOGO_B64 } from './invoice.service';
 
@@ -81,6 +82,8 @@ export interface ContractInvoiceInput {
   // EV opladen
   evLines?: { description: string; kwh: number; ratePerKwh: number; startFee?: number }[];
   isPreview?: boolean;
+  paymentUrl?: string;          // iDEAL-betaallink (Stripe) — toont een QR in het betaalblok
+  paymentQrDataUrl?: string;    // intern: gegenereerde QR als data-URL
 }
 
 interface WeekGroup {
@@ -416,6 +419,11 @@ export function buildContractInvoiceHtml(input: ContractInvoiceInput): string {
   .paybox-table td:first-child { width: 20mm; color: #8895a7; font-weight: 400; }
   .paybox .iban { font-weight: 700; letter-spacing: 0.6px; }
   .paybox-note { font-size: 9pt; color: #8895a7; margin-top: 3mm; }
+  .paybox-row { display: flex; align-items: center; justify-content: space-between; gap: 8mm; }
+  .paybox-main { flex: 1; }
+  .paybox-qr { text-align: center; flex-shrink: 0; }
+  .paybox-qr img { width: 26mm; height: 26mm; display: block; }
+  .paybox-qr-label { font-size: 7.5pt; color: #8895a7; margin-top: 1.5mm; max-width: 26mm; line-height: 1.3; }
   .logo { height: 56px; width: auto; }
 </style>
 </head>
@@ -473,13 +481,21 @@ export function buildContractInvoiceHtml(input: ContractInvoiceInput): string {
   ${evSectionHtml}
 
   <div class="paybox">
-    <div class="paybox-label">BETAALGEGEVENS</div>
-    <table class="paybox-table">
-      <tr><td>IBAN</td><td class="iban">NL81 ABNA 0108 0879 48</td></tr>
-      <tr><td>T.n.v.</td><td>Autostalling De Bazuin</td></tr>
-      <tr><td>Kenmerk</td><td><strong>${esc(input.invoiceNumber)}</strong></td></tr>
-    </table>
-    <div class="paybox-note">Gelieve het bedrag uiterlijk <strong>${dueDate}</strong> over te maken onder vermelding van het factuurnummer.</div>
+    <div class="paybox-row">
+      <div class="paybox-main">
+        <div class="paybox-label">BETAALGEGEVENS</div>
+        <table class="paybox-table">
+          <tr><td>IBAN</td><td class="iban">NL81 ABNA 0108 0879 48</td></tr>
+          <tr><td>T.n.v.</td><td>Autostalling De Bazuin</td></tr>
+          <tr><td>Kenmerk</td><td><strong>${esc(input.invoiceNumber)}</strong></td></tr>
+        </table>
+        <div class="paybox-note">Gelieve het bedrag uiterlijk <strong>${dueDate}</strong> over te maken onder vermelding van het factuurnummer.</div>
+      </div>
+      ${input.paymentQrDataUrl ? `<div class="paybox-qr">
+        <img src="${input.paymentQrDataUrl}" alt="iDEAL betaal-QR" />
+        <div class="paybox-qr-label">Scan om met iDEAL te betalen</div>
+      </div>` : ''}
+    </div>
   </div>
 
   <div class="footer">
@@ -492,6 +508,10 @@ export function buildContractInvoiceHtml(input: ContractInvoiceInput): string {
 
 // ── PDF via puppeteer (identiek aan hoofdfactuur-aanpak) ──
 export async function generateContractInvoicePdf(input: ContractInvoiceInput): Promise<Buffer> {
+  if (input.paymentUrl && !input.paymentQrDataUrl) {
+    try { input.paymentQrDataUrl = await QRCode.toDataURL(input.paymentUrl, { margin: 1, width: 220, errorCorrectionLevel: 'M' }); }
+    catch { /* QR is optioneel — bij een fout simpelweg geen QR tonen */ }
+  }
   const html = buildContractInvoiceHtml(input);
 
   const chromiumPath = (() => {

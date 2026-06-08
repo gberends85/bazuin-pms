@@ -6983,9 +6983,10 @@ router.get('/admin/contract-invoices/:id/pdf', requireAuth, async (req: Request,
 
 // ── Automatisch factureren (concept-generatie + goedkeuren) ───────────────────
 
-async function pdfFromStoredContractInvoice(inv: any): Promise<Buffer> {
+async function pdfFromStoredContractInvoice(inv: any, paymentUrl?: string): Promise<Buffer> {
   const snap = typeof inv.snapshot === 'string' ? JSON.parse(inv.snapshot) : inv.snapshot;
   return generateContractInvoicePdf({
+    paymentUrl,
     customer: snap.customer,
     periodFrom: String(inv.period_from).slice(0, 10),
     periodTo: String(inv.period_to).slice(0, 10),
@@ -7114,7 +7115,7 @@ router.post('/admin/contract-invoices/:id/send-email', requireAuth, async (req: 
     } catch (e: any) { console.error('iDEAL-betaallink aanmaken mislukt:', e.message); }
   }
 
-  const pdf = await pdfFromStoredContractInvoice(inv);
+  const pdf = await pdfFromStoredContractInvoice(inv, payUrl || undefined);
   await sendContractInvoiceEmail(to, snap?.customer?.name || '', inv.invoice_number, pdf, payUrl);
   await query(`UPDATE contract_invoices SET sent_at = NOW() WHERE id = $1`, [req.params.id]).catch(() => {});
   return res.json({ ok: true, email: to, paymentLink: payUrl });

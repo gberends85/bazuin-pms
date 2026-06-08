@@ -8,7 +8,7 @@ import {
 } from '../services/pricing.service';
 import { lookupRdw, normalizePlate } from '../services/rdw.service';
 import {
-  sendBookingConfirmation, sendModificationConfirmation, sendCheckinMail, sendCancellationMail, sendModificationMail, sendTemplatedEmail, sendSimpleEmail,
+  sendBookingConfirmation, sendModificationConfirmation, sendCheckinMail, sendCancellationMail, sendModificationMail, sendTemplatedEmail, sendSimpleEmail, sendContractInvoiceEmail,
 } from '../services/email.service';
 import {
   createPaymentIntent, processRefund, getPaymentIntent,
@@ -6247,6 +6247,21 @@ router.post('/admin/umbraco/vehicle-repair-scan', requireAuth, async (req: Reque
       notes TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )`);
+    // Automatisch factureren
+    await query(`ALTER TABLE contract_customers ADD COLUMN IF NOT EXISTS auto_invoice_enabled BOOLEAN DEFAULT false`);
+    await query(`ALTER TABLE contract_customers ADD COLUMN IF NOT EXISTS auto_invoice_interval_months INTEGER DEFAULT 3`);
+    await query(`ALTER TABLE contract_customers ADD COLUMN IF NOT EXISTS auto_invoice_start_date DATE`);
+    await query(`ALTER TABLE contract_invoices ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ`);
+    await query(`CREATE TABLE IF NOT EXISTS pending_contract_invoices (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      contract_customer_id UUID REFERENCES contract_customers(id) ON DELETE CASCADE,
+      period_from DATE NOT NULL,
+      period_to DATE NOT NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      invoice_number VARCHAR(40),
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      decided_at TIMESTAMPTZ
+    )`);
   } catch (_) { /* ignore */ }
 })();
 
@@ -6833,18 +6848,18 @@ router.post('/admin/contract-customers/:id/invoice', requireAuth, async (req: Re
 
   // Use effective_from from seasonal snapshot (clamped to season_start_date) if available
   const storedFrom = (snapshot as any).effective_from || from;
-  await query(
+  const ins = await query(
     `INSERT INTO contract_invoices
      (invoice_number, contract_customer_id, period_from, period_to,
       daily_rate, vat_percentage, total_cars,
       subtotal_excl_vat, vat_amount, total_incl_vat, snapshot)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
     [invoiceNumber, req.params.id, storedFrom, to,
      rateType === 'fixed_period' ? 0 : rateType === 'seasonal' ? 0 : parseFloat(customer.daily_rate),
      vatPct, totalCars, subtotalExcl, vatAmount, subtotalIncl, JSON.stringify(snapshot)]
   );
 
-  return res.json({ invoice_number: invoiceNumber, total_cars: totalCars, total_incl_vat: subtotalIncl });
+  return res.json({ id: ins.rows[0].id, invoice_number: invoiceNumber, total_cars: totalCars, total_incl_vat: subtotalIncl });
 });
 
 // ── Contract-facturen beheer ─────────────────────────────────────
@@ -6902,6 +6917,138 @@ router.get('/admin/contract-invoices/:id/pdf', requireAuth, async (req: Request,
   res.setHeader('Content-Disposition', `attachment; filename="Factuur-${inv.invoice_number}.pdf"`);
   return res.send(pdf);
 });
+
+// ── Automatisch factureren (concept-generatie + goedkeuren) ───────────────────
+
+async function pdfFromStoredContractInvoice(inv: any): Promise<Buffer> {
+  const snap = typeof inv.snapshot === 'string' ? JSON.parse(inv.snapshot) : inv.snapshot;
+  return generateContractInvoicePdf({
+    customer: snap.customer,
+    periodFrom: String(inv.period_from).slice(0, 10),
+    periodTo: String(inv.period_to).slice(0, 10),
+    invoiceNumber: inv.invoice_number,
+    invoiceDate: String(inv.created_at).slice(0, 10),
+    rateType: snap.rateType || 'daily',
+    fixedPeriodDays: snap.fixed_period_days,
+    fixedPeriodRate: snap.fixed_period_rate,
+    extraDayRate: snap.extra_day_rate,
+    vehicleStays: snap.vehicle_stays,
+    rows: snap.rows || [],
+    dailyRate: parseFloat(snap.daily_rate) || 0,
+    vatPercentage: parseFloat(snap.vat_percentage),
+    lowSeasonRate: parseFloat(snap.low_season_rate) || 0,
+    highSeasonRate: parseFloat(snap.high_season_rate) || 0,
+    highSeasonFrom: snap.high_season_from,
+    highSeasonUntil: snap.high_season_until,
+    nextYearLowSeasonRate: parseFloat(snap.next_year_low_season_rate) || 0,
+    nextYearHighSeasonRate: parseFloat(snap.next_year_high_season_rate) || 0,
+    evLines: snap.ev_lines,
+  });
+}
+
+// Volgende nog niet-gefactureerde, volledig verstreken periode voor een klant
+async function nextAutoInvoicePeriod(custId: string, intervalMonths: number, startDate: string | null): Promise<{ from: string; to: string } | null> {
+  const r = await query(`SELECT MAX(period_to) AS last_to FROM contract_invoices WHERE contract_customer_id = $1`, [custId]);
+  let fromDate: Date;
+  if (r.rows[0]?.last_to) {
+    fromDate = new Date(String(r.rows[0].last_to).slice(0, 10) + 'T00:00:00');
+    fromDate.setDate(fromDate.getDate() + 1);
+  } else if (startDate) {
+    fromDate = new Date(String(startDate).slice(0, 10) + 'T00:00:00');
+  } else {
+    return null;
+  }
+  const toDate = new Date(fromDate);
+  toDate.setMonth(toDate.getMonth() + intervalMonths);
+  toDate.setDate(toDate.getDate() - 1);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  if (toDate >= today) return null; // periode nog niet volledig verstreken
+  const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return { from: ymd(fromDate), to: ymd(toDate) };
+}
+
+async function runAutoInvoiceGeneration(): Promise<{ created: number; details: string[] }> {
+  const custs = await query(
+    `SELECT id, name, auto_invoice_interval_months, auto_invoice_start_date
+     FROM contract_customers WHERE auto_invoice_enabled = true AND is_active = true`
+  );
+  let created = 0; const details: string[] = [];
+  for (const c of custs.rows as any[]) {
+    const pend = await query(`SELECT 1 FROM pending_contract_invoices WHERE contract_customer_id=$1 AND status='pending' LIMIT 1`, [c.id]);
+    if (pend.rows.length > 0) continue; // al een openstaand concept voor deze klant
+    const interval = parseInt(c.auto_invoice_interval_months) || 3;
+    const startDate = c.auto_invoice_start_date ? String(c.auto_invoice_start_date).slice(0, 10) : null;
+    const period = await nextAutoInvoicePeriod(c.id, interval, startDate);
+    if (!period) continue;
+    const dup = await query(`SELECT 1 FROM contract_invoices WHERE contract_customer_id=$1 AND period_from=$2 LIMIT 1`, [c.id, period.from]);
+    if (dup.rows.length > 0) continue;
+    await query(`INSERT INTO pending_contract_invoices (contract_customer_id, period_from, period_to) VALUES ($1,$2,$3)`, [c.id, period.from, period.to]);
+    created++; details.push(`${c.name}: ${period.from} t/m ${period.to}`);
+  }
+  return { created, details };
+}
+
+// Per-klant auto-factuur instellingen
+router.put('/admin/contract-customers/:id/auto-invoice', requireAuth, async (req: Request, res: Response) => {
+  const b = req.body || {};
+  await query(
+    `UPDATE contract_customers SET auto_invoice_enabled=$2, auto_invoice_interval_months=$3, auto_invoice_start_date=$4 WHERE id=$1`,
+    [req.params.id, !!b.enabled, parseInt(b.intervalMonths) || 3, b.startDate || null]
+  );
+  return res.json({ ok: true });
+});
+
+// Concept-facturen lijst (te beoordelen)
+router.get('/admin/pending-contract-invoices', requireAuth, async (_req: Request, res: Response) => {
+  const r = await query(
+    `SELECT p.id, p.contract_customer_id,
+            to_char(p.period_from,'YYYY-MM-DD') AS period_from, to_char(p.period_to,'YYYY-MM-DD') AS period_to,
+            p.status, p.created_at, cc.name AS customer_name, cc.email AS customer_email
+     FROM pending_contract_invoices p JOIN contract_customers cc ON cc.id = p.contract_customer_id
+     WHERE p.status = 'pending' ORDER BY p.created_at ASC`
+  );
+  return res.json(r.rows);
+});
+
+// Handmatig de concept-generatie draaien
+router.post('/admin/pending-contract-invoices/run', requireAuth, async (_req: Request, res: Response) => {
+  try { return res.json(await runAutoInvoiceGeneration()); }
+  catch (e: any) { return res.status(500).json({ error: e.message }); }
+});
+
+// Concept afwijzen
+router.post('/admin/pending-contract-invoices/:id/reject', requireAuth, async (req: Request, res: Response) => {
+  await query(`UPDATE pending_contract_invoices SET status='rejected', decided_at=NOW() WHERE id=$1`, [req.params.id]);
+  return res.json({ ok: true });
+});
+
+// Concept markeren als goedgekeurd (na aanmaken + versturen door de frontend)
+router.post('/admin/pending-contract-invoices/:id/mark-approved', requireAuth, async (req: Request, res: Response) => {
+  const { invoiceNumber } = req.body || {};
+  await query(`UPDATE pending_contract_invoices SET status='approved', decided_at=NOW(), invoice_number=$2 WHERE id=$1`, [req.params.id, invoiceNumber || null]);
+  return res.json({ ok: true });
+});
+
+// Contractfactuur per e-mail versturen (PDF-bijlage)
+router.post('/admin/contract-invoices/:id/send-email', requireAuth, async (req: Request, res: Response) => {
+  const r = await query('SELECT * FROM contract_invoices WHERE id = $1', [req.params.id]);
+  if (r.rows.length === 0) return res.status(404).json({ error: 'Factuur niet gevonden' });
+  const inv = r.rows[0];
+  const snap = typeof inv.snapshot === 'string' ? JSON.parse(inv.snapshot) : inv.snapshot;
+  const to = snap?.customer?.email;
+  if (!to) return res.status(400).json({ error: 'Klant heeft geen e-mailadres' });
+  const pdf = await pdfFromStoredContractInvoice(inv);
+  await sendContractInvoiceEmail(to, snap?.customer?.name || '', inv.invoice_number, pdf);
+  await query(`UPDATE contract_invoices SET sent_at = NOW() WHERE id = $1`, [req.params.id]).catch(() => {});
+  return res.json({ ok: true, email: to });
+});
+
+// Dagelijks automatisch concept-facturen genereren
+setInterval(() => {
+  runAutoInvoiceGeneration()
+    .then(r => { if (r.created > 0) console.log(`[Auto-factuur] ${r.created} concept(en) aangemaakt:`, r.details.join(' | ')); })
+    .catch(e => console.error('[Auto-factuur] mislukt:', e.message));
+}, 24 * 60 * 60 * 1000);
 
 router.delete('/admin/contract-invoices/:id', requireAuth, async (req: Request, res: Response) => {
   const r = await query('DELETE FROM contract_invoices WHERE id = $1 RETURNING id', [req.params.id]);

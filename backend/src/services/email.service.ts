@@ -55,6 +55,24 @@ export async function sendSimpleEmail(to: string, subject: string, html: string)
   console.log(`Simple email sent to ${to}: ${subject}`);
 }
 
+// Contractfactuur per e-mail met PDF-bijlage
+export async function sendContractInvoiceEmail(to: string, name: string, invoiceNumber: string, pdf: Buffer): Promise<void> {
+  if (!isWhitelisted(to)) {
+    console.log(`[EMAIL WHITELIST] Geblokkeerd: ${to} | factuur ${invoiceNumber}`);
+    return;
+  }
+  await transporter.sendMail({
+    from: `"${process.env.EMAIL_FROM_NAME || 'Autostalling De Bazuin'}" <${process.env.EMAIL_FROM_ADDRESS}>`,
+    to,
+    subject: `Factuur ${invoiceNumber} — Autostalling De Bazuin`,
+    html: `<p>Beste ${name || 'klant'},</p>
+      <p>In de bijlage vindt u factuur <strong>${invoiceNumber}</strong> van Autostalling De Bazuin.</p>
+      <p>Met vriendelijke groet,<br>Autostalling De Bazuin</p>`,
+    attachments: [{ filename: `Factuur-${invoiceNumber}.pdf`, content: pdf, contentType: 'application/pdf' }],
+  });
+  console.log(`Contractfactuur ${invoiceNumber} gemaild naar ${to}`);
+}
+
 export async function sendTemplatedEmail(
   slug: string,
   to: string,

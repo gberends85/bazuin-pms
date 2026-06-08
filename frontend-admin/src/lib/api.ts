@@ -80,6 +80,7 @@ export const api = {
     refundPreview: (id: string) => req<{ refundPct: number; refundAmount: number; policyDescription: string; paid: boolean; anchorDate: string; arrivalDate: string; wasModified: boolean; daysUntilArrival: number }>(`/admin/reservations/${id}/refund-preview`),
     whatsapp: (id: string, msg: string) => req<any>(`/admin/reservations/${id}/whatsapp?message=${encodeURIComponent(msg)}`),
     update: (id: string, data: any) => req<any>(`/admin/reservations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    setVehicleCount: (id: string, count: number, override?: boolean) => req<{ vehicleCount: number; total_price: number; previousCount: number }>(`/admin/reservations/${id}/set-vehicle-count`, { method: 'POST', body: JSON.stringify({ count, override }) }),
     modificationPreview: (id: string, newArrival: string, newDeparture: string, overrideAvailability?: boolean) =>
       req<any>(`/admin/reservations/${id}/modification-preview?newArrival=${newArrival}&newDeparture=${newDeparture}${overrideAvailability ? '&overrideAvailability=1' : ''}`),
     modify: (id: string, data: any) => req<any>(`/admin/reservations/${id}/modify`, { method: 'POST', body: JSON.stringify(data) }),

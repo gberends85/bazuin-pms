@@ -408,7 +408,14 @@ export function buildContractInvoiceHtml(input: ContractInvoiceInput): string {
   .items-table tr:last-child td { border-bottom: none; }
   .items-table .num { text-align: right; white-space: nowrap; }
   .total-row { font-weight: 900; font-size: 12pt; }
-  .footer { margin-top: 12mm; font-size: 8.5pt; color: #777; border-top: 0.3mm solid #ddd; padding-top: 4mm; line-height: 1.6; }
+  .footer { margin-top: 8mm; font-size: 8.5pt; color: #777; border-top: 0.3mm solid #ddd; padding-top: 4mm; line-height: 1.6; }
+  .paybox { margin-top: 10mm; border: 0.4mm solid #0a2240; border-left: 2.2mm solid #0a2240; border-radius: 1.5mm; padding: 4mm 6mm; background: #f7f9fc; }
+  .paybox-label { font-size: 8pt; font-weight: 700; letter-spacing: 1.5px; color: #0a2240; margin-bottom: 2mm; }
+  .paybox-table { border-collapse: collapse; }
+  .paybox-table td { padding: 0.6mm 0; font-size: 10pt; vertical-align: middle; }
+  .paybox-table td:first-child { width: 22mm; color: #555; }
+  .paybox .iban { font-size: 14pt; font-weight: 800; letter-spacing: 1.5px; color: #0a2240; }
+  .paybox-note { font-size: 8.5pt; color: #555; margin-top: 2.5mm; }
   .logo { height: 56px; width: auto; }
 </style>
 </head>
@@ -465,9 +472,17 @@ export function buildContractInvoiceHtml(input: ContractInvoiceInput): string {
 
   ${evSectionHtml}
 
+  <div class="paybox">
+    <div class="paybox-label">BETAALGEGEVENS</div>
+    <table class="paybox-table">
+      <tr><td>IBAN</td><td class="iban">NL81 ABNA 0108 0879 48</td></tr>
+      <tr><td>T.n.v.</td><td>Autostalling De Bazuin</td></tr>
+      <tr><td>Kenmerk</td><td><strong>${esc(input.invoiceNumber)}</strong></td></tr>
+    </table>
+    <div class="paybox-note">Gelieve het bedrag uiterlijk <strong>${dueDate}</strong> over te maken onder vermelding van het factuurnummer.</div>
+  </div>
+
   <div class="footer">
-    Gelieve het bedrag uiterlijk <strong>${dueDate}</strong> over te maken onder vermelding van factuurnummer <strong>${esc(input.invoiceNumber)}</strong>.<br>
-    IBAN: NL81ABNA0108087948 · t.n.v. Autostalling De Bazuin<br>
     Autostalling De Bazuin · Zeilmakersstraat 2, 8861SE Harlingen · KVK: 51258692 · BTW: NL863463319B01 · info@parkeren-harlingen.nl
   </div>
 </div>

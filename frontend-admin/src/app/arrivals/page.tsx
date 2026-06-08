@@ -78,6 +78,28 @@ function DetailPanel({ res, onClose, onUpdate }: { res: any; onClose: () => void
   const [retTime, setRetTime] = useState(initRetTime);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [countSaving, setCountSaving] = useState(false);
+
+  async function changeVehicleCount(delta: number) {
+    const target = plates.length + delta;
+    if (target < 1 || target > 20) return;
+    const msg = delta > 0
+      ? `Een parkeerplaats toevoegen? De prijs wordt herberekend voor ${target} auto's.`
+      : `Een parkeerplaats verwijderen? De prijs wordt herberekend voor ${target} auto${target !== 1 ? "'s" : ''}.`;
+    if (!confirm(msg)) return;
+    setCountSaving(true);
+    try {
+      const r = await api.reservations.setVehicleCount(res.id, target) as any;
+      setPlates(prev => {
+        const n = [...prev];
+        if (target > n.length) { while (n.length < target) n.push(''); } else { n.length = target; }
+        return n;
+      });
+      toast(`Parkeerplaatsen: ${target} · nieuw totaal € ${Number(r.total_price).toFixed(2).replace('.', ',')}`);
+      onUpdate();
+    } catch (e: any) { toastError(e?.message || 'Aanpassen mislukt'); }
+    finally { setCountSaving(false); }
+  }
 
   // Contactgegevens snel bewerken + bevestigingsmail opnieuw sturen
   const [editContact, setEditContact] = useState(false);
@@ -321,9 +343,18 @@ function DetailPanel({ res, onClose, onUpdate }: { res: any; onClose: () => void
           </div>
         </div>
 
-        {/* Kentekens */}
+        {/* Parkeerplaatsen & kentekens */}
         <div style={section}>
-          <label style={label}>Kenteken{plates.length > 1 ? 's' : ''}</label>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <label style={{ ...label, marginBottom: 0 }}>Parkeerplaats{plates.length > 1 ? 'en' : ''} &amp; kenteken{plates.length > 1 ? 's' : ''}</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} title="Aantal parkeerplaatsen aanpassen (prijs wordt herberekend)">
+              <button onClick={() => changeVehicleCount(-1)} disabled={countSaving || plates.length <= 1}
+                style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid rgba(10,34,64,0.2)', background: 'white', cursor: (countSaving || plates.length <= 1) ? 'not-allowed' : 'pointer', fontSize: 18, fontWeight: 700, color: '#0a2240', lineHeight: 1, opacity: (countSaving || plates.length <= 1) ? 0.4 : 1 }}>−</button>
+              <span style={{ fontWeight: 800, color: '#0a2240', minWidth: 18, textAlign: 'center' }}>{plates.length}</span>
+              <button onClick={() => changeVehicleCount(1)} disabled={countSaving}
+                style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid rgba(10,34,64,0.2)', background: 'white', cursor: countSaving ? 'wait' : 'pointer', fontSize: 18, fontWeight: 700, color: '#0a2240', lineHeight: 1 }}>+</button>
+            </div>
+          </div>
           {plates.map((p, i) => {
             const veh = res.vehicles?.[i];
             const carInfo = veh

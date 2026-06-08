@@ -2632,6 +2632,59 @@ router.put('/admin/reservations/:id', requireAuth, async (req: Request, res: Res
   return res.json({ success: true });
 });
 
+// Aantal parkeerplaatsen (voertuigen) van een reservering aanpassen + parkeerprijs herberekenen
+router.post('/admin/reservations/:id/set-vehicle-count', requireAuth, async (req: Request, res: Response) => {
+  const desired = parseInt(req.body?.count);
+  const override = !!req.body?.override;
+  if (!desired || desired < 1 || desired > 20) return res.status(400).json({ error: 'Ongeldig aantal (1–20)' });
+
+  const result = await query('SELECT * FROM reservations WHERE id = $1', [req.params.id]);
+  if (result.rows.length === 0) return res.status(404).json({ error: 'Reservering niet gevonden' });
+  const r = result.rows[0];
+  if (r.status === 'cancelled') return res.status(400).json({ error: 'Geannuleerde reservering kan niet worden gewijzigd' });
+
+  const vc = await query('SELECT id FROM vehicles WHERE reservation_id = $1 ORDER BY sort_order', [req.params.id]);
+  const current = vc.rows.length;
+  if (desired === current) return res.json({ vehicleCount: current, total_price: parseFloat(r.total_price), previousCount: current, unchanged: true });
+
+  const lotId = r.parking_lot_id;
+  const arr = String(r.arrival_date).slice(0, 10);
+  const dep = String(r.departure_date).slice(0, 10);
+
+  if (desired > current && !override) {
+    const extra = desired - current;
+    const { minAvailable } = await checkNightlyAvailability(lotId, arr, dep, r.id);
+    if (minAvailable < extra) return res.status(409).json({ error: `Onvoldoende plaatsen beschikbaar: ${minAvailable} vrij, ${extra} extra nodig.` });
+  }
+
+  if (desired > current) {
+    for (let k = current; k < desired; k++) {
+      await query(`INSERT INTO vehicles (reservation_id, license_plate, sort_order) VALUES ($1, '', $2)`, [r.id, k]);
+    }
+  } else {
+    const toRemove = vc.rows.slice(desired).map((x: any) => x.id);
+    await query(`DELETE FROM vehicles WHERE id = ANY($1::uuid[])`, [toRemove]);
+  }
+
+  // Parkeerprijs herberekenen voor het nieuwe aantal; bestaande services + ter-plekke-toeslag blijven behouden
+  const servicesTotal = parseFloat(r.services_total || '0');
+  const onSiteSurcharge = parseFloat(r.on_site_surcharge || '0');
+  let newTotal = parseFloat(r.total_price);
+  try {
+    const priceInfo: any = await calculatePrice(new Date(arr), new Date(dep), lotId, desired);
+    newTotal = Math.round((priceInfo.totalPrice + servicesTotal + onSiteSurcharge) * 100) / 100;
+    await query(`UPDATE reservations SET total_price = $1, updated_at = NOW() WHERE id = $2`, [newTotal, r.id]);
+  } catch (e: any) { return res.status(400).json({ error: e.message }); }
+
+  await query(
+    `INSERT INTO audit_log (admin_user_id, action, entity_type, entity_id, new_value)
+     VALUES ($1, 'set_vehicle_count', 'reservation', $2, $3)`,
+    [req.admin!.adminId, r.id, JSON.stringify({ from: current, to: desired, newTotal })]
+  );
+
+  return res.json({ vehicleCount: desired, total_price: newTotal, previousCount: current });
+});
+
 // ============================================================
 // ADMIN — EXTRA FACTUURREGELS bijwerken
 // ============================================================

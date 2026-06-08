@@ -14,4 +14,17 @@ module.exports = {
       },
     ];
   },
+  async redirects() {
+    // De boekingsflow zit nu op de root (/boeken). De oude dubbele URL
+    // (/boeken/boeken) blijft werken via een permanente redirect, met behoud
+    // van de query string (deeplinks/prefill). basePath wordt automatisch
+    // toegevoegd: source -> /boeken/boeken, destination -> /boeken.
+    return [
+      {
+        source: '/boeken',
+        destination: '/',
+        permanent: true,
+      },
+    ];
+  },
 };

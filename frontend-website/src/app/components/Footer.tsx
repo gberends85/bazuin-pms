@@ -91,7 +91,7 @@ export default function Footer({ content }: { content?: WebsiteContent }) {
           <div>© {new Date().getFullYear()} {business?.name ?? 'Autostalling De Bazuin'} Harlingen. Alle rechten voorbehouden.</div>
           <div style={{ display: 'flex', gap: 20 }}>
             <a href="#" style={{ color: 'rgba(255,255,255,0.5)' }}>Privacybeleid</a>
-            <a href="#" style={{ color: 'rgba(255,255,255,0.5)' }}>Algemene voorwaarden</a>
+            <a href="/boeken/voorwaarden" style={{ color: 'rgba(255,255,255,0.5)' }}>Algemene voorwaarden</a>
           </div>
         </div>
       </div>

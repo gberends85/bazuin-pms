@@ -82,11 +82,11 @@ export default async function RoutePage() {
               </p>
             </div>
             {[
-              { label: 'Veerboot Terschelling', afstand: '300 m', tijd: '~4 min lopen' },
-              { label: 'Veerboot Vlieland', afstand: '350 m', tijd: '~4 min lopen' },
-              { label: 'Centrum Harlingen', afstand: '600 m', tijd: '~8 min lopen' },
-            ].map(item => (
-              <div key={item.label} style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: '16px', border: '1px solid rgba(74,200,237,0.15)' }}>
+              { label: 'Veerbootterminal', afstand: '650 m', tijd: 'rijden' },
+              { label: 'Veerbootterminal', afstand: '300 m', tijd: 'lopen' },
+              { label: 'Centrum Harlingen', afstand: '400 m', tijd: 'lopen' },
+            ].map((item, i) => (
+              <div key={i} style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: '16px', border: '1px solid rgba(74,200,237,0.15)' }}>
                 <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, marginBottom: 6 }}>{item.label}</div>
                 <div style={{ fontFamily: 'var(--font-display)', color: 'var(--cyan)', fontSize: 28 }}>{item.afstand}</div>
                 <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>{item.tijd}</div>

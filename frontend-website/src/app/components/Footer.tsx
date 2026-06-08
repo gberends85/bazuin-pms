@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { WebsiteContent, whatsappUrl } from '../lib/content';
 import { IconWhatsApp } from './icons';
 
-const BOOKING_URL = 'https://booking.parkeren-harlingen.nl/boeken';
+const BOOKING_URL = 'https://www.parkeren-harlingen.nl/boeken';
 
 export default function Footer({ content }: { content?: WebsiteContent }) {
   const contact = content?.contact;

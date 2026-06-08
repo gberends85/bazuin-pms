@@ -54,7 +54,7 @@ export default function VoorwaardenSettingsPage() {
           </div>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0, marginLeft: 16 }}>
             <a
-              href="https://booking.parkeren-harlingen.nl/boeken/voorwaarden"
+              href="https://www.parkeren-harlingen.nl/boeken/voorwaarden"
               target="_blank"
               rel="noopener noreferrer"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '0.5px solid rgba(10,34,64,0.2)', background: 'white', fontSize: 13, fontWeight: 600, color: '#0a2240', textDecoration: 'none', cursor: 'pointer' }}

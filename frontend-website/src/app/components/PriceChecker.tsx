@@ -2,7 +2,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { formatPrice } from '../lib/content';
 
-const BOOKING_URL = 'https://booking.parkeren-harlingen.nl/boeken';
+const BOOKING_URL = 'https://www.parkeren-harlingen.nl/boeken';
 
 interface Props { pricing?: unknown; } // pricing niet meer gebruikt — tarieven komen live uit het systeem
 

@@ -386,7 +386,7 @@ export default function WebsiteContentPage() {
           <div style={{ fontSize: 12, color: '#8a9ab0' }}>Wijzigingen worden direct zichtbaar op de website</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <a href="https://booking.parkeren-harlingen.nl" target="_blank" rel="noopener noreferrer"
+          <a href="https://www.parkeren-harlingen.nl" target="_blank" rel="noopener noreferrer"
             style={{ fontSize: 13, color: '#4ac8ed', fontWeight: 600 }}>
             Website bekijken ↗
           </a>

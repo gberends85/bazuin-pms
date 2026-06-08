@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 
-const BOOKING_URL = 'https://booking.parkeren-harlingen.nl/boeken';
+const BOOKING_URL = 'https://www.parkeren-harlingen.nl/boeken';
 
 export default function Header() {
   const [scrolled, setScrolled] = useState(false);

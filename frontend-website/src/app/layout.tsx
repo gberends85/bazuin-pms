@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 const SITE_URL = 'https://www.parkeren-harlingen.nl';
-const BOOKING_URL = 'https://booking.parkeren-harlingen.nl';
+const BOOKING_URL = 'https://www.parkeren-harlingen.nl';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

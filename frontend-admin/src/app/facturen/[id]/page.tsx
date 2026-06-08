@@ -287,7 +287,7 @@ export default function FactuurDetailPage({ params }: { params: { id: string } }
               <button onClick={() => {
                 const origin = window.location.hostname === 'localhost'
                   ? window.location.origin.replace(':3002', ':3000')
-                  : 'https://booking.parkeren-harlingen.nl';
+                  : 'https://www.parkeren-harlingen.nl';
                 const url = `${origin}/boeken/groep-wijzigen/${group.modification_token}`;
                 navigator.clipboard.writeText(url).then(() => toast('Wijzigingslink gekopieerd ✓')).catch(() => { window.prompt('Kopieer de link:', url); });
               }} style={{ padding: '8px 14px', borderRadius: 8, border: '0.5px solid rgba(10,34,64,0.2)', background: 'white', fontSize: 13, fontWeight: 600, color: '#0a7c6e', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -408,7 +408,7 @@ export default function FactuurDetailPage({ params }: { params: { id: string } }
                           <button onClick={async () => {
                             const origin = window.location.hostname === 'localhost'
                               ? window.location.origin.replace(':3002', ':3000')
-                              : 'https://booking.parkeren-harlingen.nl';
+                              : 'https://www.parkeren-harlingen.nl';
                             const fullUrl = `${origin}/boeken/groep-wijzigen/${group.modification_token}/${r.id}`;
                             try {
                               const resp = await fetch(`${API_BASE}/public/short-link`, {

@@ -5,13 +5,13 @@ import Footer from '../components/Footer';
 import { getContent, whatsappUrl } from '../lib/content';
 import { IconWhatsApp } from '../components/icons';
 
-const BOOKING_URL = 'https://booking.parkeren-harlingen.nl/boeken';
+const BOOKING_URL = 'https://www.parkeren-harlingen.nl/boeken';
 export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: 'Openingstijden & werkwijze',
   description: 'Openingstijden en werkwijze van Autostalling De Bazuin Harlingen — auto afgeven, sleutel in de afgiftekluis en uw auto afhalen.',
-  alternates: { canonical: 'https://booking.parkeren-harlingen.nl/openingstijden' },
+  alternates: { canonical: 'https://www.parkeren-harlingen.nl/openingstijden' },
 };
 
 export default async function OpeningstijdenPage() {

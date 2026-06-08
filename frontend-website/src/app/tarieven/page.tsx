@@ -5,13 +5,13 @@ import PriceChecker from '../components/PriceChecker';
 import { getContent } from '../lib/content';
 import { IconBolt, IconWhatsApp } from '../components/icons';
 
-const BOOKING_URL = 'https://booking.parkeren-harlingen.nl/boeken';
+const BOOKING_URL = 'https://www.parkeren-harlingen.nl/boeken';
 export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: 'Tarieven & Prijschecker',
   description: 'Bereken direct de actuele parkeerkosten voor uw verblijf bij Autostalling De Bazuin in Harlingen. Kies uw datums en zie meteen de exacte prijs nabij de veerboten.',
-  alternates: { canonical: 'https://booking.parkeren-harlingen.nl/tarieven' },
+  alternates: { canonical: 'https://www.parkeren-harlingen.nl/tarieven' },
 };
 
 export default async function TarievenPage() {

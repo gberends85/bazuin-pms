@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { WebsiteContent, whatsappUrl } from '../lib/content';
 import { IconWhatsApp } from './icons';
 
-const BOOKING_URL = 'https://booking.parkeren-harlingen.nl/boeken';
+const BOOKING_URL = 'https://www.parkeren-harlingen.nl/boeken';
 const WATERTAXI_URL = 'https://www.harlingen-watertaxi.nl';
 
 interface Review {

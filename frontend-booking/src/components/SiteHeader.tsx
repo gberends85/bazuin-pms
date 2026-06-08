@@ -3,7 +3,7 @@ import { useState } from 'react';
 
 // Header in dezelfde stijl als de marketingwebsite (Montserrat, navy→blauw gradient,
 // zelfde logo en navigatie). Links wijzen naar de website-pagina's op hetzelfde domein.
-const SITE = 'https://booking.parkeren-harlingen.nl';
+const SITE = 'https://www.parkeren-harlingen.nl';
 const NAV = [
   { href: `${SITE}/`, label: 'Home' },
   { href: `${SITE}/tarieven`, label: 'Tarieven' },

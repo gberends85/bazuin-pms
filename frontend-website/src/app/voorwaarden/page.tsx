@@ -8,7 +8,7 @@ export const revalidate = 300;
 export const metadata: Metadata = {
   title: 'Algemene voorwaarden',
   description: 'De algemene voorwaarden van Autostalling De Bazuin Harlingen — reserveren, betalen, annuleren, zelfservice, laadservice en annuleringsbeleid.',
-  alternates: { canonical: 'https://booking.parkeren-harlingen.nl/voorwaarden' },
+  alternates: { canonical: 'https://www.parkeren-harlingen.nl/voorwaarden' },
 };
 
 const TERMS_API = 'https://api.booking.parkeren-harlingen.nl/api/v1/public/terms';

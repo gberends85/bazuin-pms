@@ -5,7 +5,7 @@ import type { CSSProperties } from 'react';
 import { getContent, whatsappUrl } from '../lib/content';
 import { IconWhatsApp, IconMapPin, IconMap, IconCar, IconBoat } from '../components/icons';
 
-const BOOKING_URL = 'https://booking.parkeren-harlingen.nl/boeken';
+const BOOKING_URL = 'https://www.parkeren-harlingen.nl/boeken';
 export const revalidate = 60;
 
 const iconWrap: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 8, verticalAlign: 'middle' };
@@ -13,7 +13,7 @@ const iconWrap: CSSProperties = { display: 'inline-flex', alignItems: 'center', 
 export const metadata: Metadata = {
   title: 'Route & Locatie',
   description: 'Routebeschrijving naar Autostalling De Bazuin in Harlingen. Op loopafstand van de veerboten naar Terschelling en Vlieland.',
-  alternates: { canonical: 'https://booking.parkeren-harlingen.nl/route' },
+  alternates: { canonical: 'https://www.parkeren-harlingen.nl/route' },
 };
 
 export default async function RoutePage() {

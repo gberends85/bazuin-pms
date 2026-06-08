@@ -547,9 +547,9 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
 
   const Logo = () => (
     <div style={{ textAlign: 'center', marginBottom: 24 }}>
-      <div style={{ width: 44, height: 44, background: '#19499e', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, color: '#ffffff', margin: '0 auto 12px' }}>AB</div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/Logo.png" alt="Autostalling De Bazuin" style={{ height: 58, width: 'auto', display: 'block', margin: '0 auto 14px' }} />
       <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 800, color: '#142440' }}>Reservering wijzigen</h2>
-      <p style={{ margin: 0, color: '#7090b0', fontSize: 13 }}>Autostalling De Bazuin</p>
     </div>
   );
 

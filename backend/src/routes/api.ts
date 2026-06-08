@@ -2952,7 +2952,7 @@ router.post('/admin/invoice-groups/:id/send', requireAuth, async (req: Request, 
 
         <div style="margin-top: 28px; padding: 16px 20px; background: #f4f6f9; border-radius: 8px; font-size: 13px; color: #1a2e48;">
           <strong>Betaalinstructies</strong><br>
-          Maak het totaalbedrag over op rekening NL00 INGB 0000 0000 00 t.n.v. Autostalling De Bazuin, onder vermelding van referentie <strong>${ig.reference}</strong>.
+          Maak het totaalbedrag over op rekening NL81 ABNA 0108 0879 48 t.n.v. Autostalling De Bazuin, onder vermelding van referentie <strong>${ig.reference}</strong>.
         </div>
 
         ${ig.notes ? `<div style="margin-top: 16px; font-size: 13px; color: #7090b0;"><strong>Opmerking:</strong> ${ig.notes}</div>` : ''}

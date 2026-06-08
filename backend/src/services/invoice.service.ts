@@ -250,7 +250,7 @@ export async function generateInvoiceHtml(token: string): Promise<string | null>
 
   <div class="footer">
     Autostalling De Bazuin · Zeilmakersstraat 2, 8861SE Harlingen · KVK: 51258692 · BTW: NL863463319B01<br>
-    IBAN: NL39ABNA0506175928 · info@parkeren-harlingen.nl
+    IBAN: NL81ABNA0108087948 · info@parkeren-harlingen.nl
   </div>
 </div>
 </body>
@@ -380,7 +380,7 @@ export async function generateCreditNoteHtml(token: string): Promise<string | nu
 
   <div class="footer">
     Autostalling De Bazuin · Zeilmakersstraat 2, 8861SE Harlingen · KVK: 51258692 · BTW: NL863463319B01<br>
-    IBAN: NL39ABNA0506175928 · info@parkeren-harlingen.nl
+    IBAN: NL81ABNA0108087948 · info@parkeren-harlingen.nl
   </div>
 </div>
 </body>

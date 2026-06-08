@@ -488,7 +488,7 @@ export function buildContractInvoiceHtml(input: ContractInvoiceInput): string {
 
   <div class="footer">
     Gelieve het bedrag uiterlijk <strong>${dueDate}</strong> over te maken onder vermelding van factuurnummer <strong>${esc(input.invoiceNumber)}</strong>.<br>
-    IBAN: NL39ABNA0506175928 · t.n.v. Autostalling De Bazuin<br>
+    IBAN: NL81ABNA0108087948 · t.n.v. Autostalling De Bazuin<br>
     Autostalling De Bazuin · Zeilmakersstraat 2, 8861SE Harlingen · KVK: 51258692 · BTW: NL863463319B01 · info@parkeren-harlingen.nl
   </div>
 </div>

@@ -207,13 +207,13 @@ export default function PrintFactuurGroepPage({ params }: { params: { id: string
           <div style={{ background: '#f4f7fb', border: '0.3mm solid #cdd8e8', borderRadius: 4, padding: '4mm 5mm', marginTop: '4mm', fontSize: '9.5pt' }}>
             <strong style={{ color: '#0a2240' }}>Betalingsinstructies</strong><br />
             Gelieve het bedrag van <strong>{fmtMoney(total)}</strong> over te maken naar:<br />
-            IBAN: NL39 ABNA 0506 1759 28 · t.n.v. Autostalling De Bazuin · o.v.v. <strong>{group.reference}</strong>
+            IBAN: NL81 ABNA 0108 0879 48 · t.n.v. Autostalling De Bazuin · o.v.v. <strong>{group.reference}</strong>
           </div>
         )}
 
         {/* Footer */}
         <div className="footer">
-          Autostalling De Bazuin · Zeilmakersstraat 2 · 8861SE Harlingen · info@parkeren-harlingen.nl · KVK: 51258692 · BTW: NL863463319B01 · IBAN: NL39 ABNA 0506 1759 28
+          Autostalling De Bazuin · Zeilmakersstraat 2 · 8861SE Harlingen · info@parkeren-harlingen.nl · KVK: 51258692 · BTW: NL863463319B01 · IBAN: NL81 ABNA 0108 0879 48
         </div>
       </div>
     </>

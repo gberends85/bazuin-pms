@@ -59,25 +59,34 @@ const FALLBACK_REVIEWS = [
   },
 ];
 
-async function fetchFromGoogle() {
+// Google's Places API geeft per keer maximaal ~5 reviews terug. Door dagelijks op
+// te halen en nieuwe, unieke reviews aan een lokale pool toe te voegen, bouwen we
+// na verloop van tijd een grotere verzameling op dan die 5 momentopnamen.
+const MIN_RATING = 4;      // alleen 4- en 5-sterren tonen
+const POOL_DISPLAY = 12;   // hoeveel er op de homepage worden getoond
+
+function reviewKey(r: any): string {
+  return `${(r.author_name || '').trim()}::${(r.text || '').trim().slice(0, 120)}`;
+}
+
+interface Store {
+  fetchedAt: number;
+  rating: number;
+  totalRatings: number;
+  pool: any[];
+}
+
+async function fetchFromGoogle(): Promise<{ rating: number; totalRatings: number; reviews: any[] } | null> {
   if (!API_KEY) return null;
-
-  // Places API (New): https://places.googleapis.com/v1/places/{placeId}
   const url = `https://places.googleapis.com/v1/places/${PLACE_ID}?languageCode=nl`;
-
   const resp = await fetch(url, {
-    headers: {
-      'X-Goog-Api-Key': API_KEY,
-      'X-Goog-FieldMask': 'rating,userRatingCount,reviews',
-    },
+    headers: { 'X-Goog-Api-Key': API_KEY, 'X-Goog-FieldMask': 'rating,userRatingCount,reviews' },
     next: { revalidate: 86400 },
   });
   if (!resp.ok) return null;
-
   const data = await resp.json();
   if (!data || (!data.reviews && !data.rating)) return null;
 
-  // Normaliseer het nieuwe formaat naar onze eigen structuur
   const reviews = (data.reviews || [])
     .map((r: any) => ({
       author_name: r.authorAttribution?.displayName || 'Google-gebruiker',
@@ -86,52 +95,59 @@ async function fetchFromGoogle() {
       text: r.text?.text || r.originalText?.text || '',
       profile_photo_url: r.authorAttribution?.photoUri || '',
     }))
-    // Toon alle reviews mét tekst (Google geeft er maximaal ~5 terug), beste eerst.
-    .filter((r: any) => r.text)
-    .sort((a: any, b: any) => b.rating - a.rating)
-    .slice(0, 8);
+    .filter((r: any) => r.text && r.rating >= MIN_RATING);
 
-  return {
-    rating: data.rating || 0,
-    totalRatings: data.userRatingCount || 0,
-    reviews,
-    fetchedAt: Date.now(),
-  };
+  return { rating: data.rating || 0, totalRatings: data.userRatingCount || 0, reviews };
 }
 
-async function getCachedReviews() {
+async function readStore(): Promise<Store | null> {
   try {
-    const raw = await fs.readFile(CACHE_FILE, 'utf-8');
-    const cache = JSON.parse(raw);
-    if (Date.now() - cache.fetchedAt < CACHE_TTL_MS) return cache;
-  } catch {}
-  return null;
+    const cache = JSON.parse(await fs.readFile(CACHE_FILE, 'utf-8'));
+    // Migratie van oud cacheformaat ({reviews}) naar pool
+    if (!cache.pool && Array.isArray(cache.reviews)) cache.pool = cache.reviews;
+    if (!Array.isArray(cache.pool)) cache.pool = [];
+    return cache as Store;
+  } catch { return null; }
 }
 
-async function saveCache(data: any) {
-  try { await fs.writeFile(CACHE_FILE, JSON.stringify(data)); } catch {}
+async function saveStore(store: Store) {
+  try { await fs.writeFile(CACHE_FILE, JSON.stringify(store)); } catch {}
+}
+
+function respond(store: Store) {
+  const reviews = [...store.pool]
+    .sort((a, b) => b.rating - a.rating)
+    .slice(0, POOL_DISPLAY);
+  return NextResponse.json(
+    { rating: store.rating, totalRatings: store.totalRatings, reviews, poolSize: store.pool.length, fetchedAt: store.fetchedAt },
+    { headers: { 'Cache-Control': 'public, s-maxage=3600' } },
+  );
 }
 
 export async function GET() {
-  // 1. Check cache
-  const cached = await getCachedReviews();
-  if (cached) {
-    return NextResponse.json(cached, { headers: { 'Cache-Control': 'public, s-maxage=3600' } });
+  const store = await readStore();
+  const isFresh = store && Date.now() - store.fetchedAt < CACHE_TTL_MS;
+
+  // 1. Recent opgehaald → serveer de opgebouwde pool
+  if (store && isFresh) return respond(store);
+
+  // 2. Vers ophalen bij Google en nieuwe unieke reviews toevoegen aan de pool
+  const g = await fetchFromGoogle();
+  if (g) {
+    const pool = store?.pool ? [...store.pool] : [];
+    const seen = new Set(pool.map(reviewKey));
+    for (const r of g.reviews) {
+      const k = reviewKey(r);
+      if (!seen.has(k)) { seen.add(k); pool.push(r); }
+    }
+    const next: Store = { fetchedAt: Date.now(), rating: g.rating, totalRatings: g.totalRatings, pool };
+    await saveStore(next);
+    return respond(next);
   }
 
-  // 2. Fetch from Google
-  const fresh = await fetchFromGoogle();
-  if (fresh) {
-    await saveCache(fresh);
-    return NextResponse.json(fresh, { headers: { 'Cache-Control': 'public, s-maxage=3600' } });
-  }
-
-  // 3. Fallback
+  // 3. Google onbereikbaar → val terug op bestaande pool, anders op fallback
+  if (store && store.pool.length) return respond(store);
   return NextResponse.json({
-    rating: 4.8,
-    totalRatings: 127,
-    reviews: FALLBACK_REVIEWS,
-    fetchedAt: Date.now(),
-    isFallback: true,
+    rating: 4.8, totalRatings: 127, reviews: FALLBACK_REVIEWS, fetchedAt: Date.now(), isFallback: true,
   });
 }

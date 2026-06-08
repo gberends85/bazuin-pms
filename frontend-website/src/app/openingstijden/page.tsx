@@ -45,12 +45,7 @@ export default async function OpeningstijdenPage() {
       </section>
 
       <section style={{ background: 'var(--gray)' }}>
-        <div className="container" style={{ maxWidth: 860 }}>
-
-          {/* Intro */}
-          <p style={{ ...p, textAlign: 'center', maxWidth: 620, margin: '0 auto 40px', fontSize: 16 }}>
-            We vragen uw vertrektijd zodat we bij verwachte drukte tijdig ruimte maken op ons afgifteterrein.
-          </p>
+        <div className="container" style={{ maxWidth: 860, paddingTop: 8 }}>
 
           {/* ── AUTO AFGEVEN ── */}
           <h2 style={{ ...h2, textAlign: 'center', marginBottom: 8 }}>Auto afgeven</h2>

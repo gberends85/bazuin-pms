@@ -38,7 +38,7 @@ export default async function RoutePage() {
       <div style={{ height: 450, width: '100%' }}>
         <iframe
           title={`Autoroute vanaf de veerbootterminal naar ${business.name}`}
-          src="https://maps.google.com/maps?saddr=53.176571,5.415205&daddr=Zeilmakersstraat+2,+8861+SE+Harlingen&dirflg=d&output=embed"
+          src="https://maps.google.com/maps?saddr=53.176571,5.415205&daddr=53.177288,5.417627&dirflg=d&output=embed"
           width="100%" height="450" style={{ border: 0, display: 'block' }}
           allowFullScreen loading="lazy" referrerPolicy="no-referrer-when-downgrade"
         />
@@ -62,9 +62,9 @@ export default async function RoutePage() {
             <div>
               <h2 style={{ fontSize: 22, marginBottom: 20, ...iconWrap }}><IconCar size={22} color="var(--blue)" /> Routebeschrijving</h2>
               {[
-                { from: 'Vanuit het zuiden (Amsterdam, Utrecht)', steps: 'A7 richting Leeuwarden → A31 richting Harlingen → afrit Harlingen → N31 → richting centrum → volg borden.' },
-                { from: 'Vanuit Leeuwarden / Groningen', steps: 'A31 richting Harlingen → afrit Harlingen-Noord → volg borden centrum.' },
-                { from: 'Navigatie', steps: `Voer in: ${contact.address}, ${contact.city}. Uw navigatiesysteem leidt u direct naar de stalling.` },
+                { from: 'Vanuit het zuiden (Afsluitdijk of Joure/Sneek)', steps: 'Neem afrit Kimswerd op de N31, volg vervolgens uw navigatie.' },
+                { from: 'Vanuit Leeuwarden / Groningen', steps: 'Neem afrit Harlingen-Havens, volg uw navigatie.' },
+                { from: 'Navigatie', steps: 'Voer in uw navigatie de coördinaten 53.177288, 5.417627 in — zo komt u via de beste route aan op ons buitenterrein.' },
               ].map(item => (
                 <div key={item.from} style={{ background: 'var(--gray)', borderRadius: 10, padding: '16px 20px', marginBottom: 12, borderLeft: '3px solid var(--cyan)' }}>
                   <div style={{ fontWeight: 700, color: 'var(--navy)', marginBottom: 6, fontSize: 14 }}>{item.from}</div>

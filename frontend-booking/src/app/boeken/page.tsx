@@ -1211,19 +1211,6 @@ export default function BookingPage() {
               </div>
             </div>
 
-            {/* Opmerking */}
-            <div style={S.card}>
-              <h2 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 800, color: '#142440' }}>Opmerking</h2>
-              <p style={{ margin: '0 0 14px', fontSize: 13, color: '#7090b0' }}>Heeft u een bijzonder verzoek of wil u iets doorgeven aan de stalling?</p>
-              <textarea
-                value={state.note}
-                onChange={e => upd('note', e.target.value)}
-                placeholder="Bijv. grote auto, verwacht laat aan te komen, speciale instructies..."
-                rows={3}
-                style={{ ...S.input, resize: 'vertical', fontFamily: 'inherit', fontSize: 14, lineHeight: 1.5 }}
-              />
-            </div>
-
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <button style={S.btnGhost} onClick={() => setStep(3)}><ArrowLeftIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />Terug</button>
               <button style={S.btnPrimary} onClick={() => setStep(5)}>Verder: Gegevens & Betaling <ArrowRightIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle' }} /></button>
@@ -1268,6 +1255,17 @@ export default function BookingPage() {
               <div>
                 <label style={S.label}>Telefoonnummer</label>
                 <input type="tel" value={state.phone} onChange={e => upd('phone', e.target.value)} placeholder="+31 6 12345678" style={S.input} />
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <label style={S.label}>Opmerking <span style={{ fontWeight: 400, color: '#7090b0' }}>(optioneel)</span></label>
+                <textarea
+                  value={state.note}
+                  onChange={e => upd('note', e.target.value)}
+                  placeholder="Bijv. grote auto, verwacht laat aan te komen, speciale instructies..."
+                  rows={3}
+                  style={{ ...S.input, resize: 'vertical', fontFamily: 'inherit', fontSize: 14, lineHeight: 1.5 }}
+                />
+                <div style={{ fontSize: 11, color: '#7090b0', marginTop: 4 }}>Let op: uw opmerking wordt pas op de dag van afgifte gelezen.</div>
               </div>
             </div>
 

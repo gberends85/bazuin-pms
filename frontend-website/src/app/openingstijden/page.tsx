@@ -105,7 +105,7 @@ export default async function OpeningstijdenPage() {
           <div style={info}>
             <div style={infoLabel}>Wijzigingen in afhaaltijd of -datum</div>
             <p style={{ ...p, margin: 0 }}>
-              Graag via <a href={waLink} target="_blank" rel="noopener noreferrer" style={waStyle}>WhatsApp</a>, dit is de snelste en gemakkelijkste manier.
+              Heeft u via dit systeem gereserveerd? Dan wijzigt u uw afhaaltijd of -datum eenvoudig zelf via de link in uw bevestigingsmail. Bij oudere reserveringen is dat nog niet mogelijk — neem in dat geval contact met ons op via <a href={waLink} target="_blank" rel="noopener noreferrer" style={waStyle}>WhatsApp</a>.
             </p>
           </div>
 

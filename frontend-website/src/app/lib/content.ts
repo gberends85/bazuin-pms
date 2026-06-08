@@ -49,7 +49,7 @@ export const DEFAULT_CONTENT: WebsiteContent = {
     monday: '07:00 – 22:00', tuesday: '07:00 – 22:00', wednesday: '07:00 – 22:00',
     thursday: '07:00 – 22:00', friday: '07:00 – 22:00', saturday: '07:00 – 22:00',
     sunday: '07:00 – 22:00',
-    note: 'Buiten openingstijden is in- en uitrijden niet mogelijk.',
+    note: '',
   },
   hero: {
     title: 'Parkeren bij de veerboot in Harlingen',

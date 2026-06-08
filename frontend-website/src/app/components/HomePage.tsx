@@ -187,8 +187,17 @@ export default function HomePage({ content }: { content: WebsiteContent }) {
       </section>
 
       {/* ── WATERTAXI ── */}
-      <section style={{ background: 'linear-gradient(135deg, #142440 0%, #19499e 100%)', padding: '64px 0' }}>
-        <div className="container" style={{ textAlign: 'center' }}>
+      <section style={{ position: 'relative', overflow: 'hidden', padding: '90px 0', background: '#142440' }}>
+        {/* Achtergrond: YouTube-video (zoals op de oorspronkelijke pagina) */}
+        <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }} aria-hidden="true">
+          <iframe
+            src="https://www.youtube.com/embed/NNvSQW2AJnE?autoplay=1&mute=1&loop=1&playlist=NNvSQW2AJnE&controls=0&showinfo=0&modestbranding=1&rel=0&playsinline=1&disablekb=1"
+            title="Watertaxi Harlingen" allow="autoplay; encrypted-media" frameBorder={0}
+            style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: '177.78vh', height: '56.25vw', minWidth: '100%', minHeight: '100%', border: 0 }}
+          />
+        </div>
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(20,36,64,0.72), rgba(25,73,158,0.60))' }} aria-hidden="true" />
+        <div className="container" style={{ textAlign: 'center', position: 'relative', zIndex: 1 }}>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14, color: 'var(--cyan, #4ac8ed)' }}>
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 17.5c1.2 1 2 1 3.2 0 1.2-1 2-1 3.2 0 1.2 1 2 1 3.2 0 1.2-1 2-1 3.2 0" />

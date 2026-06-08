@@ -81,12 +81,7 @@ export default function Footer({ content }: { content?: WebsiteContent }) {
           <div>
             <h4 style={{ color: 'white', fontFamily: 'var(--font-heading)', marginBottom: 16, fontSize: 14, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Openingstijden</h4>
             <div style={{ fontSize: 14, lineHeight: 2 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Maandag – zondag</span>
-                <span style={{ color: 'white', fontWeight: 600, marginLeft: 16 }}>
-                  {content?.openingHours?.monday ?? '07:00 – 22:00'}
-                </span>
-              </div>
+              <div style={{ color: 'white', fontWeight: 600 }}>Alleen op reservering</div>
               {content?.openingHours?.note && (
                 <div style={{ marginTop: 12, background: 'rgba(74,200,237,0.1)', borderLeft: '3px solid var(--cyan)', padding: '8px 12px', borderRadius: '0 6px 6px 0', fontSize: 13 }}>
                   <span style={{ color: 'var(--cyan)', fontWeight: 600 }}>Let op:</span>{' '}

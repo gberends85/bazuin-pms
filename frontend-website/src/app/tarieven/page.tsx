@@ -3,7 +3,7 @@ import Header from '../components/Header';
 import Footer from '../components/Footer';
 import PriceChecker from '../components/PriceChecker';
 import { getContent } from '../lib/content';
-import { IconBolt, IconVan, IconWhatsApp } from '../components/icons';
+import { IconBolt, IconWhatsApp } from '../components/icons';
 
 const BOOKING_URL = 'https://booking.parkeren-harlingen.nl/boeken';
 export const revalidate = 60;
@@ -49,7 +49,7 @@ export default async function TarievenPage() {
           </div>
           <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 14, marginTop: 24, maxWidth: 560, marginLeft: 'auto', marginRight: 'auto' }}>
             Hoe langer u parkeert, hoe voordeliger het tarief per dag. Alle prijzen zijn per voertuig en inclusief 21% BTW.
-            EV-laden wordt apart berekend op basis van het werkelijke verbruik.
+            EV-laden wordt apart berekend op basis van het aantal kWh dat u bij de reservering aangeeft.
           </p>
         </div>
       </section>
@@ -63,12 +63,11 @@ export default async function TarievenPage() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20 }}>
             {[
-              { key: 'bolt', title: 'Auto opladen', desc: 'Laad uw elektrische auto tijdens uw verblijf. Geef het aan bij de reservering; u betaalt op basis van het werkelijke verbruik.' },
-              { key: 'van', title: 'Camper / caravan', desc: 'Grotere voertuigen in overleg. Neem contact op voor beschikbaarheid en een eventuele toeslag.' },
+              { key: 'bolt', title: 'Auto opladen', desc: 'Laad uw elektrische auto tijdens uw verblijf. U geeft bij de reservering aan hoeveel kWh u wilt bijladen; dat aantal wordt in rekening gebracht.' },
             ].map(item => (
               <div key={item.key} style={{ background: 'var(--gray)', borderRadius: 14, padding: '24px', boxShadow: '0 1px 6px rgba(20,36,64,0.06)' }}>
                 <div style={{ width: 52, height: 52, borderRadius: 12, background: 'var(--blue-light, #eaf1fb)', color: 'var(--blue, #19499e)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-                  {item.key === 'bolt' ? <IconBolt size={26} /> : <IconVan size={26} />}
+                  <IconBolt size={26} />
                 </div>
                 <h3 style={{ fontSize: 16, marginBottom: 8 }}>{item.title}</h3>
                 <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.6 }}>{item.desc}</p>
@@ -83,13 +82,13 @@ export default async function TarievenPage() {
         <div className="container" style={{ maxWidth: 800, textAlign: 'center' }}>
           <div style={{ color: 'var(--cyan-dark)', fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>BETALEN</div>
           <h2 style={{ marginBottom: 12 }}>Betaalmethoden</h2>
-          <p style={{ color: 'var(--text-muted)', marginBottom: 32 }}>Reserveer en betaal online, of reken af aan de balie.</p>
+          <p style={{ color: 'var(--text-muted)', marginBottom: 32 }}>Reserveer en betaal online, of reken af ter plekke.</p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
             {[
               { label: 'iDEAL', desc: 'Online bij reservering' },
               { label: 'Creditcard', desc: 'Visa & Mastercard' },
-              { label: 'PIN', desc: 'Aan de balie' },
-              { label: 'Contant', desc: 'Aan de balie' },
+              { label: 'PIN', desc: 'Ter plekke' },
+              { label: 'Contant', desc: 'Ter plekke' },
             ].map(item => (
               <div key={item.label} style={{ background: 'white', borderRadius: 12, padding: '18px 24px', minWidth: 140, textAlign: 'center', border: '1px solid #e8edf3' }}>
                 <div style={{ fontWeight: 700, fontFamily: 'var(--font-heading)', fontSize: 16, color: 'var(--navy)' }}>{item.label}</div>

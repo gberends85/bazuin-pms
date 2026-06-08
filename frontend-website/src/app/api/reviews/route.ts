@@ -86,9 +86,10 @@ async function fetchFromGoogle() {
       text: r.text?.text || r.originalText?.text || '',
       profile_photo_url: r.authorAttribution?.photoUri || '',
     }))
-    .filter((r: any) => r.rating >= 4 && r.text)
+    // Toon alle reviews mét tekst (Google geeft er maximaal ~5 terug), beste eerst.
+    .filter((r: any) => r.text)
     .sort((a: any, b: any) => b.rating - a.rating)
-    .slice(0, 6);
+    .slice(0, 8);
 
   return {
     rating: data.rating || 0,

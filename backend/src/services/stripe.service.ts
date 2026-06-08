@@ -185,3 +185,24 @@ export async function createCheckoutSessionForExtraPayment(
 
   return { url: session.url!, sessionId: session.id };
 }
+
+// ── iDEAL-betaallink voor een contractfactuur (verloopt niet, max 1 betaling) ──
+export async function createContractInvoicePaymentLink(opts: {
+  amountCents: number; invoiceNumber: string; contractInvoiceId: string;
+}): Promise<{ url: string; paymentLinkId: string }> {
+  const stripe = getStripe();
+  const meta = { type: 'contract_invoice', contract_invoice_id: opts.contractInvoiceId, invoice_number: opts.invoiceNumber, system: 'bazuin_pms' };
+  const price = await stripe.prices.create({
+    unit_amount: opts.amountCents,
+    currency: 'eur',
+    product_data: { name: `Factuur ${opts.invoiceNumber} — Autostalling De Bazuin` },
+  });
+  const link = await stripe.paymentLinks.create({
+    line_items: [{ price: price.id, quantity: 1 }],
+    payment_method_types: ['ideal'],
+    restrictions: { completed_sessions: { limit: 1 } },
+    metadata: meta,
+    payment_intent_data: { metadata: meta, description: `Factuur ${opts.invoiceNumber}` },
+  });
+  return { url: link.url, paymentLinkId: link.id };
+}

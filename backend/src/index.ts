@@ -145,6 +145,10 @@ app.post(
 
         case 'checkout.session.completed': {
           const session = event.data.object as any;
+          if (session.metadata?.type === 'contract_invoice' && session.metadata?.contract_invoice_id) {
+            await query(`UPDATE contract_invoices SET paid_at = NOW() WHERE id = $1 AND paid_at IS NULL`, [session.metadata.contract_invoice_id]);
+            console.log(`[Webhook] contractfactuur betaald — invoice=${session.metadata.contract_invoice_id}`);
+          }
           if (session.metadata?.type === 'extra_payment') {
             const reservationId = session.metadata.reservation_id;
             const modificationId = session.metadata.modification_id;

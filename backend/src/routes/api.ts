@@ -12,7 +12,7 @@ import {
 } from '../services/email.service';
 import {
   createPaymentIntent, processRefund, getPaymentIntent,
-  createCheckoutSessionForExtraPayment,
+  createCheckoutSessionForExtraPayment, createContractInvoicePaymentLink,
 } from '../services/stripe.service';
 import {
   requireAuth, requireAdminRole,
@@ -6305,6 +6305,9 @@ router.post('/admin/umbraco/vehicle-repair-scan', requireAuth, async (req: Reque
     await query(`ALTER TABLE contract_customers ADD COLUMN IF NOT EXISTS auto_invoice_interval_months INTEGER DEFAULT 3`);
     await query(`ALTER TABLE contract_customers ADD COLUMN IF NOT EXISTS auto_invoice_start_date DATE`);
     await query(`ALTER TABLE contract_invoices ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ`);
+    await query(`ALTER TABLE contract_invoices ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`);
+    await query(`ALTER TABLE contract_invoices ADD COLUMN IF NOT EXISTS payment_link_url TEXT`);
+    await query(`ALTER TABLE contract_invoices ADD COLUMN IF NOT EXISTS stripe_payment_link_id VARCHAR(60)`);
     await query(`CREATE TABLE IF NOT EXISTS pending_contract_invoices (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       contract_customer_id UUID REFERENCES contract_customers(id) ON DELETE CASCADE,
@@ -7090,10 +7093,24 @@ router.post('/admin/contract-invoices/:id/send-email', requireAuth, async (req: 
   const snap = typeof inv.snapshot === 'string' ? JSON.parse(inv.snapshot) : inv.snapshot;
   const to = snap?.customer?.email;
   if (!to) return res.status(400).json({ error: 'Klant heeft geen e-mailadres' });
+
+  // iDEAL-betaallink aanmaken (eenmalig, alleen als nog niet betaald)
+  let payUrl: string | null = inv.payment_link_url || null;
+  if (!inv.paid_at && !payUrl) {
+    try {
+      const amountCents = Math.round(parseFloat(inv.total_incl_vat) * 100);
+      if (amountCents > 0) {
+        const link = await createContractInvoicePaymentLink({ amountCents, invoiceNumber: inv.invoice_number, contractInvoiceId: inv.id });
+        payUrl = link.url;
+        await query(`UPDATE contract_invoices SET payment_link_url=$1, stripe_payment_link_id=$2 WHERE id=$3`, [link.url, link.paymentLinkId, inv.id]).catch(() => {});
+      }
+    } catch (e: any) { console.error('iDEAL-betaallink aanmaken mislukt:', e.message); }
+  }
+
   const pdf = await pdfFromStoredContractInvoice(inv);
-  await sendContractInvoiceEmail(to, snap?.customer?.name || '', inv.invoice_number, pdf);
+  await sendContractInvoiceEmail(to, snap?.customer?.name || '', inv.invoice_number, pdf, payUrl);
   await query(`UPDATE contract_invoices SET sent_at = NOW() WHERE id = $1`, [req.params.id]).catch(() => {});
-  return res.json({ ok: true, email: to });
+  return res.json({ ok: true, email: to, paymentLink: payUrl });
 });
 
 // Dagelijks automatisch concept-facturen genereren

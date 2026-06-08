@@ -56,21 +56,28 @@ export async function sendSimpleEmail(to: string, subject: string, html: string)
 }
 
 // Contractfactuur per e-mail met PDF-bijlage
-export async function sendContractInvoiceEmail(to: string, name: string, invoiceNumber: string, pdf: Buffer): Promise<void> {
+export async function sendContractInvoiceEmail(to: string, name: string, invoiceNumber: string, pdf: Buffer, payUrl?: string | null): Promise<void> {
   if (!isWhitelisted(to)) {
     console.log(`[EMAIL WHITELIST] Geblokkeerd: ${to} | factuur ${invoiceNumber}`);
     return;
   }
+  const payBlock = payUrl
+    ? `<p style="margin:18px 0">
+         <a href="${payUrl}" style="display:inline-block;background:#19499e;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 24px;border-radius:8px;font-family:Arial,sans-serif">Betaal direct met iDEAL</a>
+       </p>
+       <p style="font-size:13px;color:#555">Of maak het bedrag over op IBAN <strong>NL81 ABNA 0108 0879 48</strong> t.n.v. Autostalling De Bazuin, o.v.v. ${invoiceNumber}.</p>`
+    : `<p style="font-size:13px;color:#555">Maak het bedrag over op IBAN <strong>NL81 ABNA 0108 0879 48</strong> t.n.v. Autostalling De Bazuin, o.v.v. ${invoiceNumber}.</p>`;
   await transporter.sendMail({
     from: `"${process.env.EMAIL_FROM_NAME || 'Autostalling De Bazuin'}" <${process.env.EMAIL_FROM_ADDRESS}>`,
     to,
     subject: `Factuur ${invoiceNumber} — Autostalling De Bazuin`,
     html: `<p>Beste ${name || 'klant'},</p>
       <p>In de bijlage vindt u factuur <strong>${invoiceNumber}</strong> van Autostalling De Bazuin.</p>
+      ${payBlock}
       <p>Met vriendelijke groet,<br>Autostalling De Bazuin</p>`,
     attachments: [{ filename: `Factuur-${invoiceNumber}.pdf`, content: pdf, contentType: 'application/pdf' }],
   });
-  console.log(`Contractfactuur ${invoiceNumber} gemaild naar ${to}`);
+  console.log(`Contractfactuur ${invoiceNumber} gemaild naar ${to}${payUrl ? ' (incl. iDEAL-link)' : ''}`);
 }
 
 export async function sendTemplatedEmail(

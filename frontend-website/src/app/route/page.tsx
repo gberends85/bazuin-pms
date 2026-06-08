@@ -25,7 +25,7 @@ export default async function RoutePage() {
   // Routekaart: gratis Google Maps embed (geen API-key nodig). Bestemming = de geregistreerde
   // locatie "Autostalling de Bazuin" → juiste label. Vertrek = het door-rij punt aan de goede
   // kant, zodat de aanrijding via de juiste straat wordt getoond (niet via de Zoutsloot).
-  const routeEmbed = `https://maps.google.com/maps?saddr=53.177254,5.418266&daddr=${encodeURIComponent('Autostalling de Bazuin, Harlingen')}&dirflg=d&output=embed`;
+  const routeEmbed = `https://maps.google.com/maps?saddr=53.176571,5.415205&daddr=53.177254,5.418266+to:${encodeURIComponent('Autostalling de Bazuin, Harlingen')}&dirflg=d&output=embed`;
 
   return (
     <>

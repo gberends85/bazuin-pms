@@ -437,6 +437,25 @@ export default function BookingPage() {
   const [payCountdown, setPayCountdown] = useState<number>(30 * 60); // seconden
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [acceptedKeyHandover, setAcceptedKeyHandover] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
+  const [termsHtml, setTermsHtml] = useState('');
+
+  // Voorwaarden lazy laden zodra de modal voor het eerst opent
+  useEffect(() => {
+    if (!showTerms || termsHtml) return;
+    fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/public/terms`)
+      .then(r => (r.ok ? r.json() : Promise.reject()))
+      .then(d => setTermsHtml(d.text || '<p>De voorwaarden zijn momenteel niet beschikbaar.</p>'))
+      .catch(() => setTermsHtml('<p>De voorwaarden konden niet worden geladen. Probeer het later opnieuw.</p>'));
+  }, [showTerms, termsHtml]);
+
+  // Sluiten met Escape-toets
+  useEffect(() => {
+    if (!showTerms) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowTerms(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showTerms]);
 
   function upd(field: keyof BookingState, val: any) {
     setState(prev => ({ ...prev, [field]: val }));
@@ -1336,12 +1355,46 @@ export default function BookingPage() {
                   style={{ marginTop: 2, width: 18, height: 18, accentColor: '#19499e', flexShrink: 0, cursor: 'pointer' }} />
                 <span style={{ fontSize: 13, color: '#142440', lineHeight: 1.5 }}>
                   Ik ga akkoord met de{' '}
-                  <a href="/boeken/voorwaarden" target="_blank" rel="noopener noreferrer"
-                    style={{ color: '#19499e', fontWeight: 600 }}>algemene voorwaarden</a>{' '}
+                  <button type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowTerms(true); }}
+                    style={{ color: '#19499e', fontWeight: 600, background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}>algemene voorwaarden</button>{' '}
                   van Autostalling De Bazuin.
                 </span>
               </label>
             </div>
+
+            {showTerms && (
+              <div onClick={() => setShowTerms(false)}
+                style={{ position: 'fixed', inset: 0, background: 'rgba(10,20,35,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+                <div onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Algemene voorwaarden"
+                  style={{ background: 'white', borderRadius: 14, maxWidth: 720, width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 12px 48px rgba(0,0,0,0.3)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid #e3e8ef' }}>
+                    <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#142440' }}>Algemene voorwaarden</h2>
+                    <button type="button" onClick={() => setShowTerms(false)} aria-label="Sluiten"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#142440', padding: 4, lineHeight: 0 }}>
+                      <XMarkIcon className="w-6 h-6" />
+                    </button>
+                  </div>
+                  <div style={{ padding: '20px 24px', overflowY: 'auto' }}>
+                    {termsHtml
+                      ? <div className="terms-modal-content" style={{ fontSize: 14, lineHeight: 1.7, color: '#33445c' }} dangerouslySetInnerHTML={{ __html: termsHtml }} />
+                      : <div style={{ color: '#7090b0', fontSize: 14 }}>Laden…</div>}
+                  </div>
+                  <div style={{ padding: '14px 24px', borderTop: '1px solid #e3e8ef', textAlign: 'right' }}>
+                    <button type="button" onClick={() => setShowTerms(false)}
+                      style={{ background: '#19499e', color: 'white', border: 'none', borderRadius: 8, padding: '10px 22px', fontWeight: 700, cursor: 'pointer' }}>Sluiten</button>
+                  </div>
+                </div>
+                <style>{`
+                  .terms-modal-content h3 { color: #142440; font-size: 16px; font-weight: 700; margin: 22px 0 10px; }
+                  .terms-modal-content h3:first-child { margin-top: 0; }
+                  .terms-modal-content p { margin: 0 0 12px; }
+                  .terms-modal-content ul { margin: 0 0 14px; padding-left: 20px; }
+                  .terms-modal-content li { margin-bottom: 7px; }
+                  .terms-modal-content strong { color: #142440; }
+                `}</style>
+              </div>
+            )}
 
             {(() => {
               const missing: string[] = [];

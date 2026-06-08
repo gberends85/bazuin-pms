@@ -1469,13 +1469,13 @@ export default function ArrivalsPage() {
     } catch {}
   }, [dateFrom, dateTo, rangeMode, arrivalTab, showDepartedToday]);
 
-  const load = useCallback(async (from?: string, to?: string) => {
-    setLoading(true);
+  const load = useCallback(async (from?: string, to?: string, silent = false) => {
+    if (!silent) setLoading(true);
     const f = from ?? dateFrom;
     const t = to ?? dateTo;
     try { setData(await api.reservations.today(f, f !== t ? t : undefined)); }
-    catch (e: any) { toastError(e?.message || 'Kon reserveringen niet laden'); }
-    finally { setLoading(false); }
+    catch (e: any) { if (!silent) toastError(e?.message || 'Kon reserveringen niet laden'); }
+    finally { if (!silent) setLoading(false); }
   }, [dateFrom, dateTo]);
 
   useEffect(() => {
@@ -1483,15 +1483,16 @@ export default function ArrivalsPage() {
     api.rdw.bulkRefresh().then(r => { if (r.updated > 0) load(); }).catch(() => {});
   }, [load]);
 
-  // Live keysafe-status ophalen (bij laden + elke 30 seconden)
-  // Laadt ook de reserveringsdata opnieuw zodat locker_collected_at direct zichtbaar is.
+  // Live keysafe-status ophalen (bij laden + elke 60 seconden)
+  // Herlaadt de reserveringsdata STIL (zonder spinner/flash) zodat webhook-updates
+  // (locker_collected_at) zichtbaar worden zonder dat de pagina hoorbaar "ververst".
   useEffect(() => {
     function fetchLockers() {
       api.keysafe.lockers().then(setKeysafeLockers).catch(() => {});
-      load(); // herlaad ook allDepartures zodat webhook-updates (locker_collected_at) zichtbaar worden
+      load(undefined, undefined, true); // stille achtergrond-refresh
     }
     fetchLockers();
-    const interval = setInterval(fetchLockers, 30000);
+    const interval = setInterval(fetchLockers, 60000);
     return () => clearInterval(interval);
   }, [load]);
 

@@ -22,6 +22,14 @@ export default async function RoutePage() {
   const waLink = whatsappUrl(contact.whatsapp);
   const mapsQuery = encodeURIComponent(`${contact.address}, ${contact.postalCode} ${contact.city}`);
 
+  // Routekaart: Google Maps Embed API (directions) — bestemming = geregistreerde locatie
+  // "Autostalling de Bazuin" (juiste label), met een afgedwongen via-punt zodat bezoekers
+  // via de goede kant aankomen i.p.v. de Zoutsloot. Valt terug op de gratis embed zonder key.
+  const gmapsKey = process.env.GOOGLE_PLACES_API_KEY || '';
+  const routeEmbed = gmapsKey
+    ? `https://www.google.com/maps/embed/v1/directions?key=${gmapsKey}&origin=53.176571,5.415205&destination=${encodeURIComponent('Autostalling de Bazuin, Harlingen')}&waypoints=53.177254,5.418266&mode=driving`
+    : `https://maps.google.com/maps?saddr=53.176571,5.415205&daddr=53.177254,5.418266+to:${encodeURIComponent('Autostalling de Bazuin, Harlingen')}&dirflg=d&output=embed`;
+
   return (
     <>
       <Header />
@@ -37,8 +45,8 @@ export default async function RoutePage() {
 
       <div style={{ height: 450, width: '100%' }}>
         <iframe
-          title={`Locatie ${business.name}`}
-          src="https://maps.google.com/maps?q=53.177288,5.417627(Autostalling+De+Bazuin)&z=16&output=embed"
+          title={`Route naar ${business.name}`}
+          src={routeEmbed}
           width="100%" height="450" style={{ border: 0, display: 'block' }}
           allowFullScreen loading="lazy" referrerPolicy="no-referrer-when-downgrade"
         />

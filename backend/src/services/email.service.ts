@@ -274,6 +274,17 @@ export async function buildConfirmationVars(
   // "Afhalen tot" = aankomst veerboot in Harlingen + 15 min marge
   const afhaal_tot = aankomsttijd_harlingen ? addMinutesToTime(aankomsttijd_harlingen, 15) : '';
 
+  // Google Calendar-link (all-day, aankomst t/m vertrek) — inclusief locatie en wijzig-link
+  const ymdCal = (v: any) => { const d = new Date(v); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; };
+  const calEnd = new Date(res.departure_date); calEnd.setDate(calEnd.getDate() + 1);
+  const calAddress = 'Zeilmakersstraat 2, 8861 SE Harlingen, Nederland';
+  const calDetails = `Reserveringsnummer: ${res.reference}\n\nWijzig je reservering: ${baseUrl}/wijzigen/${res.cancellation_token}\nLocatie: ${calAddress}`;
+  const agendalink = `https://calendar.google.com/calendar/render?action=TEMPLATE`
+    + `&text=${encodeURIComponent('Parkeren — Autostalling De Bazuin')}`
+    + `&dates=${ymdCal(res.arrival_date)}/${ymdCal(calEnd)}`
+    + `&details=${encodeURIComponent(calDetails)}`
+    + `&location=${encodeURIComponent(calAddress)}`;
+
   return {
     email: res.email,
     vars: {
@@ -307,6 +318,7 @@ export async function buildConfirmationVars(
       bericht: res.notes || '',
       annuleringslink: `${baseUrl}/annuleren/${res.cancellation_token}`,
       wijzigingslink: `${baseUrl}/wijzigen/${res.cancellation_token}`,
+      agendalink,
       factuurlink: `${process.env.PUBLIC_API_URL || 'https://api.booking.parkeren-harlingen.nl/api/v1'}/invoice/${res.cancellation_token}`,
       whatsapp_nummer: settings['company_whatsapp'] || '31612345678',
       heeft_extra_diensten: extraDiensten.length > 0,

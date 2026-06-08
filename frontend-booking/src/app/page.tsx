@@ -1471,14 +1471,14 @@ export default function BookingPage() {
               </div>
             ) : (
               // Ter plekke betalen — direct succes
-              <SuccessScreen result={result} email={state.email} onNew={() => { setState(INIT); setStep(1); setResult(null); setClientSecret(null); }} />
+              <SuccessScreen result={result} email={state.email} state={state} grandTotal={grandTotal} onNew={() => { setState(INIT); setStep(1); setResult(null); setClientSecret(null); }} />
             )}
           </>
         )}
 
         {/* ── STEP 7: Na Stripe betaling ── */}
         {(step as any) === 7 && result && (
-          <SuccessScreen result={result} email={state.email} onNew={() => { setState(INIT); setStep(1); setResult(null); setClientSecret(null); }} />
+          <SuccessScreen result={result} email={state.email} state={state} grandTotal={grandTotal} onNew={() => { setState(INIT); setStep(1); setResult(null); setClientSecret(null); }} />
         )}
       </div>
     </div>
@@ -1486,7 +1486,36 @@ export default function BookingPage() {
 }
 
 // ── Reusable success screen ───────────────────────────────────
-function SuccessScreen({ result, email, onNew }: { result: any; email: string; onNew: () => void }) {
+function SuccessScreen({ result, email, state, grandTotal, onNew }: { result: any; email: string; state: any; grandTotal: number; onNew: () => void }) {
+  const ADDRESS = 'Zeilmakersstraat 2, 8861 SE Harlingen';
+  const fmtDate = (iso: string) => {
+    if (!iso) return '';
+    try { return new Date(iso + 'T00:00:00').toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' }); }
+    catch { return iso; }
+  };
+  const ymd = (iso: string) => (iso || '').replace(/-/g, '');
+  const ymdPlus1 = (iso: string) => {
+    const d = new Date((iso || '') + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const plates: string = (state?.vehicles || []).map((v: any) => v.plate).filter(Boolean).join(', ');
+  const vehicleCount: number = state?.vehicleCount || (state?.vehicles?.length ?? 1);
+  const modifyPath = `/boeken/wijzigen/${result.cancellationToken}`;
+  const modifyAbs = typeof window !== 'undefined' ? `${window.location.origin}${modifyPath}` : modifyPath;
+  const calDetails = `Reserveringsnummer: ${result.reference}`
+    + (plates ? `\nVoertuig(en): ${plates}` : '')
+    + `\n\nWijzig je reservering: ${modifyAbs}`
+    + `\nLocatie: ${ADDRESS}, Nederland`;
+  const gcalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE`
+    + `&text=${encodeURIComponent('Parkeren — Autostalling De Bazuin')}`
+    + `&dates=${ymd(state?.arrival)}/${ymdPlus1(state?.departure)}`
+    + `&details=${encodeURIComponent(calDetails)}`
+    + `&location=${encodeURIComponent(ADDRESS + ', Nederland')}`;
+  const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(ADDRESS)}`;
+
+  const actionBtn: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '11px 14px', borderRadius: 9, fontSize: 13.5, fontWeight: 700, textDecoration: 'none', border: '0.5px solid rgba(10,34,64,0.15)', background: 'white', color: '#142440', cursor: 'pointer' };
+
   return (
     <div style={{ background: 'white', borderRadius: 12, border: '0.5px solid rgba(10,34,64,0.1)', padding: '36px 28px', textAlign: 'center', boxShadow: '0 1px 4px rgba(10,34,64,0.06)' }}>
       <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#eaf1fb', color: '#19499e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}><CheckIcon className="w-8 h-8" /></div>
@@ -1497,6 +1526,25 @@ function SuccessScreen({ result, email, onNew }: { result: any; email: string; o
       <div style={{ fontFamily: 'monospace', fontSize: 26, fontWeight: 900, color: '#142440', background: '#f5c842', padding: '12px 28px', borderRadius: 8, display: 'inline-block', letterSpacing: 3, marginBottom: 24 }}>
         {result.reference}
       </div>
+
+      {/* Overzicht van de reservering */}
+      <div style={{ background: '#f4f6f9', borderRadius: 10, padding: '16px 20px', textAlign: 'left', marginBottom: 14 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Uw reservering</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13.5, color: '#142440' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#7090b0' }}>Aankomst</span><span style={{ fontWeight: 700, textAlign: 'right' }}>{fmtDate(state?.arrival)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#7090b0' }}>Vertrek</span><span style={{ fontWeight: 700, textAlign: 'right' }}>{fmtDate(state?.departure)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span style={{ color: '#7090b0' }}>Voertuig{vehicleCount > 1 ? 'en' : ''}</span><span style={{ fontWeight: 700, textAlign: 'right' }}>{vehicleCount}{plates ? ` · ${plates}` : ''}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: 8, borderTop: '1px solid #e3e8ef' }}><span style={{ fontWeight: 800 }}>Totaal</span><span style={{ fontWeight: 900, color: '#142440' }}>€ {Number(grandTotal || 0).toFixed(2)}</span></div>
+        </div>
+      </div>
+
+      {/* Snelkoppelingen: agenda, wijzigen, route */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+        <a href={gcalUrl} target="_blank" rel="noopener noreferrer" style={actionBtn}>📅 Zet in agenda</a>
+        <a href={modifyPath} style={actionBtn}>✏️ Wijzig reservering</a>
+        <a href={mapsUrl} target="_blank" rel="noopener noreferrer" style={{ ...actionBtn, gridColumn: '1 / -1', fontWeight: 600 }}>📍 Route — {ADDRESS}</a>
+      </div>
+
       <div style={{ background: '#f4f6f9', borderRadius: 10, padding: '16px 20px', textAlign: 'left', fontSize: 13, color: '#142440', lineHeight: 2, marginBottom: 24 }}>
         <strong>Wat nu?</strong><br />
         · Check uw e-mail voor alle details en de annuleringslink<br />

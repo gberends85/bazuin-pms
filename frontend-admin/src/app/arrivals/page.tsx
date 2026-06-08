@@ -1160,6 +1160,7 @@ function DepartureCard({ res, onUpdate, occupiedLockers = [] }: { res: any; onUp
   const [saving, setSaving] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [sending, setSending] = useState(false);
+  const [showVariants, setShowVariants] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
@@ -1236,17 +1237,23 @@ function DepartureCard({ res, onUpdate, occupiedLockers = [] }: { res: any; onUp
     res.rdw_color,
   ].filter(Boolean).join(' · ');
 
-  function buildMessage(c: string) {
-    return `*${c}* Is de code om vandaag uw autosleutel af te halen.\nUw auto staat naast ons pand startklaar, de code gebruikt u om uw sleutel uit de afhaalkluis naast onze intercom te verkrijgen.\nGaat er iets mis?\n- reply op deze app\n- of bel aan (intercom)\n- of volg de bel instructie zoals aangegeven bij de intercom.`;
+  const locationLines: Record<string, string> = {
+    default: 'Uw auto staat naast ons pand startklaar',
+    buiten: 'Uw auto staat op ons buitenterrein klaar',
+    loods: 'Uw auto staat achter in onze loods startklaar',
+  };
+  function buildMessage(c: string, variant: string = 'default') {
+    return `*${c}* Is de code om vandaag uw autosleutel af te halen.\n${locationLines[variant] || locationLines.default}, de code gebruikt u om uw sleutel uit de afhaalkluis naast onze intercom te verkrijgen.\nGaat er iets mis?\n- reply op deze app\n- of bel aan (intercom)\n- of volg de bel instructie zoals aangegeven bij de intercom.`;
   }
 
-  function sendCode(e: React.MouseEvent) {
+  function sendCode(e: React.MouseEvent, variant: string = 'default') {
     e.stopPropagation();
     if (!code.trim()) { toastError('Voer eerst een code in'); return; }
     if (!res.phone) { toastError('Geen telefoonnummer bekend'); return; }
     const digits = res.phone.replace(/\D/g, '').replace(/^0/, '31');
-    window.open(`whatsapp://send/?phone=%2B${digits}&text=${encodeURIComponent(buildMessage(code.trim()))}`);
+    window.open(`whatsapp://send/?phone=%2B${digits}&text=${encodeURIComponent(buildMessage(code.trim(), variant))}`);
     setSending(true);
+    setShowVariants(false);
     setTimeout(() => setSending(false), 2000);
   }
 
@@ -1416,14 +1423,28 @@ function DepartureCard({ res, onUpdate, occupiedLockers = [] }: { res: any; onUp
         )}
         {/* 📱 WhatsApp + code */}
         {res.phone && (
-          <button onClick={sendCode} disabled={!code.trim() || sending}
-            style={{
-              background: sending ? '#0a7c6e' : '#25D366', border: 'none', color: 'white', borderRadius: 6,
-              padding: '5px 10px', fontSize: 12, fontWeight: 700, cursor: code.trim() ? 'pointer' : 'default',
-              opacity: !code.trim() ? 0.45 : 1, whiteSpace: 'nowrap', flexShrink: 0,
-            }}>
-            {sending ? <CheckIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle'}} /> : <><ChatBubbleLeftIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Stuur code</>}
-          </button>
+          <div style={{ position: 'relative', flexShrink: 0 }}
+            onMouseEnter={() => setShowVariants(true)} onMouseLeave={() => setShowVariants(false)}>
+            <button onClick={e => sendCode(e)} disabled={!code.trim() || sending}
+              style={{
+                background: sending ? '#0a7c6e' : '#25D366', border: 'none', color: 'white', borderRadius: 6,
+                padding: '5px 10px', fontSize: 12, fontWeight: 700, cursor: code.trim() ? 'pointer' : 'default',
+                opacity: !code.trim() ? 0.45 : 1, whiteSpace: 'nowrap', flexShrink: 0,
+              }}>
+              {sending ? <CheckIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle'}} /> : <><ChatBubbleLeftIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Stuur code</>}
+            </button>
+            {showVariants && !!code.trim() && (
+              <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: '100%', right: 0, marginTop: 2, background: 'white', border: '0.5px solid rgba(10,34,64,0.15)', borderRadius: 8, boxShadow: '0 6px 20px rgba(10,34,64,0.18)', zIndex: 60, minWidth: 210, overflow: 'hidden' }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: 0.5, padding: '7px 10px 3px' }}>Alternatief bericht</div>
+                <button onClick={e => sendCode(e, 'buiten')} style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'white', padding: '7px 10px', fontSize: 12, cursor: 'pointer', color: '#142440' }}>
+                  <strong>Buiten</strong> — auto staat op het buitenterrein
+                </button>
+                <button onClick={e => sendCode(e, 'loods')} style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', borderTop: '0.5px solid #eef1f5', background: 'white', padding: '7px 10px', fontSize: 12, cursor: 'pointer', color: '#142440' }}>
+                  <strong>Loods</strong> — auto staat achter in de loods
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {/* ✓ Inchecken (alleen als nog niet ingecheckt) */}

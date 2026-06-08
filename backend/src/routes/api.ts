@@ -5493,6 +5493,68 @@ router.post('/admin/umbraco/sync', requireAuth, async (req: Request, res: Respon
   }
 });
 
+// ── Annuleringen bijwerken ───────────────────────────────────────────────────
+// De gewone sync scant Umbraco vooruit (nieuwe ID's) en mist daardoor annuleringen
+// op reeds geïmporteerde, oudere reserveringen. Deze functie her-checkt alle
+// actieve/aankomende Umbraco-reserveringen tegen hun huidige status in Umbraco.
+async function runCancellationSync(): Promise<{ checked: number; cancelled: number; notFound: number; errors: number; cancelledRefs: string[] }> {
+  let token = await umbracoGetAccessToken();
+  if (!token) throw new Error('Geen Umbraco-toegang. Stel client-credentials of een token in bij Instellingen.');
+
+  const { rows } = await query(
+    `SELECT reference, CAST(SUBSTRING(reference FROM 'DB-2026-U(\\d+)$') AS integer) AS umb_id
+     FROM reservations
+     WHERE reference ~ '^DB-2026-U\\d+$'
+       AND status NOT IN ('cancelled','completed')
+       AND departure_date >= CURRENT_DATE - INTERVAL '1 day'
+     ORDER BY umb_id`
+  );
+
+  let checked = 0, cancelled = 0, notFound = 0, errors = 0;
+  const cancelledRefs: string[] = [];
+
+  for (const row of rows as any[]) {
+    const id = row.umb_id;
+    if (!id) continue;
+    checked++;
+    try {
+      let resp = await fetch(`${UMBRACO_BASE}/reservation/get?id=${id}`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      });
+      if (resp.status === 401) {
+        const fresh = await umbracoGetAccessToken();
+        if (fresh) { token = fresh; resp = await fetch(`${UMBRACO_BASE}/reservation/get?id=${id}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }); }
+      }
+      if (resp.status === 404) { notFound++; continue; }
+      if (!resp.ok) { errors++; continue; }
+      const data: any = await resp.json();
+      const isCancelled = data?.reservationStatus === 8 || !!(data?.cancelledAt || data?.isDeleted);
+      if (isCancelled) {
+        const upd = await query(`UPDATE reservations SET status='cancelled', updated_at=NOW() WHERE reference=$1 AND status<>'cancelled'`, [row.reference]);
+        if (upd.rowCount && upd.rowCount > 0) { cancelled++; cancelledRefs.push(row.reference); }
+      }
+    } catch { errors++; }
+  }
+  return { checked, cancelled, notFound, errors, cancelledRefs };
+}
+
+// POST /admin/umbraco/sync-cancellations — handmatig annuleringen bijwerken
+router.post('/admin/umbraco/sync-cancellations', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const result = await runCancellationSync();
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+// Dagelijks automatisch annuleringen bijwerken (los van de handmatige knop)
+setInterval(() => {
+  runCancellationSync()
+    .then(r => { if (r.cancelled > 0) console.log(`[Annulering-sync] ${r.cancelled} reservering(en) geannuleerd:`, r.cancelledRefs.join(', ')); })
+    .catch(e => console.error('[Annulering-sync] mislukt:', e.message));
+}, 24 * 60 * 60 * 1000);
+
 // GET /admin/umbraco/status — haal sync status op
 router.get('/admin/umbraco/status', requireAuth, async (_req: Request, res: Response) => {
   const rows = await query(

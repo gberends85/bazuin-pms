@@ -151,6 +151,10 @@ export const api = {
       req<{ scanned: number; imported: number; cancelled: number; skipped: number; errors: number; lastId: number; errorIds: number[]; skippedIds: number[] }>(
         '/admin/umbraco/sync', { method: 'POST', body: JSON.stringify(body || {}) }
       ),
+    syncCancellations: () =>
+      req<{ checked: number; cancelled: number; notFound: number; errors: number; cancelledRefs: string[] }>(
+        '/admin/umbraco/sync-cancellations', { method: 'POST' }
+      ),
     saveCredentials: (clientId: string, clientSecret: string) =>
       req<{ ok: boolean; tokenWorks: boolean }>('/admin/umbraco/save-credentials', { method: 'POST', body: JSON.stringify({ clientId, clientSecret }) }),
     saveToken: (umbracoToken: string) => req<{ ok: boolean }>('/admin/umbraco/save-token', { method: 'POST', body: JSON.stringify({ umbracoToken }) }),

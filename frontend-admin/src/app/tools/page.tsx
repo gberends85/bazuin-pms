@@ -3,7 +3,7 @@ import { useState } from 'react';
 import AdminLayout from '@/components/layout/AdminLayout';
 import Toaster, { toast, toastError } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
-import { BoltIcon, ArrowDownTrayIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { BoltIcon, ArrowDownTrayIcon, MagnifyingGlassIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
@@ -307,6 +307,44 @@ function UmbracoImport() {
   );
 }
 
+// ── Annuleringen bijwerken ──────────────────────────────────────────────────
+function SyncCancellations() {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<any>(null);
+
+  async function run() {
+    setLoading(true); setResult(null);
+    try {
+      const r = await api.umbraco.syncCancellations() as any;
+      setResult(r);
+      if (r.cancelled > 0) toast(`${r.cancelled} annulering(en) bijgewerkt`);
+      else toast('Geen nieuwe annuleringen gevonden');
+    } catch (e: any) { toastError(e?.message || 'Mislukt'); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <div style={card}>
+      <h2 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 800, color: '#0a2240', display: 'flex', alignItems: 'center', gap: 6 }}><ArrowPathIcon className="w-4 h-4" />Annuleringen bijwerken</h2>
+      <p style={{ margin: '0 0 14px', fontSize: 13, color: '#7090b0' }}>
+        Controleert alle actieve/aankomende reserveringen uit Umbraco op annuleringen die de gewone (vooruit-)sync mist, en zet ze hier ook op geannuleerd. Draait ook automatisch 1× per dag.
+      </p>
+      <button onClick={run} disabled={loading}
+        style={{ background: '#19499e', color: 'white', border: 'none', padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.6 : 1 }}>
+        {loading ? 'Bezig…' : 'Annuleringen bijwerken'}
+      </button>
+      {result && (
+        <div style={{ marginTop: 14, padding: '12px 16px', background: '#f4f6f9', borderRadius: 8, fontSize: 13, color: '#0a2240' }}>
+          <div>Gecontroleerd: <strong>{result.checked}</strong> · Geannuleerd: <strong style={{ color: result.cancelled > 0 ? '#c0392b' : '#0a5040' }}>{result.cancelled}</strong>{result.notFound ? ` · Niet gevonden: ${result.notFound}` : ''}{result.errors ? ` · Fouten: ${result.errors}` : ''}</div>
+          {result.cancelledRefs?.length > 0 && (
+            <div style={{ marginTop: 6, fontSize: 12, color: '#7090b0' }}>{result.cancelledRefs.join(', ')}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Pagina ────────────────────────────────────────────────────────────────────
 export default function ToolsPage() {
   return (
@@ -317,6 +355,7 @@ export default function ToolsPage() {
         <p style={{ margin: '0 0 24px', fontSize: 13, color: '#7090b0' }}>
           Umbraco-import en EV-service reparatie voor bestaande boekingen.
         </p>
+        <SyncCancellations />
         <EvRepairSingle />
         <EvRepairBulk />
         <UmbracoImport />

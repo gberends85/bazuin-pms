@@ -233,11 +233,10 @@ export function buildContractInvoiceHtml(input: ContractInvoiceInput): string {
     if (totalDays === 0) {
       rowsHtml = `<tr><td colspan="4" style="text-align:center;color:#777;padding:6mm 0">Geen auto-dagen geregistreerd in deze periode</td></tr>`;
     } else {
-      const hsFromFmt  = hsFrom.replace('-', '/');
-      const hsUntilFmt = hsUntil.replace('-', '/');
+      const periodStr = `${fmtDateShort(input.periodFrom)} t/m ${fmtDateShort(input.periodTo)}`;
       if (highCars > 0) {
         rowsHtml += `<tr>
-          <td>Hoogseizoen ${currentYear} (${esc(hsFromFmt)}–${esc(hsUntilFmt)})${licensePlate}</td>
+          <td>Parkeren hoogseizoen ${currentYear} · ${esc(periodStr)}${licensePlate}</td>
           <td class="num">${highCars}×</td>
           <td class="num">${fmtMoney(highRate)}/dag</td>
           <td class="num">${fmtMoney(highCars * highRate)}</td>
@@ -245,7 +244,7 @@ export function buildContractInvoiceHtml(input: ContractInvoiceInput): string {
       }
       if (lowCars > 0) {
         rowsHtml += `<tr>
-          <td>Laagseizoen ${currentYear}${licensePlate}</td>
+          <td>Parkeren laagseizoen ${currentYear} · ${esc(periodStr)}${licensePlate}</td>
           <td class="num">${lowCars}×</td>
           <td class="num">${fmtMoney(lowRate)}/dag</td>
           <td class="num">${fmtMoney(lowCars * lowRate)}</td>
@@ -253,7 +252,7 @@ export function buildContractInvoiceHtml(input: ContractInvoiceInput): string {
       }
       if (nyHighCars > 0) {
         rowsHtml += `<tr>
-          <td>Hoogseizoen ${currentYear + 1} (${esc(hsFromFmt)}–${esc(hsUntilFmt)})${licensePlate}</td>
+          <td>Parkeren hoogseizoen ${currentYear + 1} · ${esc(periodStr)}${licensePlate}</td>
           <td class="num">${nyHighCars}×</td>
           <td class="num">${fmtMoney(effNyHigh)}/dag</td>
           <td class="num">${fmtMoney(nyHighCars * effNyHigh)}</td>
@@ -261,7 +260,7 @@ export function buildContractInvoiceHtml(input: ContractInvoiceInput): string {
       }
       if (nyLowCars > 0) {
         rowsHtml += `<tr>
-          <td>Laagseizoen ${currentYear + 1}${licensePlate}</td>
+          <td>Parkeren laagseizoen ${currentYear + 1} · ${esc(periodStr)}${licensePlate}</td>
           <td class="num">${nyLowCars}×</td>
           <td class="num">${fmtMoney(effNyLow)}/dag</td>
           <td class="num">${fmtMoney(nyLowCars * effNyLow)}</td>
@@ -383,26 +382,7 @@ export function buildContractInvoiceHtml(input: ContractInvoiceInput): string {
   if (customer.address) customerAddr.push(esc(customer.address));
   if (customer.postal_code || customer.city) customerAddr.push(esc(`${customer.postal_code || ''} ${customer.city || ''}`.trim()));
 
-  // Tariefomschrijving in meta-tabel
-  let tariefRow = '';
-  if (rateType === 'fixed_period') {
-    const fpd = input.fixedPeriodDays ?? 2;
-    const fpr = input.fixedPeriodRate ?? 0;
-    const edr = input.extraDayRate ?? 0;
-    tariefRow = `<tr><td>Tarief</td><td>${fmtMoney(fpr)} per kenteken (eerste ${fpd} dag${fpd > 1 ? 'en' : ''}) + ${fmtMoney(edr)}/dag extra (incl. BTW)</td></tr>`;
-  } else if (rateType === 'seasonal') {
-    const hsFrom  = input.highSeasonFrom  ?? '04-01';
-    const hsUntil = input.highSeasonUntil ?? '09-30';
-    const cyear = new Date().getFullYear();
-    const nyLow  = input.nextYearLowSeasonRate  ?? 0;
-    const nyHigh = input.nextYearHighSeasonRate ?? 0;
-    const nyStr = (nyLow > 0 || nyHigh > 0)
-      ? ` · ${cyear+1}: Hoog ${fmtMoney(nyHigh > 0 ? nyHigh : input.highSeasonRate ?? 0)}/dag · Laag ${fmtMoney(nyLow > 0 ? nyLow : input.lowSeasonRate ?? 0)}/dag`
-      : '';
-    tariefRow = `<tr><td>Tarief</td><td>${cyear}: Hoogseizoen (${esc(hsFrom)}–${esc(hsUntil)}): ${fmtMoney(input.highSeasonRate ?? 0)}/dag · Laagseizoen: ${fmtMoney(input.lowSeasonRate ?? 0)}/dag (incl. BTW)${nyStr}</td></tr>`;
-  } else {
-    tariefRow = `<tr><td>Dagtarief</td><td>${fmtMoney(input.dailyRate)} per auto/dag (incl. BTW)</td></tr>`;
-  }
+  // Tarief-rij in de meta-tabel verwijderd op verzoek (stond dubbel met de regelomschrijving).
 
   return `<!DOCTYPE html>
 <html lang="nl">
@@ -459,7 +439,6 @@ export function buildContractInvoiceHtml(input: ContractInvoiceInput): string {
       <tr><td>Periode</td><td>${fmtDateShort(input.periodFrom)} t/m ${fmtDateShort(input.periodTo)}</td></tr>
       <tr><td>Factuurdatum</td><td>${invoiceDate}</td></tr>
       <tr><td>Betaaltermijn</td><td>${paymentTermDays} dagen &mdash; uiterlijk <strong>${dueDate}</strong></td></tr>
-      ${tariefRow}
     </tbody>
   </table>
 

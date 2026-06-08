@@ -96,19 +96,10 @@ export default async function OpeningstijdenPage() {
           {/* ── AUTO AFHALEN ── */}
           <h2 style={{ ...h2, textAlign: 'center', marginTop: 48, marginBottom: 28 }}>Auto afhalen</h2>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20, marginBottom: 20 }}>
-            <div style={{ ...card, marginBottom: 0 }}>
-              <h3 style={h3}>U heeft uw sleutel via de kluis afgegeven en nog niet betaald</h3>
-              <p style={{ ...p, margin: 0 }}>
-                Wij zorgen dat uw auto startklaar staat op de afhaaltijd die in uw reservering vermeld staat. Vaak is er al iemand aanwezig in de stalling. Zijn de deuren nog gesloten? Bel aan bij de intercom, dan komt er direct iemand naar u toe.
-              </p>
-            </div>
-            <div style={{ ...card, marginBottom: 0 }}>
-              <h3 style={h3}>Indien u bij het afgeven al heeft betaald</h3>
-              <p style={{ ...p, margin: 0 }}>
-                Soms sturen we op de afhaaldag een code via <a href={waLink} target="_blank" rel="noopener noreferrer" style={waStyle}>WhatsApp</a>, zodat u de sleutel zelf uit het uitgiftevak van de kluis kunt halen. Ontvangt u geen code? Dan is er altijd iemand aanwezig om u te helpen. Zijn de deuren gesloten, bel dan aan bij de intercom.
-              </p>
-            </div>
+          <div style={card}>
+            <p style={{ ...p, margin: 0 }}>
+              Bij terugkomst staan wij meestal voor u klaar. Soms ontvangt u vooraf een code waarmee u uw sleutel zelf uit de afgiftekluis kunt halen. Wanneer we er niet zijn en u geen code heeft ontvangen dan belt u aan bij de intercom naast de afgiftekluis. We komen dan direct.
+            </p>
           </div>
 
           <div style={info}>

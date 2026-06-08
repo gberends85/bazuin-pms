@@ -866,7 +866,6 @@ export default function BookingPage() {
                   {syncingDoeksen ? <><ArrowPathIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />Laden…</> : <><ArrowPathIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />Laad actuele tijden</>}
                 </button>
               </div>
-              <p style={{ margin: '0 0 18px', fontSize: 13, color: '#7090b0' }}>Uw auto wordt 30 minuten na aankomst van de boot klaargezet.</p>
 
               {/* ── Heenreis ── */}
               <div style={{ fontSize: 16, fontWeight: 800, color: '#142440', marginBottom: 10, textTransform: 'capitalize' as const }}>

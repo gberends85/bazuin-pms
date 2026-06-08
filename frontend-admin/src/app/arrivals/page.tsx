@@ -1161,7 +1161,28 @@ function DepartureCard({ res, onUpdate, occupiedLockers = [] }: { res: any; onUp
   const [assigning, setAssigning] = useState(false);
   const [sending, setSending] = useState(false);
   const [showVariants, setShowVariants] = useState(false);
+  const [varPos, setVarPos] = useState<{ top: number; right: number } | null>(null);
+  const varBtnRef = useRef<HTMLButtonElement>(null);
   const [emailSending, setEmailSending] = useState(false);
+
+  // Sluit het varianten-menu bij klik buiten of scroll
+  useEffect(() => {
+    if (!showVariants) return;
+    const close = () => setShowVariants(false);
+    const id = setTimeout(() => document.addEventListener('click', close), 0);
+    document.addEventListener('scroll', close as any, true);
+    return () => { clearTimeout(id); document.removeEventListener('click', close); document.removeEventListener('scroll', close as any, true); };
+  }, [showVariants]);
+
+  function toggleVariants(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!code.trim()) { toastError('Voer eerst een code in'); return; }
+    if (!showVariants && varBtnRef.current) {
+      const r = varBtnRef.current.getBoundingClientRect();
+      setVarPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+    }
+    setShowVariants(o => !o);
+  }
   const [checkingOut, setCheckingOut] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
 
@@ -1423,23 +1444,28 @@ function DepartureCard({ res, onUpdate, occupiedLockers = [] }: { res: any; onUp
         )}
         {/* 📱 WhatsApp + code */}
         {res.phone && (
-          <div style={{ position: 'relative', flexShrink: 0 }}
-            onMouseEnter={() => setShowVariants(true)} onMouseLeave={() => setShowVariants(false)}>
+          <div style={{ position: 'relative', flexShrink: 0, display: 'flex' }}>
             <button onClick={e => sendCode(e)} disabled={!code.trim() || sending}
               style={{
-                background: sending ? '#0a7c6e' : '#25D366', border: 'none', color: 'white', borderRadius: 6,
+                background: sending ? '#0a7c6e' : '#25D366', border: 'none', color: 'white', borderRadius: '6px 0 0 6px',
                 padding: '5px 10px', fontSize: 12, fontWeight: 700, cursor: code.trim() ? 'pointer' : 'default',
-                opacity: !code.trim() ? 0.45 : 1, whiteSpace: 'nowrap', flexShrink: 0,
+                opacity: !code.trim() ? 0.45 : 1, whiteSpace: 'nowrap',
               }}>
               {sending ? <CheckIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle'}} /> : <><ChatBubbleLeftIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Stuur code</>}
             </button>
-            {showVariants && !!code.trim() && (
-              <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: '100%', right: 0, marginTop: 2, background: 'white', border: '0.5px solid rgba(10,34,64,0.15)', borderRadius: 8, boxShadow: '0 6px 20px rgba(10,34,64,0.18)', zIndex: 60, minWidth: 210, overflow: 'hidden' }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: 0.5, padding: '7px 10px 3px' }}>Alternatief bericht</div>
-                <button onClick={e => sendCode(e, 'buiten')} style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'white', padding: '7px 10px', fontSize: 12, cursor: 'pointer', color: '#142440' }}>
+            <button ref={varBtnRef} onClick={toggleVariants} disabled={!code.trim() || sending} title="Ander bericht kiezen"
+              style={{
+                background: sending ? '#0a7c6e' : '#1fb955', border: 'none', borderLeft: '1px solid rgba(255,255,255,0.35)', color: 'white',
+                borderRadius: '0 6px 6px 0', padding: '5px 7px', fontSize: 11, cursor: code.trim() ? 'pointer' : 'default',
+                opacity: !code.trim() ? 0.45 : 1,
+              }}>▾</button>
+            {showVariants && varPos && (
+              <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', top: varPos.top, right: varPos.right, background: 'white', border: '0.5px solid rgba(10,34,64,0.15)', borderRadius: 8, boxShadow: '0 6px 24px rgba(10,34,64,0.22)', zIndex: 9999, minWidth: 240, overflow: 'hidden' }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: 0.5, padding: '8px 12px 4px' }}>Alternatief bericht</div>
+                <button onClick={e => sendCode(e, 'buiten')} style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'white', padding: '9px 12px', fontSize: 13, cursor: 'pointer', color: '#142440' }}>
                   <strong>Buiten</strong> — auto staat op het buitenterrein
                 </button>
-                <button onClick={e => sendCode(e, 'loods')} style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', borderTop: '0.5px solid #eef1f5', background: 'white', padding: '7px 10px', fontSize: 12, cursor: 'pointer', color: '#142440' }}>
+                <button onClick={e => sendCode(e, 'loods')} style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', borderTop: '0.5px solid #eef1f5', background: 'white', padding: '9px 12px', fontSize: 13, cursor: 'pointer', color: '#142440' }}>
                   <strong>Loods</strong> — auto staat achter in de loods
                 </button>
               </div>

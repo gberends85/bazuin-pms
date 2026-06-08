@@ -224,6 +224,9 @@ app.use(cors({
       'http://127.0.0.1:3000',
       'http://127.0.0.1:3002',
       'https://cms.autostallingdebazuin.nl',
+      'https://www.parkeren-harlingen.nl',
+      'https://parkeren-harlingen.nl',
+      'https://booking.parkeren-harlingen.nl',
     ];
     // Allow no-origin requests (mobile apps, Postman, curl)
     if (!origin || allowed.includes(origin)) {

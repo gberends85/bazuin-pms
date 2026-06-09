@@ -548,7 +548,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   const Logo = () => (
     <div style={{ textAlign: 'center', marginBottom: 24 }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/Logo.png" alt="Autostalling De Bazuin" style={{ height: 58, width: 'auto', display: 'block', margin: '0 auto 14px' }} />
+      <img src="/Logo-wit.png" alt="Autostalling De Bazuin" style={{ height: 56, width: 'auto', maxWidth: '78%', display: 'block', margin: '0 auto 16px' }} />
       <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 800, color: '#142440' }}>Reservering wijzigen</h2>
     </div>
   );

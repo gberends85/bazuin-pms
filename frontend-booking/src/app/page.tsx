@@ -27,6 +27,7 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
   const [picking, setPicking] = useState<'start' | 'end'>('start');
   const [isMobile, setIsMobile] = useState(false);
   const [calAvail, setCalAvail] = useState<Record<string, number>>({}); // date → available spots
+  const [fullMsg, setFullMsg] = useState<string | null>(null);
 
   // Echte huidige datum + maand vaststellen zodra de component in de browser laadt.
   useEffect(() => {
@@ -70,7 +71,12 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
 
   function handleDay(dateStr: string) {
     if (dateStr < todayStr) return;
-    if (isDayBlocked(dateStr)) return;
+    if (isDayBlocked(dateStr)) {
+      const d = new Date(dateStr + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+      setFullMsg(`Op ${d} zijn we helaas al vol — reserveren is op die datum niet meer mogelijk.`);
+      return;
+    }
+    setFullMsg(null);
     if (picking === 'start' || !arrival) {
       onArrival(dateStr); onDeparture(''); setPicking('end');
     } else {
@@ -126,7 +132,7 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
                 onMouseEnter={() => picking === 'end' && !isUnavailable && setHovered(ds)}
                 onMouseLeave={() => setHovered(null)}
                 title={isBlocked ? 'Geen plaatsen beschikbaar' : undefined}
-                style={{ background: cellBg, padding: '2px 1px', cursor: isUnavailable ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                style={{ background: cellBg, padding: '2px 1px', cursor: isPast ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                 <div style={{ width: '100%', aspectRatio: '1', borderRadius: '50%', background: dayBg, color: dayColor, fontWeight: dayWeight, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', maxWidth: 38, position: 'relative' }}>
                   {new Date(ds + 'T12:00:00').getDate()}
                   {isBlocked && <div style={{ position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)', width: 4, height: 4, borderRadius: '50%', background: '#e24b4a' }} />}
@@ -172,6 +178,13 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
         </div>
         <button onClick={nextMonth} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#142440', padding: '4px 4px', lineHeight: 1, flexShrink: 0, marginTop: 0, display: 'flex', alignItems: 'center' }}><ArrowRightIcon className="w-5 h-5" /></button>
       </div>
+
+      {fullMsg && (
+        <div style={{ marginTop: 10, background: '#fdeaea', border: '1px solid #f0a0a0', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, color: '#8a2020', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span>{fullMsg}</span>
+          <button onClick={() => setFullMsg(null)} style={{ background: 'none', border: 'none', color: '#8a2020', cursor: 'pointer', fontWeight: 700, fontSize: 16, lineHeight: 1, flexShrink: 0 }}>×</button>
+        </div>
+      )}
 
       {picking === 'end' && arrival && !departure && (
         <div style={{ marginTop: 10, fontSize: 12, color: '#7090b0', textAlign: 'center' }}>

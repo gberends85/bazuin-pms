@@ -7,6 +7,11 @@ import dns from 'node:dns';
 // Forceer IPv4 zodat de Places API bereikbaar is.
 dns.setDefaultResultOrder('ipv4first');
 
+// Altijd live uitvoeren: de pool wordt buiten de build om bijgewerkt (dagelijkse
+// Google-fetch + handmatig toegevoegde reviews). Zonder dit cachet Next de
+// route-respons, waardoor nieuwe reviews niet zichtbaar worden.
+export const dynamic = 'force-dynamic';
+
 const CACHE_FILE = path.join(process.cwd(), '.reviews-cache.json');
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 uur
 

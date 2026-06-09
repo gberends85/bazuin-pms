@@ -328,7 +328,7 @@ export default function PriceChecker(_props: Props) {
                   )}
                 </div>
                 <div style={{ fontSize: 12, color: '#9aa7b8', marginTop: 6 }}>
-                  EV-laden wordt apart berekend op basis van het werkelijke verbruik.
+                  EV-laden wordt apart berekend op basis van het aantal kWh dat u bij de reservering aangeeft.
                 </div>
               </div>
             )}

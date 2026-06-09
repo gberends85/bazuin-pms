@@ -3324,11 +3324,15 @@ router.get('/reservations/token/:token/modification-preview', async (req: Reques
   const arrivalDate = new Date(isoDate(r.arrival_date) + 'T12:00:00');
   const currentDepartureDate = new Date(isoDate(r.departure_date) + 'T12:00:00');
   const duringStay = today >= arrivalDate && today < currentDepartureDate;
+  // Verlengen ná inchecken volgt dezelfde flow als verlengen tijdens verblijf:
+  // vast dagtarief per extra dag, direct via Stripe.
+  const isDepartureExtension = isoDate(newDeparture) > isoDate(r.departure_date) && isoDate(newArrival) === isoDate(r.arrival_date);
+  const flatRateExtension = duringStay || (r.status === 'checked_in' && isDepartureExtension);
 
-  if (duringStay) {
+  if (flatRateExtension) {
     const currentArrivalStr = isoDate(r.arrival_date);
-    if (newArrival !== currentArrivalStr) return res.status(400).json({ error: 'Tijdens uw verblijf kunt u alleen de vertrekdatum wijzigen.' });
-    if (newDeparture <= isoDate(r.departure_date)) return res.status(400).json({ error: 'Tijdens uw verblijf kunt u de verblijfsduur niet verkorten.' });
+    if (newArrival !== currentArrivalStr) return res.status(400).json({ error: 'U kunt alleen de vertrekdatum wijzigen.' });
+    if (newDeparture <= isoDate(r.departure_date)) return res.status(400).json({ error: 'De verblijfsduur kan niet worden verkort.' });
 
     const newDepartureDateObj = new Date(newDeparture + 'T12:00:00');
     const extraDays = differenceInDays(newDepartureDateObj, currentDepartureDate);
@@ -4429,9 +4433,10 @@ router.post('/reservations/token/:token/modify-during-stay-pay', async (req: Req
   const arrivalDate = new Date(isoDate(r.arrival_date) + 'T12:00:00');
   const currentDepartureDate = new Date(isoDate(r.departure_date) + 'T12:00:00');
   const duringStay = today >= arrivalDate && today < currentDepartureDate;
+  const canExtend = duringStay || r.status === 'checked_in';
 
-  if (!duringStay) {
-    return res.status(400).json({ error: 'Deze route is alleen beschikbaar tijdens uw verblijf' });
+  if (!canExtend) {
+    return res.status(400).json({ error: 'Deze route is alleen beschikbaar tijdens uw verblijf of na inchecken' });
   }
 
   const newDepStr = isoDate(newDepartureDate);

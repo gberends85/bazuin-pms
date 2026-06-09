@@ -368,15 +368,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   async function calcPreview() {
     setCheckinEarlierError('');
 
-    // Checked-in: departure can only be set earlier
-    if (isCheckedIn && !duringStay) {
-      const currentDep = res.departure_date?.slice(0, 10);
-      if (newDeparture >= currentDep) {
-        setCheckinEarlierError('U kunt de vertrekdatum alleen vervroegen. Voor verlenging, neem contact op.');
-        return;
-      }
-    }
-
+    // Ingecheckt: vervroegen (geen restitutie, ter beoordeling) én verlengen (vast dagtarief, direct via Stripe) zijn mogelijk.
     if (!newArrival || !newDeparture || newDeparture <= newArrival) {
       setError('Kies een geldige aankomst- en vertrekdatum.'); return;
     }
@@ -1053,7 +1045,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
 
         {isCheckedIn && !duringStay && (
           <div style={{ background: '#e6f1fb', border: '1.5px solid #1a6bb5', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#142440', marginBottom: 16 }}>
-            Uw voertuig is ingecheckt. U kunt alleen de vertrekdatum <strong>vervroegen</strong>. Voor verlenging, neem contact op.
+            Uw voertuig is ingecheckt. U kunt uw vertrekdatum <strong>vervroegen</strong> of <strong>verlengen</strong>. Bij verlengen rekenen we een vast tarief per extra dag; het exacte bedrag ziet u zo bij het prijsverschil.
           </div>
         )}
 
@@ -1077,14 +1069,13 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
           <label style={S.label}>Vertrekdatum</label>
           <input
             type="date"
-            min={duringStay ? res.departure_date?.slice(0, 10) : (isCheckedIn ? undefined : (newArrival || todayStr))}
-            max={isCheckedIn && !duringStay ? res.departure_date?.slice(0, 10) : undefined}
+            min={duringStay ? res.departure_date?.slice(0, 10) : (isCheckedIn ? todayStr : (newArrival || todayStr))}
             value={newDeparture}
             onChange={e => { setNewDeparture(e.target.value); setCheckinEarlierError(''); }}
             style={S.input}
           />
           {isCheckedIn && !duringStay && (
-            <div style={{ fontSize: 11, color: '#7090b0', marginTop: 4 }}>Alleen een eerdere datum dan de huidige vertrekdatum is toegestaan.</div>
+            <div style={{ fontSize: 11, color: '#7090b0', marginTop: 4 }}>Een eerdere datum = vervroegen (geen restitutie, wordt ter beoordeling aangeboden). Een latere datum = verlengen tegen het dagtarief.</div>
           )}
           {checkinEarlierError && (
             <div style={{ fontSize: 12, color: '#8a2020', marginTop: 6, background: '#fdeaea', borderRadius: 6, padding: '6px 10px' }}>{checkinEarlierError}</div>

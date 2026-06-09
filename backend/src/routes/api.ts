@@ -5222,36 +5222,37 @@ async function umbracoGetAccessToken(manualToken?: string | null): Promise<strin
   return s.rows[0]?.value || null;
 }
 
-router.post('/admin/umbraco/sync', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const { umbracoToken: tokenFromReq, fromId, toId, dryRun } = req.body as {
-      umbracoToken?: string; fromId?: number; toId?: number; dryRun?: boolean;
-    };
+const UMBRACO_SYNC_LOOKBACK = 500; // her-controleer zoveel ID's ÓNDER het maximum: vangt late betalingen en gaten
 
-    // 1. Resolve token — automatisch via client-credentials, met fallback
-    if (tokenFromReq?.trim()) {
-      await query(
-        `INSERT INTO settings (key, value) VALUES ('umbraco_token', $1) ON CONFLICT (key) DO UPDATE SET value = $1`,
-        [tokenFromReq.trim()]
-      );
-    }
-    let token = await umbracoGetAccessToken(tokenFromReq?.trim());
-    if (!token) return res.status(400).json({ error: 'Geen Umbraco-toegang. Stel client-credentials of een token in bij Instellingen.' });
+async function runUmbracoSync(opts: { umbracoToken?: string; fromId?: number; toId?: number; dryRun?: boolean } = {}) {
+  const { umbracoToken: tokenFromReq, fromId, toId, dryRun } = opts;
 
-    // 2. Determine scan range
-    let startId: number = fromId ?? 0;
-    if (!startId) {
-      // Max Umbraco ID already in DB
-      const r = await query(
-        `SELECT MAX(CAST(SUBSTRING(reference FROM 'DB-2026-U(\\d+)$') AS integer)) AS max_id
-         FROM reservations WHERE reference ~ '^DB-2026-U\\d+$'`
-      );
-      startId = (parseInt(r.rows[0]?.max_id) || 24000) + 1;
-    }
-    const endId: number = toId ?? (startId + 1000); // scan up to 1000 IDs ahead
+  // 1. Resolve token — automatisch via client-credentials, met fallback
+  if (tokenFromReq?.trim()) {
+    await query(
+      `INSERT INTO settings (key, value) VALUES ('umbraco_token', $1) ON CONFLICT (key) DO UPDATE SET value = $1`,
+      [tokenFromReq.trim()]
+    );
+  }
+  let token = await umbracoGetAccessToken(tokenFromReq?.trim());
+  if (!token) throw new Error('Geen Umbraco-toegang. Stel client-credentials of een token in bij Instellingen.');
 
-    // 3. Scan
-    const client = await getClient();
+  // 2. Bepaal scanbereik. Hoogste reeds geïmporteerde Umbraco-ID:
+  const maxRow = await query(
+    `SELECT MAX(CAST(SUBSTRING(reference FROM 'DB-2026-U(\\d+)$') AS integer)) AS max_id
+     FROM reservations WHERE reference ~ '^DB-2026-U\\d+$'`
+  );
+  const maxDbId = (parseInt(maxRow.rows[0]?.max_id) || 24000);
+  // Standaard scannen we een terugkijk-venster ÓNDER het maximum t/m ruim erboven.
+  // Het terugkijken haalt boekingen op die pas ná de vorige scan betaald werden
+  // (en toen als onbetaald/ghost werden overgeslagen) en dicht eventuele gaten.
+  // De vroege-stop (100 lege ID's) geldt alleen bóven het maximum, zodat gaten in
+  // het terugkijk-venster de scan niet voortijdig afbreken.
+  const startId: number = fromId ?? Math.max(1, maxDbId - UMBRACO_SYNC_LOOKBACK);
+  const endId: number = toId ?? (maxDbId + 1000); // tot ruim boven het maximum
+
+  // 3. Scan
+  const client = await getClient();
     let scanned = 0, imported = 0, cancelled = 0, skipped = 0, errors = 0;
     let lastFoundId = startId - 1;
     let consecutiveEmpty = 0;
@@ -5278,7 +5279,9 @@ router.post('/admin/umbraco/sync', requireAuth, async (req: Request, res: Respon
           }
           if (resp.status === 404 || resp.status === 204) {
             consecutiveEmpty++;
-            if (consecutiveEmpty >= 100) break; // stop after 100 consecutive misses
+            // Stop pas na 100 opeenvolgende missers ÉN alleen boven het maximum:
+            // in het terugkijk-venster scannen we altijd door, ondanks gaten.
+            if (consecutiveEmpty >= 100 && id > maxDbId) break;
             continue;
           }
           if (!resp.ok) { errors++; errorIds.push(id); continue; }
@@ -5533,29 +5536,51 @@ router.post('/admin/umbraco/sync', requireAuth, async (req: Request, res: Respon
       client.release();
     }
 
-    // 4. Save state — sla het LAATSTE GESCANDE ID op (endId), niet het laatste gevonden.
-    // Zo begint de volgende scan altijd correct na het vorige bereik, ook als er gaten waren.
-    if (!dryRun) {
-      await query(
-        `INSERT INTO settings (key, value) VALUES ('umbraco_last_sync_id', $1) ON CONFLICT (key) DO UPDATE SET value=$1`,
-        [String(endId)]
-      );
-      await query(
-        `INSERT INTO settings (key, value) VALUES ('umbraco_last_sync_at', $1) ON CONFLICT (key) DO UPDATE SET value=$1`,
-        [new Date().toISOString()]
-      );
-    }
+  // 4. Save state — sla het LAATSTE GESCANDE ID op (endId), niet het laatste gevonden.
+  // Zo begint de volgende scan altijd correct na het vorige bereik, ook als er gaten waren.
+  if (!dryRun) {
+    await query(
+      `INSERT INTO settings (key, value) VALUES ('umbraco_last_sync_id', $1) ON CONFLICT (key) DO UPDATE SET value=$1`,
+      [String(endId)]
+    );
+    await query(
+      `INSERT INTO settings (key, value) VALUES ('umbraco_last_sync_at', $1) ON CONFLICT (key) DO UPDATE SET value=$1`,
+      [new Date().toISOString()]
+    );
+  }
 
-    return res.json({
-      scanned, imported, cancelled, skipped, errors,
-      lastId: lastFoundId, dryRun: !!dryRun,
-      errorIds,                       // ID's die NIET verwerkt zijn — handmatig na te lopen
-      skippedIds: skippedIds.slice(0, 200),
-    });
+  return {
+    scanned, imported, cancelled, skipped, errors,
+    lastId: lastFoundId, dryRun: !!dryRun,
+    errorIds,                       // ID's die NIET verwerkt zijn — handmatig na te lopen
+    skippedIds: skippedIds.slice(0, 200),
+    startId, endId,
+  };
+}
+
+// Handmatig triggeren vanuit de admin
+router.post('/admin/umbraco/sync', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const result = await runUmbracoSync((req.body as any) || {});
+    return res.json(result);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
+
+// Dagelijks automatisch nieuwe én laat-betaalde Umbraco-boekingen ophalen.
+// Het terugkijk-venster in runUmbracoSync zorgt dat boekingen die pas later worden
+// betaald (en eerder zijn overgeslagen) alsnog binnenkomen.
+setTimeout(() => {
+  runUmbracoSync()
+    .then(r => console.log(`[Umbraco-sync] opstart: ${r.imported} geïmporteerd, ${r.cancelled} geannuleerd (bereik ${r.startId}-${r.endId})`))
+    .catch(e => console.error('[Umbraco-sync] opstart mislukt:', e.message));
+}, 25 * 1000);
+setInterval(() => {
+  runUmbracoSync()
+    .then(r => { if (r.imported > 0 || r.cancelled > 0) console.log(`[Umbraco-sync] ${r.imported} geïmporteerd, ${r.cancelled} geannuleerd`); })
+    .catch(e => console.error('[Umbraco-sync] mislukt:', e.message));
+}, 24 * 60 * 60 * 1000);
 
 // ── Annuleringen bijwerken ───────────────────────────────────────────────────
 // De gewone sync scant Umbraco vooruit (nieuwe ID's) en mist daardoor annuleringen

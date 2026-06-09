@@ -68,7 +68,7 @@ const FALLBACK_REVIEWS = [
 // te halen en nieuwe, unieke reviews aan een lokale pool toe te voegen, bouwen we
 // na verloop van tijd een grotere verzameling op dan die 5 momentopnamen.
 const MIN_RATING = 4;      // alleen 4- en 5-sterren tonen
-const POOL_DISPLAY = 12;   // hoeveel er op de homepage worden getoond
+const POOL_DISPLAY = 36;   // hoeveel reviews de API teruggeeft; de homepage roteert hier in pagina's doorheen
 
 function reviewKey(r: any): string {
   return `${(r.author_name || '').trim()}::${(r.text || '').trim().slice(0, 120)}`;

@@ -87,12 +87,36 @@ function ReviewCard({ review }: { review: Review }) {
   );
 }
 
+const REVIEWS_PER_PAGE = 9;
+const REVIEW_ROTATE_MS = 7000;
+
 export default function HomePage({ content }: { content: WebsiteContent }) {
   const [reviewData, setReviewData] = useState<ReviewData | null>(null);
+  const [reviewPage, setReviewPage] = useState(0);
+  const [reviewPaused, setReviewPaused] = useState(false);
 
   useEffect(() => {
     fetch('/api/reviews').then(r => r.json()).then(setReviewData).catch(() => {});
   }, []);
+
+  const reviewCount = reviewData?.reviews.length ?? 0;
+  const reviewPageCount = Math.ceil(reviewCount / REVIEWS_PER_PAGE);
+
+  // Auto-roteren door de pagina's; pauzeert wanneer de bezoeker eroverheen gaat.
+  useEffect(() => {
+    if (reviewPageCount <= 1 || reviewPaused) return;
+    const id = setInterval(() => setReviewPage(p => (p + 1) % reviewPageCount), REVIEW_ROTATE_MS);
+    return () => clearInterval(id);
+  }, [reviewPageCount, reviewPaused]);
+
+  // Houd de pagina-index geldig als het aantal reviews verandert.
+  useEffect(() => {
+    if (reviewPage >= reviewPageCount) setReviewPage(0);
+  }, [reviewPageCount, reviewPage]);
+
+  const visibleReviews = reviewData
+    ? reviewData.reviews.slice(reviewPage * REVIEWS_PER_PAGE, reviewPage * REVIEWS_PER_PAGE + REVIEWS_PER_PAGE)
+    : [];
 
   const { contact } = content;
   const waLink = whatsappUrl(contact.whatsapp);
@@ -172,9 +196,47 @@ export default function HomePage({ content }: { content: WebsiteContent }) {
               </div>
             )}
           </div>
-          {reviewData && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
-              {reviewData.reviews.map((review, i) => <ReviewCard key={i} review={review} />)}
+          {reviewData && visibleReviews.length > 0 && (
+            <div
+              onMouseEnter={() => setReviewPaused(true)}
+              onMouseLeave={() => setReviewPaused(false)}
+            >
+              <div
+                key={reviewPage}
+                className="reviews-fade"
+                style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}
+              >
+                {visibleReviews.map((review, i) => <ReviewCard key={reviewPage + '-' + i} review={review} />)}
+              </div>
+
+              {reviewPageCount > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 28 }}>
+                  <button
+                    onClick={() => setReviewPage(p => (p - 1 + reviewPageCount) % reviewPageCount)}
+                    aria-label="Vorige reviews"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--navy)', display: 'flex', padding: 4 }}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 18l-6-6 6-6" /></svg>
+                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {Array.from({ length: reviewPageCount }).map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setReviewPage(i)}
+                        aria-label={`Reviews pagina ${i + 1}`}
+                        style={{
+                          width: i === reviewPage ? 24 : 10, height: 10, borderRadius: 5, border: 'none', cursor: 'pointer',
+                          background: i === reviewPage ? 'var(--blue, #19499e)' : '#c9d6e8', transition: 'all 0.25s ease', padding: 0,
+                        }} />
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setReviewPage(p => (p + 1) % reviewPageCount)}
+                    aria-label="Volgende reviews"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--navy)', display: 'flex', padding: 4 }}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 18l6-6-6-6" /></svg>
+                  </button>
+                </div>
+              )}
             </div>
           )}
           <div style={{ textAlign: 'center', marginTop: 36 }}>
@@ -183,6 +245,10 @@ export default function HomePage({ content }: { content: WebsiteContent }) {
               Bekijk alle reviews op Google →
             </a>
           </div>
+          <style>{`
+            .reviews-fade { animation: reviewsFade 0.5s ease; }
+            @keyframes reviewsFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+          `}</style>
         </div>
       </section>
 

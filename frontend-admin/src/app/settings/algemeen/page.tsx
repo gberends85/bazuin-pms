@@ -63,15 +63,34 @@ export default function AlgemeenSettingsPage() {
     setDirectSyncResult(null);
     try {
       const r = await api.umbraco.sync();
-      setDirectSyncResult(r);
-      const parts = [`${r.imported} nieuw`];
-      if (r.cancelled) parts.push(`${r.cancelled} geannuleerd`);
-      if (r.errors) parts.push(`${r.errors} fout`);
-      toast(`Sync klaar: ${parts.join(', ')}`);
-      refreshStatus();
+      toast(r.started ? 'Synchronisatie gestart — dit kan ~1 minuut duren.' : 'Synchronisatie loopt al — even geduld.');
+      // De sync draait op de achtergrond; poll de status tot het resultaat binnen is.
+      const startedAt = Date.now();
+      const poll = async () => {
+        try {
+          const s = await api.umbraco.status();
+          setUmbStatus(s);
+          if (s.syncResult) {
+            const res = s.syncResult;
+            if (res.error) {
+              toastError('Sync mislukt: ' + res.error);
+            } else {
+              setDirectSyncResult(res as any);
+              const parts = [`${res.imported} nieuw`];
+              if (res.cancelled) parts.push(`${res.cancelled} geannuleerd`);
+              if (res.errors) parts.push(`${res.errors} fout`);
+              toast(`Sync klaar: ${parts.join(', ')}`);
+            }
+            setDirectSyncing(false);
+            return;
+          }
+          if (!s.syncRunning || Date.now() - startedAt > 180000) { setDirectSyncing(false); return; }
+          setTimeout(poll, 5000);
+        } catch { setDirectSyncing(false); }
+      };
+      setTimeout(poll, 5000);
     } catch (e: any) {
-      toastError('Sync mislukt: ' + (e?.message || 'onbekende fout'));
-    } finally {
+      toastError('Sync starten mislukt: ' + (e?.message || 'onbekende fout'));
       setDirectSyncing(false);
     }
   }

@@ -5323,6 +5323,11 @@ async function umbracoGetAccessToken(manualToken?: string | null): Promise<strin
 
 const UMBRACO_SYNC_LOOKBACK = 500; // her-controleer zoveel ID's ÓNDER het maximum: vangt late betalingen en gaten
 
+// Status van de handmatige sync (draait op de achtergrond, want de volledige scan
+// duurt te lang voor één HTTP-request → anders proxy-timeout / 500).
+let umbracoSyncRunning = false;
+let umbracoSyncLastResult: any = null;
+
 async function runUmbracoSync(opts: { umbracoToken?: string; fromId?: number; toId?: number; dryRun?: boolean; lookback?: number } = {}) {
   const { umbracoToken: tokenFromReq, fromId, toId, dryRun, lookback } = opts;
 
@@ -5659,17 +5664,18 @@ async function runUmbracoSync(opts: { umbracoToken?: string; fromId?: number; to
 
 // Handmatig triggeren vanuit de admin
 router.post('/admin/umbraco/sync', requireAuth, async (req: Request, res: Response) => {
-  try {
-    // Handmatige sync: klein terugkijk-venster zodat de respons snel is (geen
-    // proxy-timeout). Nieuw toegevoegde boekingen staan toch bovenaan; het volledige
-    // terugkijk-venster (late betalingen) draait dagelijks op de achtergrond.
-    const body = (req.body as any) || {};
-    const result = await runUmbracoSync({ ...body, lookback: body.lookback ?? 50 });
-    return res.json(result);
-  } catch (err: any) {
-    console.error('[Umbraco-sync handmatig] FOUT:', err);
-    return res.status(500).json({ error: err.message });
-  }
+  // De volledige scan (terugkijk + vooruit langs ghosts) duurt te lang voor één
+  // HTTP-request en liep tegen de proxy-timeout aan (500). Daarom draaien we 'm op
+  // de achtergrond en antwoorden meteen; het resultaat is op te halen via /status.
+  if (umbracoSyncRunning) return res.json({ started: false, running: true });
+  umbracoSyncRunning = true;
+  umbracoSyncLastResult = null;
+  const body = (req.body as any) || {};
+  runUmbracoSync(body)
+    .then(r => { umbracoSyncLastResult = { ...r, at: new Date().toISOString() }; })
+    .catch(e => { console.error('[Umbraco-sync handmatig] FOUT:', e); umbracoSyncLastResult = { error: e?.message || 'onbekende fout', at: new Date().toISOString() }; })
+    .finally(() => { umbracoSyncRunning = false; });
+  return res.json({ started: true, running: true });
 });
 
 // Dagelijks automatisch nieuwe én laat-betaalde Umbraco-boekingen ophalen.
@@ -5761,6 +5767,9 @@ router.get('/admin/umbraco/status', requireAuth, async (_req: Request, res: Resp
     hasToken:    !!map['umbraco_token'],
     // Client-credentials (API-gebruiker) ingesteld → sync draait volledig automatisch
     hasClientCreds: !!(map['umbraco_client_id'] && map['umbraco_client_secret']),
+    // Status van een handmatig gestarte (achtergrond-)sync
+    syncRunning: umbracoSyncRunning,
+    syncResult: umbracoSyncLastResult,
   });
 });
 

@@ -148,10 +148,11 @@ export const api = {
     bulkRefresh: () => req<{ total: number; updated: number }>('/admin/vehicles/rdw-refresh', { method: 'POST' }),
   },
   umbraco: {
-    status: () => req<{ lastSyncId: string|null; lastSyncAt: string|null; hasToken: boolean; hasClientCreds: boolean }>('/admin/umbraco/status'),
-    // Directe server-side sync (gebruikt de automatische token van de API-gebruiker)
+    status: () => req<{ lastSyncId: string|null; lastSyncAt: string|null; hasToken: boolean; hasClientCreds: boolean; syncRunning?: boolean; syncResult?: { imported: number; cancelled: number; skipped: number; errors: number; errorIds: number[]; at: string; error?: string } | null }>('/admin/umbraco/status'),
+    // Directe server-side sync: start op de achtergrond (volledige scan duurt te lang
+    // voor één request) en geeft meteen { started, running } terug. Resultaat via status().
     sync: (body?: { fromId?: number; toId?: number; dryRun?: boolean }) =>
-      req<{ scanned: number; imported: number; cancelled: number; skipped: number; errors: number; lastId: number; errorIds: number[]; skippedIds: number[] }>(
+      req<{ started: boolean; running: boolean }>(
         '/admin/umbraco/sync', { method: 'POST', body: JSON.stringify(body || {}) }
       ),
     syncCancellations: () =>

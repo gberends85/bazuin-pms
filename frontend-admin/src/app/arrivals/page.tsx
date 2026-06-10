@@ -1601,16 +1601,33 @@ export default function ArrivalsPage() {
     setSyncing(true);
     try {
       const r = await api.umbraco.sync();
-      const parts = [`${r.imported} nieuw`];
-      if (r.cancelled) parts.push(`${r.cancelled} geannuleerd`);
-      if (r.errors) parts.push(`${r.errors} fout`);
-      toast(`Sync klaar: ${parts.join(', ')}`);
-      if (r.errors && r.errorIds?.length) {
-        toastError(`Niet verwerkt: ${r.errorIds.slice(0, 20).join(', ')}`);
-      }
-      load();
-    } catch (e: any) { toastError('Sync mislukt: ' + (e?.message || 'onbekende fout')); }
-    finally { setSyncing(false); }
+      toast(r.started ? 'Synchronisatie gestart — dit kan ~1 minuut duren.' : 'Synchronisatie loopt al — even geduld.');
+      // Sync draait op de achtergrond; poll de status tot het resultaat binnen is.
+      const startedAt = Date.now();
+      const poll = async () => {
+        try {
+          const s = await api.umbraco.status();
+          if (s.syncResult) {
+            const res = s.syncResult;
+            if (res.error) {
+              toastError('Sync mislukt: ' + res.error);
+            } else {
+              const parts = [`${res.imported} nieuw`];
+              if (res.cancelled) parts.push(`${res.cancelled} geannuleerd`);
+              if (res.errors) parts.push(`${res.errors} fout`);
+              toast(`Sync klaar: ${parts.join(', ')}`);
+              if (res.errors && res.errorIds?.length) toastError(`Niet verwerkt: ${res.errorIds.slice(0, 20).join(', ')}`);
+              load();
+            }
+            setSyncing(false);
+            return;
+          }
+          if (!s.syncRunning || Date.now() - startedAt > 180000) { setSyncing(false); return; }
+          setTimeout(poll, 5000);
+        } catch { setSyncing(false); }
+      };
+      setTimeout(poll, 5000);
+    } catch (e: any) { toastError('Sync starten mislukt: ' + (e?.message || 'onbekende fout')); setSyncing(false); }
   }
 
   useEffect(() => {

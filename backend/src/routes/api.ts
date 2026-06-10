@@ -5323,8 +5323,8 @@ async function umbracoGetAccessToken(manualToken?: string | null): Promise<strin
 
 const UMBRACO_SYNC_LOOKBACK = 500; // her-controleer zoveel ID's ÓNDER het maximum: vangt late betalingen en gaten
 
-async function runUmbracoSync(opts: { umbracoToken?: string; fromId?: number; toId?: number; dryRun?: boolean } = {}) {
-  const { umbracoToken: tokenFromReq, fromId, toId, dryRun } = opts;
+async function runUmbracoSync(opts: { umbracoToken?: string; fromId?: number; toId?: number; dryRun?: boolean; lookback?: number } = {}) {
+  const { umbracoToken: tokenFromReq, fromId, toId, dryRun, lookback } = opts;
 
   // 1. Resolve token — automatisch via client-credentials, met fallback
   if (tokenFromReq?.trim()) {
@@ -5347,7 +5347,7 @@ async function runUmbracoSync(opts: { umbracoToken?: string; fromId?: number; to
   // (en toen als onbetaald/ghost werden overgeslagen) en dicht eventuele gaten.
   // De vroege-stop (100 lege ID's) geldt alleen bóven het maximum, zodat gaten in
   // het terugkijk-venster de scan niet voortijdig afbreken.
-  const startId: number = fromId ?? Math.max(1, maxDbId - UMBRACO_SYNC_LOOKBACK);
+  const startId: number = fromId ?? Math.max(1, maxDbId - (lookback ?? UMBRACO_SYNC_LOOKBACK));
   const endId: number = toId ?? (maxDbId + 1000); // tot ruim boven het maximum
 
   // 3. Scan
@@ -5660,9 +5660,14 @@ async function runUmbracoSync(opts: { umbracoToken?: string; fromId?: number; to
 // Handmatig triggeren vanuit de admin
 router.post('/admin/umbraco/sync', requireAuth, async (req: Request, res: Response) => {
   try {
-    const result = await runUmbracoSync((req.body as any) || {});
+    // Handmatige sync: klein terugkijk-venster zodat de respons snel is (geen
+    // proxy-timeout). Nieuw toegevoegde boekingen staan toch bovenaan; het volledige
+    // terugkijk-venster (late betalingen) draait dagelijks op de achtergrond.
+    const body = (req.body as any) || {};
+    const result = await runUmbracoSync({ ...body, lookback: body.lookback ?? 50 });
     return res.json(result);
   } catch (err: any) {
+    console.error('[Umbraco-sync handmatig] FOUT:', err);
     return res.status(500).json({ error: err.message });
   }
 });
@@ -5673,7 +5678,7 @@ router.post('/admin/umbraco/sync', requireAuth, async (req: Request, res: Respon
 setTimeout(() => {
   runUmbracoSync()
     .then(r => console.log(`[Umbraco-sync] opstart: ${r.imported} geïmporteerd, ${r.cancelled} geannuleerd (bereik ${r.startId}-${r.endId})`))
-    .catch(e => console.error('[Umbraco-sync] opstart mislukt:', e.message));
+    .catch(e => console.error('[Umbraco-sync] opstart mislukt:', e));
 }, 25 * 1000);
 setInterval(() => {
   runUmbracoSync()

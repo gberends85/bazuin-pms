@@ -215,7 +215,9 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicles 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 48 }}>
           {days > 0
             ? <span style={{ fontSize: 11, fontWeight: 600, color: BLUE, background: '#eaf1fb', padding: '4px 8px', borderRadius: 20, whiteSpace: 'nowrap', textAlign: 'center' }}>{days} dag{days !== 1 ? 'en' : ''}</span>
-            : <span style={{ color: '#c0ccd8', fontSize: 18 }}>→</span>}
+            : (arrival && departure)
+              ? <span style={{ fontSize: 11, fontWeight: 600, color: BLUE, background: '#eaf1fb', padding: '4px 8px', borderRadius: 20, whiteSpace: 'nowrap', textAlign: 'center' }}>1 dag</span>
+              : <span style={{ color: '#c0ccd8', fontSize: 18 }}>→</span>}
         </div>
         <div style={{ background: picking === 'end' && arrival ? '#eaf1fb' : LIGHT, borderRadius: 8, padding: '10px 12px', border: picking === 'end' && arrival ? `1.5px solid ${BLUE}` : '1.5px solid transparent' }}>
           <div style={{ fontSize: 10, fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Vertrek</div>
@@ -340,7 +342,7 @@ export default function PriceChecker(_props: Props) {
         </div>
 
         {/* Resultaat */}
-        {days > 0 && (
+        {(days > 0 || (!!arrival && !!departure)) && (
           <div style={{ marginTop: 20 }}>
             {priceLoading && !price && (
               <div style={{ textAlign: 'center', padding: '18px 0', color: MUTED, fontSize: 14 }}>Tarief berekenen…</div>

@@ -62,10 +62,26 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
 
   function toStr(d: Date) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
   function parseStr(s: string) { const [y, m, day] = s.split('-').map(Number); return new Date(y, m - 1, day); }
+  function addDay(s: string) { const d = parseStr(s); d.setDate(d.getDate() + 1); return toStr(d); }
 
+  // Vrije plekken in de NACHT die op deze dag begint (dag → dag+1).
+  function isNightFull(dateStr: string): boolean {
+    return (dateStr in calAvail) ? calAvail[dateStr] < vehicleCount : false;
+  }
+
+  // Beschikbaarheid is per nacht. De VERTREKdag gebruikt zijn eigen nacht niet, dus
+  // die mag op een volle dag blijven vallen. Geblokkeerd is dus:
+  //  - bij het kiezen van de aankomst: de nacht van die dag is vol;
+  //  - bij het kiezen van het vertrek: er ligt een volle nacht tússen aankomst en die dag
+  //    (de laatste verblijfsnacht telt mee, de vertrekdag-nacht niet).
   function isDayBlocked(dateStr: string): boolean {
-    // Geblokt als de dag al vol is (minder vrije plekken dan gevraagd voertuigen)
-    if (dateStr in calAvail) return calAvail[dateStr] < vehicleCount;
+    if (dateStr < todayStr) return true;
+    if (picking === 'start' || !arrival || dateStr <= arrival) {
+      return isNightFull(dateStr);
+    }
+    for (let cur = arrival; cur < dateStr; cur = addDay(cur)) {
+      if (isNightFull(cur)) return true;
+    }
     return false;
   }
 
@@ -73,7 +89,10 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
     if (dateStr < todayStr) return;
     if (isDayBlocked(dateStr)) {
       const d = new Date(dateStr + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
-      setFullMsg(`Op ${d} zijn we helaas al vol — reserveren is op die datum niet meer mogelijk.`);
+      const msg = (picking === 'end' && arrival && dateStr > arrival)
+        ? `Tussen uw aankomst en ${d} zit een volgeboekte nacht — kies een kortere periode of andere datums.`
+        : `Op ${d} zijn we helaas al vol — reserveren is op die datum niet meer mogelijk.`;
+      setFullMsg(msg);
       return;
     }
     setFullMsg(null);

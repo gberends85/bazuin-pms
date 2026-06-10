@@ -195,11 +195,11 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicles 
 
   return (
     <div style={{ background: 'white', border: `1px solid ${BORDER}`, borderRadius: 12, padding: '14px 14px 12px', userSelect: 'none' }}>
-      {/* 1-dag parkeren schakelaar */}
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+      {/* 1-dag parkeren schakelaar — bewust subtiel (wordt zelden gebruikt) */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
         <button type="button"
           onClick={() => { setOneDay(v => !v); onArrival(''); onDeparture(''); setPicking('start'); }}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '6px 14px', borderRadius: 20, border: oneDay ? `1.5px solid ${BLUE}` : '1.5px solid #dbe3ee', background: oneDay ? '#eaf1fb' : LIGHT, color: oneDay ? BLUE : MUTED }}>
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 500, cursor: 'pointer', padding: '1px 2px', border: 'none', background: 'none', color: oneDay ? BLUE : MUTED, textDecoration: 'underline', textUnderlineOffset: 2 }}>
           {oneDay ? '✓ ' : ''}1 dag parkeren (zelfde dag)
         </button>
       </div>

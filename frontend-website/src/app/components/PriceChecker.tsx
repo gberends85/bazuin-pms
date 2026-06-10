@@ -145,10 +145,11 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicles 
             const inRange = !!(arrival && rangeEnd && ds > arrival && ds < rangeEnd);
             const isToday = ds === todayStr;
             const isUnavailable = isPast || isBlocked;
-            // Half-rood: de NACHT van deze dag zit vol (niet aankomen/blijven), maar nog
-            // wél bruikbaar als vertrekdag. Volledig rood: om een andere reden geblokkeerd.
-            const nightFull = !isPast && !isStart && !isEnd && isNightFull(ds);
-            const fullyBlocked = isBlocked && !nightFull;
+            // Half-rood = nacht vol MAAR de dag is in de huidige context nog een geldige
+            // keuze (bruikbaar als vertrekdag). Zodra de dag geblokkeerd is (aankomstkeuze,
+            // of de periode loopt over een volle nacht) → volledig rood. Nacht heeft voorrang.
+            const nightFull = !isPast && !isStart && !isEnd && isNightFull(ds) && !isBlocked;
+            const fullyBlocked = isBlocked;
             const cellBg = inRange && !isBlocked ? '#eaf1fb' : 'transparent';
             const dayBg = (isStart || isEnd)
               ? BLUE

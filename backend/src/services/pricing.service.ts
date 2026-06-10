@@ -83,10 +83,10 @@ export async function calculatePrice(
   vehicleCount: number = 1
 ): Promise<PriceCalculation> {
   const nights = differenceInDays(departureDate, arrivalDate);
-  const days   = nights + 1; // both arrival AND departure day
+  const days   = nights + 1; // beide dagen tellen; 0 nachten = 1 dag (dagje parkeren)
 
-  if (nights <= 0) {
-    throw new Error('Vertrekdatum moet na aankomstdatum liggen');
+  if (nights < 0) {
+    throw new Error('Vertrekdatum mag niet vóór de aankomstdatum liggen');
   }
 
   // Build the list of every calendar day in the booking as YYYY-MM-DD strings

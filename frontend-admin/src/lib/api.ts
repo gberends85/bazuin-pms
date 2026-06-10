@@ -101,6 +101,8 @@ export const api = {
     overview: (from: string, to: string) => req<any[]>(`/admin/availability?from=${from}&to=${to}`),
     override: (date: string, spots: number | null, daytimeSpots: number | null, reason?: string) => req<any>('/admin/availability/override', { method: 'PUT', body: JSON.stringify({ date, availableSpots: spots, daytimeSpots, reason }) }),
     removeOverride: (date: string) => req<any>('/admin/availability/override', { method: 'DELETE', body: JSON.stringify({ date }) }),
+    capacity: () => req<{ onlineSpots: number; daytimeSpots: number }>('/admin/location-capacity'),
+    setCapacity: (onlineSpots: number | null, daytimeSpots: number | null) => req<any>('/admin/location-capacity', { method: 'PUT', body: JSON.stringify({ onlineSpots, daytimeSpots }) }),
   },
   reports: {
     financial: (p: any) => req<any>(`/admin/reports/financial?${new URLSearchParams(p)}`),

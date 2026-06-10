@@ -19,6 +19,25 @@ export default function CalendarPage() {
   const [selReason, setSelReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [selCurrent, setSelCurrent] = useState<any>(null);
+  // Standaard capaciteit (locatie-breed)
+  const [capNight, setCapNight] = useState<number | ''>('');
+  const [capDay, setCapDay] = useState<number | ''>('');
+  const [capSaving, setCapSaving] = useState(false);
+
+  async function loadCapacity() {
+    try { const c = await api.availability.capacity(); setCapNight(c.onlineSpots); setCapDay(c.daytimeSpots); } catch (e: any) { console.error(e); }
+  }
+  useEffect(() => { loadCapacity(); }, []);
+
+  async function saveCapacity() {
+    setCapSaving(true);
+    try {
+      await api.availability.setCapacity(capNight === '' ? null : Number(capNight), capDay === '' ? null : Number(capDay));
+      toast('Standaard capaciteit opgeslagen');
+      await loadMonths(startMonth, monthCount);
+    } catch (e: any) { toastError(e.message); }
+    finally { setCapSaving(false); }
+  }
 
   async function loadMonths(start: Date, count: number) {
     const from = format(startOfMonth(start), 'yyyy-MM-dd');
@@ -145,6 +164,33 @@ export default function CalendarPage() {
       <Toaster />
       <div style={{ padding: '24px 28px', maxWidth: monthCount === 1 ? 600 : monthCount === 2 ? 900 : 1200 }}>
         <h1 style={{ margin: '0 0 20px', fontSize: 22, fontWeight: 800, color: '#0a2240' }}>Agenda & Beschikbaarheid</h1>
+
+        {/* Standaard capaciteit (locatie-breed) */}
+        <div style={{ background: 'white', border: '0.5px solid rgba(10,34,64,0.12)', borderRadius: 12, padding: '16px 20px', marginBottom: 20, display: 'flex', alignItems: 'flex-end', gap: 20, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#0a2240', marginBottom: 2 }}>Standaard capaciteit</div>
+            <div style={{ fontSize: 11, color: '#7090b0' }}>Geldt voor alle dagen zonder eigen instelling. Per dag aanpassen kan door op een dag te klikken.</div>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>Nacht-max (blijven slapen)</label>
+            <input type="number" min={0} max={1000} value={capNight} onChange={e => setCapNight(e.target.value === '' ? '' : Number(e.target.value))}
+              style={{ width: 110, padding: '8px 10px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 7, fontSize: 16, fontWeight: 700 }} />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>Dag-max (overdag / wissel)</label>
+            <input type="number" min={0} max={1000} value={capDay} onChange={e => setCapDay(e.target.value === '' ? '' : Number(e.target.value))}
+              style={{ width: 110, padding: '8px 10px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 7, fontSize: 16, fontWeight: 700 }} />
+          </div>
+          <button className="btn btn-primary" onClick={saveCapacity} disabled={capSaving || (capNight === '' && capDay === '')}>
+            {capSaving ? 'Opslaan…' : 'Opslaan'}
+          </button>
+          {capDay !== '' && capNight !== '' && Number(capDay) < Number(capNight) && (
+            <div style={{ fontSize: 11, color: '#7a5010', flexBasis: '100%' }}>
+              <ExclamationTriangleIcon className="w-3 h-3" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
+              Let op: de dag-max is lager dan de nacht-max — meestal wil je 'm juist gelijk of hoger zetten.
+            </div>
+          )}
+        </div>
 
         {/* Navigatie + maandselector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>

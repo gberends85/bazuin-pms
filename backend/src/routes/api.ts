@@ -2154,6 +2154,45 @@ router.delete('/admin/availability/override', requireAuth, async (req: Request, 
 });
 
 // ============================================================
+// ADMIN — STANDAARD CAPACITEIT (nacht-max + dag-max per locatie)
+// ============================================================
+const DEFAULT_LOT_ID = 'b0000000-0000-0000-0000-000000000001';
+
+router.get('/admin/location-capacity', requireAuth, async (_req: Request, res: Response) => {
+  const r = await query(
+    `SELECT l.online_spots, COALESCE(l.daytime_spots, l.online_spots) AS daytime_spots
+     FROM parking_lots pl JOIN locations l ON l.id = pl.location_id WHERE pl.id = $1`,
+    [DEFAULT_LOT_ID]
+  );
+  if (!r.rows[0]) return res.status(404).json({ error: 'Locatie niet gevonden' });
+  return res.json({ onlineSpots: r.rows[0].online_spots, daytimeSpots: r.rows[0].daytime_spots });
+});
+
+router.put('/admin/location-capacity', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { onlineSpots, daytimeSpots } = req.body || {};
+    const toNum = (v: any) => (v === undefined || v === null || v === '') ? null : Number(v);
+    const on = toNum(onlineSpots);
+    const day = toNum(daytimeSpots);
+    if (on === null && day === null) return res.status(400).json({ error: 'Geef minimaal één waarde op' });
+    for (const v of [on, day]) {
+      if (v !== null && (!Number.isInteger(v) || v < 0 || v > 1000)) return res.status(400).json({ error: 'Ongeldig aantal plekken' });
+    }
+    const locRow = await query(`SELECT location_id FROM parking_lots WHERE id = $1`, [DEFAULT_LOT_ID]);
+    const locId = locRow.rows[0]?.location_id;
+    if (!locId) return res.status(404).json({ error: 'Locatie niet gevonden' });
+    await query(
+      `UPDATE locations SET online_spots = COALESCE($2, online_spots), daytime_spots = COALESCE($3, daytime_spots) WHERE id = $1`,
+      [locId, on, day]
+    );
+    return res.json({ success: true });
+  } catch (e: any) {
+    console.error('Capaciteit opslaan mislukt:', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
 // ADMIN — FINANCIAL REPORT
 // ============================================================
 router.get('/admin/reports/financial', requireAuth, async (req: Request, res: Response) => {

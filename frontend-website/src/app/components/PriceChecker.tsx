@@ -199,7 +199,7 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicles 
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
         <button type="button"
           onClick={() => { setOneDay(v => !v); onArrival(''); onDeparture(''); setPicking('start'); }}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 500, cursor: 'pointer', padding: '1px 2px', border: 'none', background: 'none', color: oneDay ? BLUE : MUTED, textDecoration: 'underline', textUnderlineOffset: 2 }}>
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 500, cursor: 'pointer', padding: '1px 2px', border: 'none', background: 'none', color: oneDay ? BLUE : MUTED }}>
           {oneDay ? '✓ ' : ''}1 dag parkeren (zelfde dag)
         </button>
       </div>

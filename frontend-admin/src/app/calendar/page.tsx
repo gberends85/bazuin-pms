@@ -15,6 +15,7 @@ export default function CalendarPage() {
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [selDate, setSelDate] = useState('');
   const [selSpots, setSelSpots] = useState(50);
+  const [selDaytime, setSelDaytime] = useState(70);
   const [selReason, setSelReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [selCurrent, setSelCurrent] = useState<any>(null);
@@ -52,6 +53,7 @@ export default function CalendarPage() {
     const a = availMap[dateStr];
     setSelCurrent(a || null);
     setSelSpots(a ? a.max_available : 50);
+    setSelDaytime(a ? a.daytime_max : 70);
     setSelReason('');
     setOverrideOpen(true);
   }
@@ -59,7 +61,7 @@ export default function CalendarPage() {
   async function saveOverride() {
     setSaving(true);
     try {
-      await api.availability.override(selDate, selSpots, selReason);
+      await api.availability.override(selDate, selSpots, selDaytime, selReason);
       toast('Beschikbaarheid opgeslagen');
       setOverrideOpen(false);
       await loadMonths(startMonth, monthCount);
@@ -125,8 +127,8 @@ export default function CalendarPage() {
                 {a ? (
                   <>
                     <div style={{ fontSize: 10, fontWeight: 800, color: dayTextColor(a), lineHeight: 1.2 }}>{a.available} vrij</div>
-                    <div style={{ fontSize: 9, color: '#7090b0', lineHeight: 1.2 }}>{a.booked} res.</div>
-                    <div style={{ fontSize: 8, color: '#aab8cc', lineHeight: 1.2 }}>/{a.max_available}</div>
+                    <div style={{ fontSize: 9, color: '#7090b0', lineHeight: 1.2 }}>{a.booked}/{a.max_available} nacht</div>
+                    <div style={{ fontSize: 8, color: a.daytime_present >= a.daytime_max ? '#8a2020' : '#aab8cc', lineHeight: 1.2 }}>{a.daytime_present}/{a.daytime_max} dag</div>
                     {a.has_override && <PencilSquareIcon className="w-2 h-2" style={{ color: '#7a5010', marginTop: 1 }} />}
                   </>
                 ) : null}
@@ -183,28 +185,43 @@ export default function CalendarPage() {
 
       <Modal open={overrideOpen} onClose={() => setOverrideOpen(false)} title={`Beschikbaarheid — ${selDate}`}>
         {selCurrent && (
-          <div style={{ background: '#f8f9fb', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', gap: 24 }}>
+          <div style={{ background: '#f8f9fb', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', gap: 18, flexWrap: 'wrap' }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 22, fontWeight: 800, color: dayTextColor(selCurrent) }}>{selCurrent.available}</div>
-              <div style={{ fontSize: 10, color: '#7090b0' }}>beschikbaar</div>
+              <div style={{ fontSize: 10, color: '#7090b0' }}>vrij (nacht)</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#0a2240' }}>{selCurrent.booked}</div>
-              <div style={{ fontSize: 10, color: '#7090b0' }}>gereserveerd</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#0a2240' }}>{selCurrent.booked}/{selCurrent.max_available}</div>
+              <div style={{ fontSize: 10, color: '#7090b0' }}>nacht-bezetting</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#0a2240' }}>{selCurrent.max_available}</div>
-              <div style={{ fontSize: 10, color: '#7090b0' }}>max. plekken</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: selCurrent.daytime_present >= selCurrent.daytime_max ? '#8a2020' : '#0a2240' }}>{selCurrent.daytime_present}/{selCurrent.daytime_max}</div>
+              <div style={{ fontSize: 10, color: '#7090b0' }}>overdag (wissel)</div>
             </div>
           </div>
         )}
         <div style={{ marginBottom: 14 }}>
-          <label style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 6 }}>Beschikbare plekken instellen (max)</label>
-          <input type="number" min={0} max={100} value={selSpots} onChange={e => setSelSpots(Number(e.target.value))}
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 6 }}>Nacht-max — auto's die mogen blijven slapen</label>
+          <input type="number" min={0} max={200} value={selSpots} onChange={e => setSelSpots(Number(e.target.value))}
             style={{ width: '100%', padding: '9px 12px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 7, fontSize: 18, fontWeight: 700 }} />
           {selCurrent && selSpots < selCurrent.booked && (
             <div style={{ marginTop: 6, fontSize: 12, color: '#8a2020' }}>
-              <ExclamationTriangleIcon className="w-3 h-3" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Er zijn al {selCurrent.booked} reserveringen op deze dag.
+              <ExclamationTriangleIcon className="w-3 h-3" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Er zijn al {selCurrent.booked} reserveringen die hier blijven slapen.
+            </div>
+          )}
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 6 }}>Dag-max — auto's die gelijktijdig overdag aanwezig mogen zijn (wisselpiek)</label>
+          <input type="number" min={0} max={200} value={selDaytime} onChange={e => setSelDaytime(Number(e.target.value))}
+            style={{ width: '100%', padding: '9px 12px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 7, fontSize: 18, fontWeight: 700 }} />
+          {selDaytime < selSpots && (
+            <div style={{ marginTop: 6, fontSize: 12, color: '#7a5010' }}>
+              <ExclamationTriangleIcon className="w-3 h-3" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Let op: de dag-max is lager dan de nacht-max — meestal wil je 'm juist hoger zetten.
+            </div>
+          )}
+          {selCurrent && selDaytime < selCurrent.daytime_present && (
+            <div style={{ marginTop: 6, fontSize: 12, color: '#8a2020' }}>
+              <ExclamationTriangleIcon className="w-3 h-3" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Er zijn al {selCurrent.daytime_present} auto's die deze dag aanraken.
             </div>
           )}
         </div>

@@ -99,7 +99,7 @@ export const api = {
   },
   availability: {
     overview: (from: string, to: string) => req<any[]>(`/admin/availability?from=${from}&to=${to}`),
-    override: (date: string, spots: number, reason?: string) => req<any>('/admin/availability/override', { method: 'PUT', body: JSON.stringify({ date, availableSpots: spots, reason }) }),
+    override: (date: string, spots: number | null, daytimeSpots: number | null, reason?: string) => req<any>('/admin/availability/override', { method: 'PUT', body: JSON.stringify({ date, availableSpots: spots, daytimeSpots, reason }) }),
     removeOverride: (date: string) => req<any>('/admin/availability/override', { method: 'DELETE', body: JSON.stringify({ date }) }),
   },
   reports: {

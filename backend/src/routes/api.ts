@@ -37,17 +37,28 @@ router.use(keysafeRouter);
 // Geeft het minimum aantal vrije plekken over alle nachten in de periode.
 // excludeReservationId: huidige reservering buiten beschouwing laten (bij wijzigen)
 // ============================================================
+// Beschikbaarheid is tweeledig:
+//  • NACHT-max  — hoeveel auto's mogen blijven slapen. Telt de nachten [aankomst, vertrek);
+//    de vertrekdag-nacht telt niet mee. Default: locations.online_spots, per datum
+//    overschrijfbaar via availability_overrides.available_spots.
+//  • DAG-max    — hoeveel auto's gelijktijdig overdag aanwezig mogen zijn (wisselpiek).
+//    Telt elke dag die het verblijf aanraakt [aankomst, vertrek] (inclusief vertrekdag).
+//    Default: locations.daytime_spots, per datum overschrijfbaar via
+//    availability_overrides.daytime_spots. Doorgaans hoger dan de nacht-max.
+// minAvailable = het strengste van de twee, zodat alle call-sites beide afdwingen.
 async function checkNightlyAvailability(
   lotId: string,
   arrival: string,
   departure: string,
   excludeReservationId?: string
-): Promise<{ minAvailable: number; defaultOnlineSpots: number }> {
+): Promise<{ minAvailable: number; defaultOnlineSpots: number; nightlyAvailable: number; daytimeAvailable: number; defaultDaytimeSpots: number }> {
   const lotResult = await query(
-    `SELECT l.online_spots FROM parking_lots pl JOIN locations l ON l.id = pl.location_id WHERE pl.id = $1`,
+    `SELECT l.online_spots, COALESCE(l.daytime_spots, l.online_spots) AS daytime_spots
+     FROM parking_lots pl JOIN locations l ON l.id = pl.location_id WHERE pl.id = $1`,
     [lotId]
   );
   const onlineSpots: number = lotResult.rows[0]?.online_spots ?? 50;
+  const daytimeSpots: number = lotResult.rows[0]?.daytime_spots ?? onlineSpots;
 
   const result = await query(
     `WITH nights AS (
@@ -66,15 +77,37 @@ async function checkNightlyAvailability(
                  AND res2.departure_date > n.night) AS booked_that_night
        FROM nights n
        LEFT JOIN availability_overrides ao ON ao.parking_lot_id = $1 AND ao.override_date = n.night
+     ),
+     days AS (
+       SELECT generate_series($2::date, $3::date, '1 day'::interval)::date AS day
+     ),
+     day_capacity AS (
+       SELECT d.day,
+              COALESCE(ao.daytime_spots, $6) AS max_day,
+              (SELECT COUNT(DISTINCT v.id)
+               FROM reservations res3
+               JOIN vehicles v ON v.reservation_id = res3.id
+               WHERE res3.parking_lot_id = $1
+                 AND res3.status NOT IN ('cancelled')
+                 AND ($5::uuid IS NULL OR res3.id != $5::uuid)
+                 AND res3.arrival_date <= d.day
+                 AND res3.departure_date >= d.day) AS present_that_day
+       FROM days d
+       LEFT JOIN availability_overrides ao ON ao.parking_lot_id = $1 AND ao.override_date = d.day
      )
-     SELECT COALESCE(MIN(max_spots - booked_that_night), $4) AS min_available
-     FROM night_capacity`,
-    [lotId, arrival, departure, onlineSpots, excludeReservationId || null]
+     SELECT COALESCE((SELECT MIN(max_spots - booked_that_night) FROM night_capacity), $4) AS night_available,
+            COALESCE((SELECT MIN(max_day - present_that_day) FROM day_capacity), $6) AS day_available`,
+    [lotId, arrival, departure, onlineSpots, excludeReservationId || null, daytimeSpots]
   );
 
+  const nightlyAvailable = parseInt(result.rows[0].night_available) || 0;
+  const daytimeAvailable = parseInt(result.rows[0].day_available) || 0;
   return {
-    minAvailable: parseInt(result.rows[0].min_available) || 0,
+    minAvailable: Math.min(nightlyAvailable, daytimeAvailable),
     defaultOnlineSpots: onlineSpots,
+    defaultDaytimeSpots: daytimeSpots,
+    nightlyAvailable,
+    daytimeAvailable,
   };
 }
 
@@ -391,26 +424,33 @@ router.get('/availability/calendar', async (req: Request, res: Response) => {
     `WITH date_series AS (
        SELECT generate_series($1::date, $2::date, '1 day'::interval)::date AS d
      ),
-     daily_booked AS (
+     daily AS (
        SELECT d,
+         -- nacht die op dag d begint: arrival <= d < departure
          (SELECT COUNT(DISTINCT v.id) FROM reservations r
           JOIN vehicles v ON v.reservation_id = r.id
-          WHERE r.parking_lot_id = $3
-            AND r.status NOT IN ('cancelled')
-            AND r.arrival_date <= d
-            AND r.departure_date > d) AS booked
+          WHERE r.parking_lot_id = $3 AND r.status NOT IN ('cancelled')
+            AND r.arrival_date <= d AND r.departure_date > d) AS booked,
+         -- aanwezig overdag op dag d (wisselpiek): arrival <= d <= departure
+         (SELECT COUNT(DISTINCT v.id) FROM reservations r
+          JOIN vehicles v ON v.reservation_id = r.id
+          WHERE r.parking_lot_id = $3 AND r.status NOT IN ('cancelled')
+            AND r.arrival_date <= d AND r.departure_date >= d) AS present
        FROM date_series
      ),
      overrides AS (
-       SELECT override_date, available_spots FROM availability_overrides
+       SELECT override_date, available_spots, daytime_spots FROM availability_overrides
        WHERE parking_lot_id = $3 AND override_date BETWEEN $1 AND $2
      )
      SELECT ds.d::text AS date,
-            db.booked::int AS booked,
+            da.booked::int AS booked,
             COALESCE(o.available_spots, l.online_spots)::int AS max_available,
-            GREATEST(0, COALESCE(o.available_spots, l.online_spots) - db.booked)::int AS available
+            GREATEST(0, COALESCE(o.available_spots, l.online_spots) - da.booked)::int AS available,
+            da.present::int AS daytime_present,
+            COALESCE(o.daytime_spots, l.daytime_spots, l.online_spots)::int AS daytime_max,
+            GREATEST(0, COALESCE(o.daytime_spots, l.daytime_spots, l.online_spots) - da.present)::int AS daytime_available
      FROM date_series ds
-     JOIN daily_booked db ON db.d = ds.d
+     JOIN daily da ON da.d = ds.d
      CROSS JOIN parking_lots pl
      JOIN locations l ON l.id = pl.location_id
      LEFT JOIN overrides o ON o.override_date = ds.d
@@ -452,40 +492,19 @@ router.get('/availability', async (req: Request, res: Response) => {
 
   const lot = lotResult.rows[0];
 
-  // For each night in the period, find the max capacity (override or default)
-  // and the number of vehicles parked that night. Take the worst-case (most full) night.
-  const capacityResult = await query(
-    `WITH nights AS (
-       SELECT generate_series($2::date, $3::date - '1 day'::interval, '1 day'::interval)::date AS night
-     ),
-     night_capacity AS (
-       SELECT n.night,
-              COALESCE(ao.available_spots, $4) AS max_spots,
-              (SELECT COUNT(DISTINCT v.id)
-               FROM reservations r
-               JOIN vehicles v ON v.reservation_id = r.id
-               WHERE r.parking_lot_id = $1
-                 AND r.status NOT IN ('cancelled')
-                 AND r.arrival_date <= n.night
-                 AND r.departure_date > n.night) AS booked_that_night
-       FROM nights n
-       LEFT JOIN availability_overrides ao ON ao.parking_lot_id = $1 AND ao.override_date = n.night
-     )
-     SELECT MIN(max_spots - booked_that_night) AS min_available,
-            MIN(max_spots) AS min_max,
-            MAX(booked_that_night) AS peak_booked
-     FROM night_capacity`,
-    [lot.id, arrival, departure, lot.online_spots]
-  );
-
-  const row = capacityResult.rows[0];
-  const available = Math.max(0, parseInt(row.min_available) || 0);
-  const booked = parseInt(row.peak_booked) || 0;
+  // Strengste van nacht-max (nachten [aankomst, vertrek)) en dag-max (wisselpiek,
+  // dagen [aankomst, vertrek]). Zie checkNightlyAvailability.
+  const cap = await checkNightlyAvailability(lot.id, arrival, departure);
+  const available = Math.max(0, cap.minAvailable);
 
   return res.json({
-    available,
-    total: lot.online_spots,   // altijd de standaardcapaciteit voor weergave
-    booked,
+    available,                                     // strengste van nacht en dag
+    total: lot.online_spots,                       // nacht-capaciteit (weergave)
+    nightlyAvailable: Math.max(0, cap.nightlyAvailable),
+    daytimeAvailable: Math.max(0, cap.daytimeAvailable),
+    daytimeTotal: cap.defaultDaytimeSpots,
+    limitedBy: cap.daytimeAvailable < cap.nightlyAvailable ? 'daytime' : 'nightly',
+    booked: Math.max(0, lot.online_spots - cap.nightlyAvailable),
     lotId: lot.id,
     lotName: lot.name,
   });
@@ -731,11 +750,14 @@ router.post('/reservations', async (req: Request, res: Response) => {
        FOR UPDATE`,
       [lotId, data.arrivalDate, data.departureDate]
     );
-    // Per-nacht beschikbaarheidscheck incl. overrides (meest restrictieve nacht bepaalt beschikbaarheid)
+    // Beschikbaarheidscheck incl. overrides: nacht-max (nachten [aankomst, vertrek)) én
+    // dag-max (wisselpiek, dagen [aankomst, vertrek]). Het strengste bepaalt de ruimte.
     const lotResult = await client.query(
-      `SELECT l.online_spots FROM parking_lots pl JOIN locations l ON l.id = pl.location_id WHERE pl.id = $1`, [lotId]
+      `SELECT l.online_spots, COALESCE(l.daytime_spots, l.online_spots) AS daytime_spots
+       FROM parking_lots pl JOIN locations l ON l.id = pl.location_id WHERE pl.id = $1`, [lotId]
     );
     const onlineSpots = lotResult.rows[0].online_spots;
+    const daytimeSpots = lotResult.rows[0].daytime_spots;
 
     const nightCheckResult = await client.query(
       `WITH nights AS (
@@ -753,10 +775,28 @@ router.post('/reservations', async (req: Request, res: Response) => {
                    AND r2.departure_date > n.night) AS booked_that_night
          FROM nights n
          LEFT JOIN availability_overrides ao ON ao.parking_lot_id = $1 AND ao.override_date = n.night
+       ),
+       days AS (
+         SELECT generate_series($2::date, $3::date, '1 day'::interval)::date AS day
+       ),
+       day_capacity AS (
+         SELECT d.day,
+                COALESCE(ao.daytime_spots, $5) AS max_day,
+                (SELECT COUNT(DISTINCT v3.id)
+                 FROM reservations r3
+                 JOIN vehicles v3 ON v3.reservation_id = r3.id
+                 WHERE r3.parking_lot_id = $1
+                   AND r3.status NOT IN ('cancelled')
+                   AND r3.arrival_date <= d.day
+                   AND r3.departure_date >= d.day) AS present_that_day
+         FROM days d
+         LEFT JOIN availability_overrides ao ON ao.parking_lot_id = $1 AND ao.override_date = d.day
        )
-       SELECT COALESCE(MIN(max_spots - booked_that_night), $4) AS min_available
-       FROM night_capacity`,
-      [lotId, data.arrivalDate, data.departureDate, onlineSpots]
+       SELECT LEAST(
+                COALESCE((SELECT MIN(max_spots - booked_that_night) FROM night_capacity), $4),
+                COALESCE((SELECT MIN(max_day - present_that_day) FROM day_capacity), $5)
+              ) AS min_available`,
+      [lotId, data.arrivalDate, data.departureDate, onlineSpots, daytimeSpots]
     );
 
     const available = parseInt(nightCheckResult.rows[0].min_available) || 0;
@@ -2017,32 +2057,39 @@ router.get('/admin/availability', requireAuth, async (req: Request, res: Respons
   const { from, to, lot_id } = req.query as Record<string, string>;
   const lotId = lot_id || 'b0000000-0000-0000-0000-000000000001';
 
-  // Generate date series and count bookings per day
+  // Per dag: nacht-bezetting/-max én dag-bezetting/-max (wisselpiek)
   const result = await query(
     `WITH date_series AS (
        SELECT generate_series($1::date, $2::date, '1 day'::interval)::date AS d
      ),
-     daily_booked AS (
+     daily AS (
        SELECT d,
          (SELECT COUNT(DISTINCT v.id) FROM reservations r
           JOIN vehicles v ON v.reservation_id = r.id
-          WHERE r.parking_lot_id = $3
-            AND r.status NOT IN ('cancelled')
-            AND r.arrival_date <= d
-            AND r.departure_date > d) AS booked
+          WHERE r.parking_lot_id = $3 AND r.status NOT IN ('cancelled')
+            AND r.arrival_date <= d AND r.departure_date > d) AS booked,
+         (SELECT COUNT(DISTINCT v.id) FROM reservations r
+          JOIN vehicles v ON v.reservation_id = r.id
+          WHERE r.parking_lot_id = $3 AND r.status NOT IN ('cancelled')
+            AND r.arrival_date <= d AND r.departure_date >= d) AS present
        FROM date_series
      ),
      overrides AS (
-       SELECT override_date, available_spots FROM availability_overrides
+       SELECT override_date, available_spots, daytime_spots FROM availability_overrides
        WHERE parking_lot_id = $3 AND override_date BETWEEN $1 AND $2
      )
      SELECT ds.d::text as date,
-            db.booked,
+            da.booked,
             COALESCE(o.available_spots, l.online_spots) as max_available,
-            GREATEST(0, COALESCE(o.available_spots, l.online_spots) - db.booked) as available,
+            GREATEST(0, COALESCE(o.available_spots, l.online_spots) - da.booked) as available,
+            da.present as daytime_present,
+            COALESCE(o.daytime_spots, l.daytime_spots, l.online_spots) as daytime_max,
+            GREATEST(0, COALESCE(o.daytime_spots, l.daytime_spots, l.online_spots) - da.present) as daytime_available,
+            o.available_spots as override_nightly,
+            o.daytime_spots as override_daytime,
             (o.override_date IS NOT NULL) as has_override
      FROM date_series ds
-     JOIN daily_booked db ON db.d = ds.d
+     JOIN daily da ON da.d = ds.d
      CROSS JOIN parking_lots pl
      JOIN locations l ON l.id = pl.location_id
      LEFT JOIN overrides o ON o.override_date = ds.d
@@ -2059,17 +2106,30 @@ router.get('/admin/availability', requireAuth, async (req: Request, res: Respons
 // ============================================================
 router.put('/admin/availability/override', requireAuth, async (req: Request, res: Response) => {
   try {
-    const { date, availableSpots, reason, lotId } = req.body;
-    if (!date || availableSpots === undefined) return res.status(400).json({ error: 'date en availableSpots zijn verplicht' });
+    const { date, availableSpots, daytimeSpots, reason, lotId } = req.body;
+    if (!date) return res.status(400).json({ error: 'date is verplicht' });
+    const lot = lotId || 'b0000000-0000-0000-0000-000000000001';
+
+    // Leeg/weggelaten = geen override op die dimensie (→ locatie-standaard).
+    const toNum = (v: any) => (v === undefined || v === null || v === '') ? null : Number(v);
+    const nightly = toNum(availableSpots);
+    const daytime = toNum(daytimeSpots);
+
+    // Beide leeg → er is niets te overschrijven: verwijder een eventuele bestaande override.
+    if (nightly === null && daytime === null) {
+      await query(`DELETE FROM availability_overrides WHERE parking_lot_id = $1 AND override_date = $2`, [lot, date]);
+      return res.json({ success: true, removed: true });
+    }
 
     await query(
-      `INSERT INTO availability_overrides (parking_lot_id, override_date, available_spots, reason, created_by)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO availability_overrides (parking_lot_id, override_date, available_spots, daytime_spots, reason, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (parking_lot_id, override_date) DO UPDATE
          SET available_spots = EXCLUDED.available_spots,
+             daytime_spots   = EXCLUDED.daytime_spots,
              reason = EXCLUDED.reason,
              created_by = EXCLUDED.created_by`,
-      [lotId || 'b0000000-0000-0000-0000-000000000001', date, availableSpots, reason || null, req.admin!.adminId]
+      [lot, date, nightly, daytime, reason || null, req.admin!.adminId]
     );
 
     return res.json({ success: true });

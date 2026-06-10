@@ -79,6 +79,7 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicles 
   }, [viewMonth]);
 
   function addDayKey(s: string) { const [y, m, d] = s.split('-').map(Number); const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() + 1); return toKey(dt); }
+  function subDayKey(s: string) { const [y, m, d] = s.split('-').map(Number); const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() - 1); return toKey(dt); }
 
   // Vrije plekken in de NACHT die op deze dag begint (dag → dag+1).
   function isNightFull(dateStr: string): boolean {
@@ -145,29 +146,30 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicles 
             const inRange = !!(arrival && rangeEnd && ds > arrival && ds < rangeEnd);
             const isToday = ds === todayStr;
             const isUnavailable = isPast || isBlocked;
-            // Half-rood = nacht vol MAAR de dag is in de huidige context nog een geldige
-            // keuze (bruikbaar als vertrekdag). Zodra de dag geblokkeerd is (aankomstkeuze,
-            // of de periode loopt over een volle nacht) → volledig rood. Nacht heeft voorrang.
-            const nightFull = !isPast && !isStart && !isEnd && isNightFull(ds) && !isBlocked;
-            const fullyBlocked = isBlocked;
+            // Elke dag toont de status van de twee nachten die hij raakt, verticaal gesplitst:
+            //  LINKER helft = de nacht ervóór (d-1→d), RECHTER helft = de nacht erná (d→d+1).
+            // Een volgeboekte nacht kleurt die helft rood (wit|rood begin, vol rood midden,
+            // rood|wit eind van een volgeboekt blok).
+            const prevNightFull = !isPast && !isStart && !isEnd && isNightFull(subDayKey(ds));
+            const nextNightFull = !isPast && !isStart && !isEnd && isNightFull(ds);
+            const RED = '#f3a9a9';
             const cellBg = inRange && !isBlocked ? '#eaf1fb' : 'transparent';
-            const dayBg = (isStart || isEnd)
-              ? BLUE
-              : nightFull ? 'linear-gradient(to right, #f3a9a9 0 50%, transparent 50% 100%)'
-              : fullyBlocked ? '#fdeaea'
+            const dayBg = (isStart || isEnd) ? BLUE
+              : (prevNightFull && nextNightFull) ? RED
+              : nextNightFull ? `linear-gradient(to right, transparent 0 50%, ${RED} 50% 100%)`
+              : prevNightFull ? `linear-gradient(to right, ${RED} 0 50%, transparent 50% 100%)`
               : 'transparent';
-            const dayColor = (isStart || isEnd) ? 'white' : (isPast || fullyBlocked) ? '#c8d4df' : isToday ? BLUE : NAVY;
+            const dayColor = (isStart || isEnd) ? 'white' : isPast ? '#c8d4df' : isToday ? BLUE : NAVY;
             const dayWeight = (isStart || isEnd || isToday) ? 700 : 400;
             return (
               <div key={ds}
                 onClick={() => handleDay(ds)}
                 onMouseEnter={() => picking === 'end' && !isUnavailable && setHovered(ds)}
                 onMouseLeave={() => setHovered(null)}
-                title={nightFull ? 'Vol om te blijven — wel mogelijk als vertrekdag' : isBlocked ? 'Geen plaatsen beschikbaar' : undefined}
-                style={{ background: cellBg, padding: '2px 1px', cursor: (isPast || fullyBlocked) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                title={(prevNightFull && nextNightFull) ? 'Volgeboekt' : nextNightFull ? 'Vol om te blijven — wel mogelijk als vertrekdag' : prevNightFull ? 'Wel mogelijk als aankomstdag — niet om te blijven' : isBlocked ? 'Geen plaatsen beschikbaar' : undefined}
+                style={{ background: cellBg, padding: '2px 1px', cursor: isPast ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                 <div style={{ width: '100%', aspectRatio: '1', borderRadius: '50%', background: dayBg, color: dayColor, fontWeight: dayWeight, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', maxWidth: 38, position: 'relative' }}>
                   {new Date(ds + 'T12:00:00').getDate()}
-                  {fullyBlocked && <div style={{ position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)', width: 4, height: 4, borderRadius: '50%', background: '#e24b4a' }} />}
                 </div>
               </div>
             );
@@ -213,7 +215,7 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicles 
 
       <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, color: MUTED }}>
         <span style={{ width: 12, height: 12, borderRadius: '50%', background: 'linear-gradient(to right, #f3a9a9 0 50%, transparent 50% 100%)', border: '1px solid #e3c5c5', display: 'inline-block', flexShrink: 0 }} />
-        <span>Half rood: vol om te blijven, wél mogelijk als vertrekdag</span>
+        <span>Een rode helft = die nacht is vol. Een half-rode dag kan nog als aankomst- of vertrekdag.</span>
       </div>
 
       {picking === 'end' && arrival && !departure && (

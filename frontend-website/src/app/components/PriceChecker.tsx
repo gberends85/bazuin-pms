@@ -156,8 +156,8 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicles 
             const cellBg = inRange && !isBlocked ? '#eaf1fb' : 'transparent';
             const dayBg = (isStart || isEnd) ? BLUE
               : (prevNightFull && nextNightFull) ? RED
-              : nextNightFull ? `linear-gradient(to right, transparent 0 50%, ${RED} 50% 100%)`
-              : prevNightFull ? `linear-gradient(to right, ${RED} 0 50%, transparent 50% 100%)`
+              : nextNightFull ? `linear-gradient(to right, transparent, ${RED})`
+              : prevNightFull ? `linear-gradient(to right, ${RED}, transparent)`
               : 'transparent';
             const dayColor = (isStart || isEnd) ? 'white' : isPast ? '#c8d4df' : isToday ? BLUE : NAVY;
             const dayWeight = (isStart || isEnd || isToday) ? 700 : 400;
@@ -214,7 +214,7 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicles 
       </div>
 
       <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, color: MUTED }}>
-        <span style={{ width: 12, height: 12, borderRadius: '50%', background: 'linear-gradient(to right, #f3a9a9 0 50%, transparent 50% 100%)', border: '1px solid #e3c5c5', display: 'inline-block', flexShrink: 0 }} />
+        <span style={{ width: 12, height: 12, borderRadius: '50%', background: 'linear-gradient(to right, #f3a9a9, transparent)', border: '1px solid #e3c5c5', display: 'inline-block', flexShrink: 0 }} />
         <span>Een rode helft = die nacht is vol. Een half-rode dag kan nog als aankomst- of vertrekdag.</span>
       </div>
 

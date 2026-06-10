@@ -47,6 +47,8 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicles 
   const [picking, setPicking] = useState<'start' | 'end'>('start');
   const [isMobile, setIsMobile] = useState(false);
   const [calAvail, setCalAvail] = useState<Record<string, number>>({});
+  const [calDay, setCalDay] = useState<Record<string, number>>({}); // date → vrije dag-/wisselplekken
+  const [oneDay, setOneDay] = useState(false);                       // 1-dag parkeren (0 nachten)
 
   useEffect(() => {
     const d = new Date();
@@ -71,9 +73,14 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicles 
       .then(r => r.json())
       .then((rows: any[]) => {
         if (!Array.isArray(rows)) return;
-        const map: Record<string, number> = {};
-        rows.forEach(r => { map[r.date] = parseInt(r.available) || 0; });
-        setCalAvail(prev => ({ ...prev, ...map }));
+        const nightMap: Record<string, number> = {};
+        const dayMap: Record<string, number> = {};
+        rows.forEach(r => {
+          nightMap[r.date] = parseInt(r.available) || 0;
+          dayMap[r.date] = (r.daytime_available !== undefined ? parseInt(r.daytime_available) : parseInt(r.available)) || 0;
+        });
+        setCalAvail(prev => ({ ...prev, ...nightMap }));
+        setCalDay(prev => ({ ...prev, ...dayMap }));
       })
       .catch(() => {});
   }, [viewMonth]);
@@ -85,24 +92,28 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicles 
   function isNightFull(dateStr: string): boolean {
     return (dateStr in calAvail) ? calAvail[dateStr] < vehicles : false;
   }
+  // Vrije plekken OVERDAG (wisselpiek) op deze dag.
+  function isDayFull(dateStr: string): boolean {
+    return (dateStr in calDay) ? calDay[dateStr] < vehicles : false;
+  }
 
-  // Beschikbaarheid is per nacht. De VERTREKdag gebruikt zijn eigen nacht niet, dus die
-  // mag op een volle dag vallen. Geblokkeerd: bij aankomstkeuze de nacht van die dag;
-  // bij vertrekkeuze als er een volle nacht tussen aankomst en die dag ligt.
+  // Nacht-max (nachten [aankomst, vertrek)) én dag-max (elke dag [aankomst, vertrek]).
   function isDayBlocked(dateStr: string): boolean {
     if (dateStr < todayStr) return true;
+    if (oneDay) return isDayFull(dateStr); // 1-dag: alleen de dag-/wisselcapaciteit telt
     if (picking === 'start' || !arrival || dateStr <= arrival) {
-      return isNightFull(dateStr);
+      return isNightFull(dateStr) || isDayFull(dateStr);
     }
     for (let cur = arrival; cur < dateStr; cur = addDayKey(cur)) {
-      if (isNightFull(cur)) return true;
+      if (isNightFull(cur) || isDayFull(cur)) return true;
     }
-    return false;
+    return isDayFull(dateStr); // vertrekdag: nacht telt niet, dag-max (wissel) wél
   }
 
   function handleDay(dateStr: string) {
     if (dateStr < todayStr) return;
     if (isDayBlocked(dateStr)) return;
+    if (oneDay) { onArrival(dateStr); onDeparture(dateStr); return; } // 1-dag: aankomst = vertrek
     if (picking === 'start' || !arrival) {
       onArrival(dateStr); onDeparture(''); setPicking('end');
     } else {
@@ -152,9 +163,12 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicles 
             // rood|wit eind van een volgeboekt blok).
             const prevNightFull = !isPast && !isStart && !isEnd && isNightFull(subDayKey(ds));
             const nextNightFull = !isPast && !isStart && !isEnd && isNightFull(ds);
+            const dayCapFull = !isPast && !isStart && !isEnd && isDayFull(ds);
             const RED = '#f3a9a9';
             const cellBg = inRange && !isBlocked ? '#eaf1fb' : 'transparent';
             const dayBg = (isStart || isEnd) ? BLUE
+              : dayCapFull ? RED
+              : oneDay ? 'transparent'
               : (prevNightFull && nextNightFull) ? RED
               : nextNightFull ? `linear-gradient(to right, transparent 60%, ${RED})`
               : prevNightFull ? `linear-gradient(to right, ${RED}, transparent 40%)`
@@ -181,9 +195,17 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicles 
 
   return (
     <div style={{ background: 'white', border: `1px solid ${BORDER}`, borderRadius: 12, padding: '14px 14px 12px', userSelect: 'none' }}>
+      {/* 1-dag parkeren schakelaar */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+        <button type="button"
+          onClick={() => { setOneDay(v => !v); onArrival(''); onDeparture(''); setPicking('start'); }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '6px 14px', borderRadius: 20, border: oneDay ? `1.5px solid ${BLUE}` : '1.5px solid #dbe3ee', background: oneDay ? '#eaf1fb' : LIGHT, color: oneDay ? BLUE : MUTED }}>
+          {oneDay ? '✓ ' : ''}1 dag parkeren (zelfde dag)
+        </button>
+      </div>
       {/* Header: aankomst / dagen / vertrek */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 8, marginBottom: 14 }}>
-        <div onClick={() => { setPicking('start'); onDeparture(''); }}
+        <div onClick={() => { if (oneDay) { onArrival(''); onDeparture(''); } else { setPicking('start'); onDeparture(''); } }}
           style={{ background: picking === 'start' ? '#eaf1fb' : LIGHT, borderRadius: 8, padding: '10px 12px', cursor: 'pointer', border: picking === 'start' ? `1.5px solid ${BLUE}` : '1.5px solid transparent' }}>
           <div style={{ fontSize: 10, fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Aankomst</div>
           <div style={{ fontSize: 14, fontWeight: 600, color: NAVY, marginTop: 2, whiteSpace: 'nowrap' }}>
@@ -213,9 +235,15 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicles 
         <button onClick={nextMonth} aria-label="Volgende maand" style={{ border: 'none', background: 'none', cursor: 'pointer', color: NAVY, padding: '4px 6px', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>›</button>
       </div>
 
-      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, color: MUTED }}>
-        <span style={{ width: 12, height: 12, borderRadius: '50%', background: 'linear-gradient(to right, #f3a9a9, transparent 40%)', border: '1px solid #e3c5c5', display: 'inline-block', flexShrink: 0 }} />
-        <span>Een rode helft = die nacht is vol. Een half-rode dag kan nog als aankomst- of vertrekdag.</span>
+      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, color: MUTED, textAlign: 'center' }}>
+        {oneDay ? (
+          <span>Kies de dag waarop u parkeert (aankomst en vertrek op dezelfde dag). Rood = die dag is overdag vol.</span>
+        ) : (
+          <>
+            <span style={{ width: 12, height: 12, borderRadius: '50%', background: 'linear-gradient(to right, #f3a9a9, transparent 40%)', border: '1px solid #e3c5c5', display: 'inline-block', flexShrink: 0 }} />
+            <span>Een rode helft = die nacht is vol. Een half-rode dag kan nog als aankomst- of vertrekdag.</span>
+          </>
+        )}
       </div>
 
       {picking === 'end' && arrival && !departure && (
@@ -241,7 +269,7 @@ export default function PriceChecker(_props: Props) {
 
   // Tarief + beschikbaarheid ophalen zodra een geldige periode gekozen is
   useEffect(() => {
-    if (!arrival || !departure || departure <= arrival) { setPrice(null); setAvail(null); setPriceError(''); return; }
+    if (!arrival || !departure || departure < arrival) { setPrice(null); setAvail(null); setPriceError(''); return; } // gelijk = 1 dag parkeren
     let cancelled = false;
     setPriceLoading(true); setPriceError(''); setAvail(null);
 

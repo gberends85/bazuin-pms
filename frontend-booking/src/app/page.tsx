@@ -26,7 +26,8 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
   const [hovered, setHovered] = useState<string | null>(null);
   const [picking, setPicking] = useState<'start' | 'end'>('start');
   const [isMobile, setIsMobile] = useState(false);
-  const [calAvail, setCalAvail] = useState<Record<string, number>>({}); // date → available spots
+  const [calAvail, setCalAvail] = useState<Record<string, number>>({}); // date → vrije plekken in de NACHT van die dag
+  const [calDay, setCalDay] = useState<Record<string, number>>({});     // date → vrije plekken OVERDAG (wisselpiek) op die dag
   const [fullMsg, setFullMsg] = useState<string | null>(null);
 
   // Echte huidige datum + maand vaststellen zodra de component in de browser laadt.
@@ -53,9 +54,14 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
     fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/availability/calendar?from=${from}&to=${to}`)
       .then(r => r.json())
       .then((rows: any[]) => {
-        const map: Record<string, number> = {};
-        rows.forEach(r => { map[r.date] = parseInt(r.available) || 0; });
-        setCalAvail(prev => ({ ...prev, ...map }));
+        const nightMap: Record<string, number> = {};
+        const dayMap: Record<string, number> = {};
+        rows.forEach(r => {
+          nightMap[r.date] = parseInt(r.available) || 0;
+          dayMap[r.date] = (r.daytime_available !== undefined ? parseInt(r.daytime_available) : parseInt(r.available)) || 0;
+        });
+        setCalAvail(prev => ({ ...prev, ...nightMap }));
+        setCalDay(prev => ({ ...prev, ...dayMap }));
       })
       .catch(() => {});
   }, [viewMonth]);
@@ -69,21 +75,25 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
   function isNightFull(dateStr: string): boolean {
     return (dateStr in calAvail) ? calAvail[dateStr] < vehicleCount : false;
   }
+  // Vrije plekken OVERDAG (wisselpiek) op deze dag — telt ook aankomst- en vertrekdag.
+  function isDayFull(dateStr: string): boolean {
+    return (dateStr in calDay) ? calDay[dateStr] < vehicleCount : false;
+  }
 
-  // Beschikbaarheid is per nacht. De VERTREKdag gebruikt zijn eigen nacht niet, dus
-  // die mag op een volle dag blijven vallen. Geblokkeerd is dus:
-  //  - bij het kiezen van de aankomst: de nacht van die dag is vol;
-  //  - bij het kiezen van het vertrek: er ligt een volle nacht tússen aankomst en die dag
-  //    (de laatste verblijfsnacht telt mee, de vertrekdag-nacht niet).
+  // Beschikbaarheid is tweeledig: nacht-max (nachten [aankomst, vertrek)) én dag-max
+  // (wisselpiek, elke dag [aankomst, vertrek] inclusief de vertrekdag). Geblokkeerd:
+  //  - aankomst kiezen: de nacht van die dag is vol, óf de dag-max van die dag is vol;
+  //  - vertrek kiezen: er ligt een volle nacht in [aankomst, dag), óf een dag in
+  //    [aankomst, dag] zit aan de dag-max (de vertrekdag telt mee voor de wissel).
   function isDayBlocked(dateStr: string): boolean {
     if (dateStr < todayStr) return true;
     if (picking === 'start' || !arrival || dateStr <= arrival) {
-      return isNightFull(dateStr);
+      return isNightFull(dateStr) || isDayFull(dateStr);
     }
     for (let cur = arrival; cur < dateStr; cur = addDay(cur)) {
-      if (isNightFull(cur)) return true;
+      if (isNightFull(cur) || isDayFull(cur)) return true;
     }
-    return false;
+    return isDayFull(dateStr); // vertrekdag: nacht telt niet, dag-max (wissel) wél
   }
 
   function handleDay(dateStr: string) {
@@ -148,9 +158,12 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
             // wit|rood aan het begin, vol rood in het midden, rood|wit aan het eind.
             const prevNightFull = !isPast && !isStart && !isEnd && isNightFull(subDay(ds));
             const nextNightFull = !isPast && !isStart && !isEnd && isNightFull(ds);
+            // Overdag (wissel) vol → die dag kan helemaal niet (ook niet aankomen/vertrekken): vol rood.
+            const dayCapFull = !isPast && !isStart && !isEnd && isDayFull(ds);
             const RED = '#f3a9a9';
             const cellBg = inRange && !isBlocked ? '#eaf1fb' : 'transparent';
             const dayBg = (isStart || isEnd) ? '#19499e'
+              : dayCapFull ? RED
               : (prevNightFull && nextNightFull) ? RED
               : nextNightFull ? `linear-gradient(to right, transparent 60%, ${RED})`
               : prevNightFull ? `linear-gradient(to right, ${RED}, transparent 40%)`
@@ -162,7 +175,7 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
                 onClick={() => handleDay(ds)}
                 onMouseEnter={() => picking === 'end' && !isUnavailable && setHovered(ds)}
                 onMouseLeave={() => setHovered(null)}
-                title={(prevNightFull && nextNightFull) ? 'Volgeboekt' : nextNightFull ? 'Vol om te blijven — wel mogelijk als vertrekdag' : prevNightFull ? 'Wel mogelijk als aankomstdag — niet om te blijven' : isBlocked ? 'Geen plaatsen beschikbaar' : undefined}
+                title={dayCapFull ? 'Volgeboekt — ook overdag vol' : (prevNightFull && nextNightFull) ? 'Volgeboekt' : nextNightFull ? 'Vol om te blijven — wel mogelijk als vertrekdag' : prevNightFull ? 'Wel mogelijk als aankomstdag — niet om te blijven' : isBlocked ? 'Geen plaatsen beschikbaar' : undefined}
                 style={{ background: cellBg, padding: '2px 1px', cursor: isPast ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                 <div style={{ width: '100%', aspectRatio: '1', borderRadius: '50%', background: dayBg, color: dayColor, fontWeight: dayWeight, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', maxWidth: 38, position: 'relative' }}>
                   {new Date(ds + 'T12:00:00').getDate()}

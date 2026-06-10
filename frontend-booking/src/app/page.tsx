@@ -141,20 +141,29 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
             const inRange = !!(arrival && rangeEnd && ds > arrival && ds < rangeEnd);
             const isToday = ds === todayStr;
             const isUnavailable = isPast || isBlocked;
+            // Half-rood: de NACHT van deze dag zit vol (je kunt er niet aankomen/blijven),
+            // maar de dag is nog wél bruikbaar als vertrekdag. Volledig rood: om een andere
+            // reden niet te kiezen (bv. de periode zou over een volle nacht heen lopen).
+            const nightFull = !isPast && !isStart && !isEnd && isNightFull(ds);
+            const fullyBlocked = isBlocked && !nightFull;
             const cellBg = inRange && !isBlocked ? '#eaf1fb' : 'transparent';
-            const dayBg = (isStart || isEnd) ? '#19499e' : isBlocked ? '#fdeaea' : 'transparent';
-            const dayColor = (isStart || isEnd) ? 'white' : isUnavailable ? '#c8d4df' : isToday ? '#19499e' : '#142440';
+            const dayBg = (isStart || isEnd)
+              ? '#19499e'
+              : nightFull ? 'linear-gradient(to top, #f3a9a9 0 50%, transparent 50% 100%)'
+              : fullyBlocked ? '#fdeaea'
+              : 'transparent';
+            const dayColor = (isStart || isEnd) ? 'white' : (isPast || fullyBlocked) ? '#c8d4df' : isToday ? '#19499e' : '#142440';
             const dayWeight = (isStart || isEnd || isToday) ? 800 : 400;
             return (
               <div key={ds}
                 onClick={() => handleDay(ds)}
                 onMouseEnter={() => picking === 'end' && !isUnavailable && setHovered(ds)}
                 onMouseLeave={() => setHovered(null)}
-                title={isBlocked ? 'Geen plaatsen beschikbaar' : undefined}
+                title={nightFull ? 'Vol om te blijven — wel mogelijk als vertrekdag' : isBlocked ? 'Geen plaatsen beschikbaar' : undefined}
                 style={{ background: cellBg, padding: '2px 1px', cursor: isPast ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                 <div style={{ width: '100%', aspectRatio: '1', borderRadius: '50%', background: dayBg, color: dayColor, fontWeight: dayWeight, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', maxWidth: 38, position: 'relative' }}>
                   {new Date(ds + 'T12:00:00').getDate()}
-                  {isBlocked && <div style={{ position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)', width: 4, height: 4, borderRadius: '50%', background: '#e24b4a' }} />}
+                  {fullyBlocked && <div style={{ position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)', width: 4, height: 4, borderRadius: '50%', background: '#e24b4a' }} />}
                 </div>
               </div>
             );
@@ -196,6 +205,11 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
           {!isMobile && renderMonth(m2.year, m2.month)}
         </div>
         <button onClick={nextMonth} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#142440', padding: '4px 4px', lineHeight: 1, flexShrink: 0, marginTop: 0, display: 'flex', alignItems: 'center' }}><ArrowRightIcon className="w-5 h-5" /></button>
+      </div>
+
+      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, color: '#7090b0' }}>
+        <span style={{ width: 12, height: 12, borderRadius: '50%', background: 'linear-gradient(to top, #f3a9a9 0 50%, transparent 50% 100%)', border: '1px solid #e3c5c5', display: 'inline-block', flexShrink: 0 }} />
+        <span>Half rood: vol om te blijven, wél mogelijk als vertrekdag</span>
       </div>
 
       {fullMsg && (

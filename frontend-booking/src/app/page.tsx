@@ -29,7 +29,6 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
   const [calAvail, setCalAvail] = useState<Record<string, number>>({}); // date → vrije plekken in de NACHT van die dag
   const [calDay, setCalDay] = useState<Record<string, number>>({});     // date → vrije plekken OVERDAG (wisselpiek) op die dag
   const [fullMsg, setFullMsg] = useState<string | null>(null);
-  const [oneDay, setOneDay] = useState(false); // 1-dag parkeren (0 nachten): één datum kiezen
 
   // Echte huidige datum + maand vaststellen zodra de component in de browser laadt.
   useEffect(() => {
@@ -81,41 +80,39 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
     return (dateStr in calDay) ? calDay[dateStr] < vehicleCount : false;
   }
 
-  // Beschikbaarheid is tweeledig: nacht-max (nachten [aankomst, vertrek)) én dag-max
-  // (wisselpiek, elke dag [aankomst, vertrek] inclusief de vertrekdag). Geblokkeerd:
-  //  - aankomst kiezen: de nacht van die dag is vol, óf de dag-max van die dag is vol;
-  //  - vertrek kiezen: er ligt een volle nacht in [aankomst, dag), óf een dag in
-  //    [aankomst, dag] zit aan de dag-max (de vertrekdag telt mee voor de wissel).
+  // Nacht-max (nachten [aankomst, vertrek)) én dag-max (elke dag [aankomst, vertrek]).
+  // Aankomst mag op een nacht-volle dag vallen zolang er overdag plek is — zo kun je
+  // dezelfde dag 2× klikken voor een dagje parkeren (0 nachten). De nacht-eis geldt
+  // pas zodra je een látere vertrekdag kiest.
   function isDayBlocked(dateStr: string): boolean {
     if (dateStr < todayStr) return true;
-    if (oneDay) return isDayFull(dateStr); // 1-dag: alleen de dag-/wisselcapaciteit telt
+    // Aankomst (her)kiezen óf vertrek op dezelfde dag (1 dag): alleen de dag-max telt.
     if (picking === 'start' || !arrival || dateStr <= arrival) {
-      return isNightFull(dateStr) || isDayFull(dateStr);
+      return isDayFull(dateStr);
     }
+    // Latere vertrekdatum: elke nacht [aankomst, dag) vrij én elke dag [aankomst, dag] onder de dag-max.
     for (let cur = arrival; cur < dateStr; cur = addDay(cur)) {
       if (isNightFull(cur) || isDayFull(cur)) return true;
     }
-    return isDayFull(dateStr); // vertrekdag: nacht telt niet, dag-max (wissel) wél
+    return isDayFull(dateStr);
   }
 
   function handleDay(dateStr: string) {
     if (dateStr < todayStr) return;
     if (isDayBlocked(dateStr)) {
       const d = new Date(dateStr + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
-      const msg = oneDay
-        ? `Op ${d} is het overdag al vol — een dagje parkeren is op die datum niet meer mogelijk.`
-        : (picking === 'end' && arrival && dateStr > arrival)
-          ? `Tussen uw aankomst en ${d} zit een volgeboekte nacht — kies een kortere periode of andere datums.`
-          : `Op ${d} zijn we helaas al vol — reserveren is op die datum niet meer mogelijk.`;
+      const msg = (picking === 'end' && arrival && dateStr > arrival)
+        ? `Tussen uw aankomst en ${d} zit een volgeboekte nacht — kies een kortere periode of andere datums.`
+        : `Op ${d} is het ook overdag al vol — parkeren is op die datum niet meer mogelijk.`;
       setFullMsg(msg);
       return;
     }
     setFullMsg(null);
-    if (oneDay) { onArrival(dateStr); onDeparture(dateStr); return; } // 1-dag: aankomst = vertrek
     if (picking === 'start' || !arrival) {
       onArrival(dateStr); onDeparture(''); setPicking('end');
     } else {
-      if (dateStr <= arrival) { onArrival(dateStr); onDeparture(''); setPicking('end'); }
+      // Zelfde dag nogmaals = 1 dag parkeren (aankomst = vertrek); eerdere dag = nieuwe aankomst.
+      if (dateStr < arrival) { onArrival(dateStr); onDeparture(''); setPicking('end'); }
       else { onDeparture(dateStr); setPicking('start'); }
     }
   }
@@ -161,16 +158,17 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
             //  LINKER helft = de nacht ervóór (d-1→d), RECHTER helft = de nacht erná (d→d+1).
             // Een volgeboekte nacht kleurt die helft rood. Een volgeboekt blok ziet er zo uit:
             // wit|rood aan het begin, vol rood in het midden, rood|wit aan het eind.
+            // Midden van een blok (beide nachten vol) maar overdag nog plek → 20% rood /
+            // 60% wit / 20% rood: overnachten kan niet, maar een dagje parkeren wél.
             const prevNightFull = !isPast && !isStart && !isEnd && isNightFull(subDay(ds));
             const nextNightFull = !isPast && !isStart && !isEnd && isNightFull(ds);
-            // Overdag (wissel) vol → die dag kan helemaal niet (ook niet aankomen/vertrekken): vol rood.
+            // Overdag (wissel) vol → die dag kan helemaal niet (ook niet als dagboeking): vol rood.
             const dayCapFull = !isPast && !isStart && !isEnd && isDayFull(ds);
             const RED = '#f3a9a9';
             const cellBg = inRange && !isBlocked ? '#eaf1fb' : 'transparent';
             const dayBg = (isStart || isEnd) ? '#19499e'
               : dayCapFull ? RED
-              : oneDay ? 'transparent'        // 1-dag: nacht-weergave niet tonen, alleen dag-vol (hierboven) = rood
-              : (prevNightFull && nextNightFull) ? RED
+              : (prevNightFull && nextNightFull) ? `linear-gradient(to right, ${RED} 0 20%, transparent 20% 80%, ${RED} 80% 100%)`
               : nextNightFull ? `linear-gradient(to right, transparent 60%, ${RED})`
               : prevNightFull ? `linear-gradient(to right, ${RED}, transparent 40%)`
               : 'transparent';
@@ -181,7 +179,7 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
                 onClick={() => handleDay(ds)}
                 onMouseEnter={() => picking === 'end' && !isUnavailable && setHovered(ds)}
                 onMouseLeave={() => setHovered(null)}
-                title={dayCapFull ? 'Volgeboekt — ook overdag vol' : (prevNightFull && nextNightFull) ? 'Volgeboekt' : nextNightFull ? 'Vol om te blijven — wel mogelijk als vertrekdag' : prevNightFull ? 'Wel mogelijk als aankomstdag — niet om te blijven' : isBlocked ? 'Geen plaatsen beschikbaar' : undefined}
+                title={dayCapFull ? 'Volgeboekt — ook overdag vol' : (prevNightFull && nextNightFull) ? 'Overnachten vol — een dagje parkeren kan nog (klik 2× voor 1 dag)' : nextNightFull ? 'Vol om te blijven — wel mogelijk als vertrekdag' : prevNightFull ? 'Wel mogelijk als aankomstdag — niet om te blijven' : isBlocked ? 'Geen plaatsen beschikbaar' : undefined}
                 style={{ background: cellBg, padding: '2px 1px', cursor: isPast ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                 <div style={{ width: '100%', aspectRatio: '1', borderRadius: '50%', background: dayBg, color: dayColor, fontWeight: dayWeight, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', maxWidth: 38, position: 'relative' }}>
                   {new Date(ds + 'T12:00:00').getDate()}
@@ -196,17 +194,9 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
 
   return (
     <div style={{ background: 'white', border: '0.5px solid rgba(10,34,64,0.15)', borderRadius: 12, padding: '14px 14px 12px', userSelect: 'none' }}>
-      {/* 1-dag parkeren schakelaar — bewust subtiel (wordt zelden gebruikt) */}
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
-        <button type="button"
-          onClick={() => { const v = !oneDay; setOneDay(v); onArrival(''); onDeparture(''); setPicking('start'); setFullMsg(null); }}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 500, cursor: 'pointer', padding: '1px 2px', border: 'none', background: 'none', color: oneDay ? '#19499e' : '#9aa7b8' }}>
-          {oneDay ? '✓ ' : ''}1 dag parkeren (zelfde dag)
-        </button>
-      </div>
       {/* Header: aankomst / dagen / vertrek */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 8, marginBottom: 14 }}>
-        <div onClick={() => { if (oneDay) { onArrival(''); onDeparture(''); } else { setPicking('start'); onDeparture(''); } }}
+        <div onClick={() => { setPicking('start'); onDeparture(''); }}
           style={{ background: picking === 'start' ? '#eaf1fb' : '#f4f6f9', borderRadius: 8, padding: '10px 12px', cursor: 'pointer', border: picking === 'start' ? '1.5px solid #19499e' : '1.5px solid transparent' }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Aankomst</div>
           <div style={{ fontSize: 14, fontWeight: 800, color: '#142440', marginTop: 2, whiteSpace: 'nowrap' }}>
@@ -237,14 +227,8 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
       </div>
 
       <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 11, color: '#7090b0', textAlign: 'center' }}>
-        {oneDay ? (
-          <span>Kies de dag waarop u parkeert (aankomst en vertrek op dezelfde dag). Rood = die dag is overdag vol.</span>
-        ) : (
-          <>
-            <span style={{ width: 12, height: 12, borderRadius: '50%', background: 'linear-gradient(to right, #f3a9a9, transparent 40%)', border: '1px solid #e3c5c5', display: 'inline-block', flexShrink: 0 }} />
-            <span>Een rode helft = die nacht is vol. Een half-rode dag kan nog als aankomst- of vertrekdag.</span>
-          </>
-        )}
+        <span style={{ width: 12, height: 12, borderRadius: '50%', background: 'linear-gradient(to right, #f3a9a9 0 20%, transparent 20% 80%, #f3a9a9 80% 100%)', border: '1px solid #e3c5c5', display: 'inline-block', flexShrink: 0 }} />
+        <span>Rood = volgeboekte nacht. Een dag met witte kern kan nog als dagje parkeren — klik dezelfde dag 2× aan.</span>
       </div>
 
       {fullMsg && (
@@ -256,7 +240,7 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
 
       {picking === 'end' && arrival && !departure && (
         <div style={{ marginTop: 10, fontSize: 12, color: '#7090b0', textAlign: 'center' }}>
-          Selecteer uw vertrekdatum
+          Selecteer uw vertrekdatum — of klik dezelfde dag nogmaals voor 1 dag parkeren
         </div>
       )}
     </div>

@@ -8,16 +8,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
-    // On mobile: start closed. On desktop: start open.
+    // Mobiel: dicht. Desktop: onthouden voorkeur (standaard open).
     const isMobile = window.innerWidth < 768;
-    setSidebarOpen(!isMobile);
-
-    const handleResize = () => {
-      if (window.innerWidth >= 768) setSidebarOpen(true);
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    if (isMobile) setSidebarOpen(false);
+    else setSidebarOpen(localStorage.getItem('adminSidebarCollapsed') !== '1');
   }, []);
+
+  // Op desktop onthouden we de in-/uitklap-voorkeur; op mobiel niet (overlay).
+  function openSidebar() {
+    setSidebarOpen(true);
+    if (typeof window !== 'undefined' && window.innerWidth >= 768) localStorage.setItem('adminSidebarCollapsed', '0');
+  }
+  function closeSidebar() {
+    setSidebarOpen(false);
+    if (typeof window !== 'undefined' && window.innerWidth >= 768) localStorage.setItem('adminSidebarCollapsed', '1');
+  }
 
   if (!ready) {
     return (
@@ -29,7 +34,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', position: 'relative' }}>
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar open={sidebarOpen} onClose={closeSidebar} />
+      {/* Desktop: knop om het ingeklapte menu weer te openen */}
+      {!sidebarOpen && (
+        <button
+          className="desktop-open-btn"
+          onClick={openSidebar}
+          title="Menu openen"
+        >☰</button>
+      )}
       <main style={{ flex: 1, overflowY: 'auto', maxHeight: '100vh', minWidth: 0 }}>
         {/* Mobile top bar with hamburger */}
         <div className="mobile-topbar" style={{
@@ -44,7 +57,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           gap: 12,
         }}>
           <button
-            onClick={() => setSidebarOpen(true)}
+            onClick={openSidebar}
             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', fontSize: 22, color: 'white', lineHeight: 1 }}
             title="Menu openen"
           >☰</button>

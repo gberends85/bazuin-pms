@@ -117,6 +117,28 @@ input, select, textarea {
 /* ── Sidebar responsive ─────────────────────────────────────── */
 .sidebar-close-btn { display: none; }
 
+/* Knop om ingeklapt menu te heropenen (desktop) */
+.desktop-open-btn {
+  display: none;
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 50;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  background: #0a2240;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(10,34,64,0.25);
+}
+.desktop-open-btn:hover { background: #0e3060; }
+
 @media (max-width: 767px) {
   /* Sidebar wordt een vaste overlay op mobiel */
   .sidebar {
@@ -141,14 +163,19 @@ input, select, textarea {
 }
 
 @media (min-width: 768px) {
-  /* Desktop: sidebar altijd zichtbaar, geen overlay */
+  /* Desktop: sidebar in normale flow; kan in-/uitgeklapt worden */
   .sidebar {
     position: relative !important;
     transform: none !important;
     box-shadow: none !important;
   }
+  /* Ingeklapt op desktop: volledig verbergen */
+  .sidebar.sidebar-closed { display: none !important; }
   .mobile-topbar { display: none !important; }
-  .sidebar-close-btn { display: none !important; }
+  /* Sluit-knop ook op desktop tonen zodat het menu weg kan */
+  .sidebar-close-btn { display: flex !important; }
+  /* Heropen-knop alleen op desktop (component rendert hem enkel als dicht) */
+  .desktop-open-btn { display: flex !important; }
 }
 
 /* ── Aankomsten mobiel ──────────────────────────────────────── */

@@ -112,14 +112,16 @@ async function checkNightlyAvailability(
 }
 
 // ============================================================
-// HELPER — tel de NIEUW toegevoegde nachten die vol zijn.
-// Bij een datumwijziging geldt de overboekingstoeslag alleen voor nachten die
+// HELPER — tel de NIEUW toegevoegde dagen die vol zijn.
+// Bij een datumwijziging geldt de overboekingstoeslag alleen voor dagen die
 //  (a) nog niet in de oorspronkelijke boeking zaten (dus écht extra), én
-//  (b) op die nacht vol zitten (geen vrije plek meer).
-// De al gereserveerde nachten — waar de gast al een plek voor had — tellen NIET
-// mee, ook al vallen ze binnen een drukke periode.
+//  (b) op die dag vol zitten op de DAG-capaciteit (dagplaatsen / wisselpiek) —
+//      dit is wat bepaalt of we die dag fysiek vol staan.
+// De al gereserveerde dagen — waar de gast al een plek voor had — tellen NIET
+// mee, ook al vallen ze binnen een drukke periode. Aanwezigheid telt elke dag
+// die het verblijf aanraakt [aankomst, vertrek] (inclusief de vertrekdag).
 // ============================================================
-async function countFullNewNights(
+async function countFullNewDays(
   lotId: string,
   newArrival: string,
   newDeparture: string,
@@ -129,35 +131,36 @@ async function countFullNewNights(
   vehicleCount: number
 ): Promise<number> {
   const lotResult = await query(
-    `SELECT l.online_spots FROM parking_lots pl JOIN locations l ON l.id = pl.location_id WHERE pl.id = $1`,
+    `SELECT COALESCE(l.daytime_spots, l.online_spots) AS daytime_spots
+     FROM parking_lots pl JOIN locations l ON l.id = pl.location_id WHERE pl.id = $1`,
     [lotId]
   );
-  const onlineSpots: number = lotResult.rows[0]?.online_spots ?? 50;
+  const daytimeSpots: number = lotResult.rows[0]?.daytime_spots ?? 50;
 
   const result = await query(
-    `WITH nights AS (
-       SELECT generate_series($2::date, $3::date - '1 day'::interval, '1 day'::interval)::date AS night
+    `WITH days AS (
+       SELECT generate_series($2::date, $3::date, '1 day'::interval)::date AS day
      )
-     SELECT n.night,
-            COALESCE(ao.available_spots, $4) AS max_spots,
+     SELECT d.day,
+            COALESCE(ao.daytime_spots, $4) AS max_day,
             (SELECT COUNT(DISTINCT v.id)
              FROM reservations res2
              JOIN vehicles v ON v.reservation_id = res2.id
              WHERE res2.parking_lot_id = $1
                AND res2.status NOT IN ('cancelled')
                AND ($5::uuid IS NULL OR res2.id != $5::uuid)
-               AND res2.arrival_date <= n.night
-               AND res2.departure_date > n.night) AS booked_that_night
-     FROM nights n
-     LEFT JOIN availability_overrides ao ON ao.parking_lot_id = $1 AND ao.override_date = n.night
-     -- alleen nachten die NIET binnen de oorspronkelijke boeking [origArrival, origDeparture) vallen
-     WHERE n.night < $6::date OR n.night >= $7::date`,
-    [lotId, newArrival, newDeparture, onlineSpots, excludeReservationId, origArrival, origDeparture]
+               AND res2.arrival_date <= d.day
+               AND res2.departure_date >= d.day) AS present_that_day
+     FROM days d
+     LEFT JOIN availability_overrides ao ON ao.parking_lot_id = $1 AND ao.override_date = d.day
+     -- alleen dagen die NIET binnen de oorspronkelijke boeking [origArrival, origDeparture] vallen
+     WHERE d.day < $6::date OR d.day > $7::date`,
+    [lotId, newArrival, newDeparture, daytimeSpots, excludeReservationId, origArrival, origDeparture]
   );
 
   let count = 0;
   for (const row of result.rows) {
-    const avail = parseInt(row.max_spots) - parseInt(row.booked_that_night);
+    const avail = parseInt(row.max_day) - parseInt(row.present_that_day);
     if (avail < vehicleCount) count++;
   }
   return count;
@@ -3547,12 +3550,12 @@ router.get('/reservations/token/:token/modification-preview', async (req: Reques
   const currentArrivalStr = isoDate(r.arrival_date);
   const isAvailable = available >= vehicleCount;
 
-  // Overboeking: toeslag alleen voor NIEUW toegevoegde nachten die vol zijn
-  // (niet over de al gereserveerde nachten).
-  const fullNewNights = !isAvailable
-    ? await countFullNewNights(lotId, newArrival, newDeparture, currentArrivalStr, isoDate(r.departure_date), r.id, vehicleCount)
+  // Overboeking: toeslag alleen voor NIEUW toegevoegde dagen die vol zijn
+  // (niet over de al gereserveerde dagen).
+  const fullNewDays = !isAvailable
+    ? await countFullNewDays(lotId, newArrival, newDeparture, currentArrivalStr, isoDate(r.departure_date), r.id, vehicleCount)
     : 0;
-  const overbookingTotal = Math.round(fullNewNights * overbookingFeePerNight * 100) / 100;
+  const overbookingTotal = Math.round(fullNewDays * overbookingFeePerNight * 100) / 100;
 
   // Als de originele boeking nog niet betaald is (pending), moet het VOLLEDIGE nieuwe bedrag
   // worden betaald — niet alleen het verschil.
@@ -4821,11 +4824,11 @@ router.post('/reservations/token/:token/modify-dates-stripe-pay', async (req: Re
   const newTotalPrice = Math.round((newPriceInfo.totalPrice + servicesTotal) * 100) / 100;
   const priceDiff = Math.round((newTotalPrice - currentPrice) * 100) / 100;
 
-  // Overboekingstoeslag alleen voor nieuw toegevoegde, volle nachten
-  const fullNewNights = overbooked
-    ? await countFullNewNights(lotId, newArrivalDate, newDepartureDate, isoDate(r.arrival_date), isoDate(r.departure_date), r.id, vehicleCount)
+  // Overboekingstoeslag alleen voor nieuw toegevoegde, volle dagen
+  const fullNewDays = overbooked
+    ? await countFullNewDays(lotId, newArrivalDate, newDepartureDate, isoDate(r.arrival_date), isoDate(r.departure_date), r.id, vehicleCount)
     : 0;
-  const overbookingTotal = Math.round(fullNewNights * overbookingFeePerNight * 100) / 100;
+  const overbookingTotal = Math.round(fullNewDays * overbookingFeePerNight * 100) / 100;
 
   // Onbetaalde boeking (pending): geen verschil maar vol nieuw bedrag innen
   const originalUnpaid = r.payment_status === 'pending';
@@ -5028,11 +5031,11 @@ router.post('/reservations/token/:token/modify-dates-on-site', async (req: Reque
   const newTotalPrice2 = Math.round((newPriceInfo.totalPrice + servicesTotal2) * 100) / 100;
   const priceDiff = Math.round((newTotalPrice2 - currentPrice) * 100) / 100;
 
-  // Overboekingstoeslag alleen voor nieuw toegevoegde, volle nachten
-  const fullNewNights2 = overbooked
-    ? await countFullNewNights(lotId, newArrivalDate, newDepartureDate, isoDate(r.arrival_date), isoDate(r.departure_date), r.id, vehicleCount)
+  // Overboekingstoeslag alleen voor nieuw toegevoegde, volle dagen
+  const fullNewDays2 = overbooked
+    ? await countFullNewDays(lotId, newArrivalDate, newDepartureDate, isoDate(r.arrival_date), isoDate(r.departure_date), r.id, vehicleCount)
     : 0;
-  const overbookingTotal2 = Math.round(fullNewNights2 * overbookingFeePerNight2 * 100) / 100;
+  const overbookingTotal2 = Math.round(fullNewDays2 * overbookingFeePerNight2 * 100) / 100;
 
   // Onbetaalde boeking (pending): vol nieuw bedrag innen bij aankomst
   const originalUnpaid2 = r.payment_status === 'pending';

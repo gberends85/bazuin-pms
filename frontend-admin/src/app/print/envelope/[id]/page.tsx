@@ -70,6 +70,13 @@ function C6Envelope({ res, mods }: { res: any; mods: any[] }) {
   }
   const netBalance = originalUnpaid ? Number(res.total_price) : balanceDue;
 
+  // Beschrijving van eventuele toeslagen, zodat op de envelop herleidbaar is
+  // waarom het bedrag hoger is (overboeking + ter plekke betalen).
+  const surchargeParts: string[] = [];
+  if (Number(res.overbooking_surcharge) > 0) surchargeParts.push(`${eur(Number(res.overbooking_surcharge))} overboeking`);
+  if (Number(res.on_site_surcharge) > 0) surchargeParts.push(`${eur(Number(res.on_site_surcharge))} ter plekke`);
+  const surchargeNote = surchargeParts.length ? `incl. ${surchargeParts.join(' + ')}` : '';
+
   return (
     <div className="envelope">
       {/* ═══ HOOFD-RIJEN (3 kolommen) ═══ */}
@@ -118,11 +125,13 @@ function C6Envelope({ res, mods }: { res: any; mods: any[] }) {
             <div className="balance-block">
               <div className="balance-label">nog te betalen</div>
               <div className="balance-amount">{eur(Number(res.total_price))}</div>
+              {surchargeNote && <div className="balance-note">{surchargeNote}</div>}
             </div>
           ) : pendingMod && pendingAmt > 0 ? (
             <div className="balance-block">
               <div className="balance-label">⚠ bijbetalen</div>
               <div className="balance-amount">{eur(pendingAmt)}</div>
+              {surchargeNote && <div className="balance-note">{surchargeNote}</div>}
             </div>
           ) : (
             <div className={`payment-status payment-${res.payment_status}`}>
@@ -334,6 +343,7 @@ export default function PrintEnvelopePage({ params }: { params: { id: string } }
         }
         .balance-label  { font-size: 6pt; font-weight: 900; color: #000; text-transform: uppercase; letter-spacing: 0.5px; }
         .balance-amount { font-size: 14pt; font-weight: 900; color: #000; line-height: 1.15; }
+        .balance-note   { font-size: 6pt; font-weight: 700; color: #000; margin-top: 0.5mm; }
 
         /* Rechter kolom */
         .option { font-size: 7.5pt; font-weight: 700; color: #000; background: #eee; border-radius: 3px; padding: 0.8mm 2mm; margin-bottom: 1mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }

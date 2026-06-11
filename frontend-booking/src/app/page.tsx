@@ -168,9 +168,8 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
             const cellBg = inRange && !isBlocked ? '#eaf1fb' : 'transparent';
             const dayBg = (isStart || isEnd) ? '#19499e'
               : dayCapFull ? RED
-              : (prevNightFull && nextNightFull) ? `linear-gradient(to right, ${RED} 0 20%, transparent 20% 80%, ${RED} 80% 100%)`
-              : nextNightFull ? `linear-gradient(to right, transparent 60%, ${RED})`
-              : prevNightFull ? `linear-gradient(to right, ${RED}, transparent 40%)`
+              : nextNightFull ? `linear-gradient(to right, ${RED} 0 20%, transparent 20% 80%, ${RED} 80% 100%)`  // eigen nacht vol, overdag plek → dagje parkeren kan
+              : prevNightFull ? `linear-gradient(to right, ${RED}, transparent 40%)`                              // alleen vorige nacht vol (blok-eind): wel aankomen/blijven
               : 'transparent';
             const dayColor = (isStart || isEnd) ? 'white' : isPast ? '#c8d4df' : isToday ? '#19499e' : '#142440';
             const dayWeight = (isStart || isEnd || isToday) ? 800 : 400;
@@ -179,7 +178,7 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
                 onClick={() => handleDay(ds)}
                 onMouseEnter={() => picking === 'end' && !isUnavailable && setHovered(ds)}
                 onMouseLeave={() => setHovered(null)}
-                title={dayCapFull ? 'Volgeboekt — ook overdag vol' : (prevNightFull && nextNightFull) ? 'Overnachten vol — een dagje parkeren kan nog (klik 2× voor 1 dag)' : nextNightFull ? 'Vol om te blijven — wel mogelijk als vertrekdag' : prevNightFull ? 'Wel mogelijk als aankomstdag — niet om te blijven' : isBlocked ? 'Geen plaatsen beschikbaar' : undefined}
+                title={dayCapFull ? 'Volgeboekt — ook overdag vol' : nextNightFull ? 'Overnachten vol — een dagje parkeren kan nog (klik 2× voor 1 dag)' : prevNightFull ? 'Wel mogelijk als aankomstdag — niet om te blijven' : isBlocked ? 'Geen plaatsen beschikbaar' : undefined}
                 style={{ background: cellBg, padding: '2px 1px', cursor: isPast ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                 <div style={{ width: '100%', aspectRatio: '1', borderRadius: '50%', background: dayBg, color: dayColor, fontWeight: dayWeight, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', maxWidth: 38, position: 'relative' }}>
                   {new Date(ds + 'T12:00:00').getDate()}

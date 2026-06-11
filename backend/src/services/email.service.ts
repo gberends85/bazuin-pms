@@ -208,6 +208,7 @@ export async function buildConfirmationVars(
   const vehicleCount = vehiclesResult.rows.length || 1;
 
   const paymentSurcharge = parseFloat(res.payment_surcharge || '0');
+  const overbookingSurcharge = parseFloat(res.overbooking_surcharge || '0');
   const totalPrice = parseFloat(res.total_price || '0');
 
   // Eerst de losse diensten (EV-laden e.d.) opbouwen én sommeren
@@ -248,7 +249,7 @@ export async function buildConfirmationVars(
   // Parkeerkosten = totaal − toeslagen − diensten. Zo telt de uitsplitsing
   // ALTIJD op tot het totaalbedrag, ook na een wijziging die de prijs
   // veranderde (anders zou een verouderde base_price een gat achterlaten).
-  let parkingPrice = Math.round((totalPrice - onSiteSurcharge - paymentSurcharge - servicesSum) * 100) / 100;
+  let parkingPrice = Math.round((totalPrice - onSiteSurcharge - paymentSurcharge - overbookingSurcharge - servicesSum) * 100) / 100;
   if (parkingPrice <= 0 && basePrice > 0) parkingPrice = basePrice; // veiligheidsnet
 
   const extraDiensten: any[] = [];
@@ -262,6 +263,18 @@ export async function buildConfirmationVars(
       naam: `Auto parkeren — ${autoLabel}, ${dagLabel}`,
       aantal: '',
       bedrag: `€ ${parkingPrice.toFixed(2).replace('.', ',')}`,
+      notitie: '',
+      kenteken: '',
+    });
+  }
+
+  // Regel 1b: Overboekingstoeslag (indien van toepassing) — eerder aangekomen
+  // terwijl de stalling vol was.
+  if (overbookingSurcharge > 0) {
+    extraDiensten.push({
+      naam: 'Overboekingstoeslag (eerder aangekomen bij volle stalling)',
+      aantal: '',
+      bedrag: `€ ${overbookingSurcharge.toFixed(2).replace('.', ',')}`,
       notitie: '',
       kenteken: '',
     });

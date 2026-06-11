@@ -169,7 +169,7 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
             const dayBg = (isStart || isEnd) ? '#19499e'
               : dayCapFull ? RED
               : nextNightFull ? `linear-gradient(to right, ${RED} 0 20%, transparent 20% 80%, ${RED} 80% 100%)`  // eigen nacht vol, overdag plek → dagje parkeren kan
-              : prevNightFull ? `linear-gradient(to right, ${RED}, transparent 40%)`                              // alleen vorige nacht vol (blok-eind): wel aankomen/blijven
+              : prevNightFull ? `linear-gradient(to right, ${RED} 0 20%, transparent 20% 100%)`                  // alleen vorige nacht vol (blok-eind): wel aankomen/blijven
               : 'transparent';
             const dayColor = (isStart || isEnd) ? 'white' : isPast ? '#c8d4df' : isToday ? '#19499e' : '#142440';
             const dayWeight = (isStart || isEnd || isToday) ? 800 : 400;

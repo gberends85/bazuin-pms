@@ -777,6 +777,12 @@ export default function ReservationDetailPage({ params }: { params: { id: string
                     <span>€ {Number(res.services_total).toFixed(2)}</span>
                   </div>
                 )}
+                {Number(res.overbooking_surcharge) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '0.5px solid rgba(10,34,64,0.06)' }}>
+                    <span style={{ color: '#7090b0' }}>Overboekingstoeslag</span>
+                    <span>€ {Number(res.overbooking_surcharge).toFixed(2)}</span>
+                  </div>
+                )}
                 {Number(res.on_site_surcharge) > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '0.5px solid rgba(10,34,64,0.06)' }}>
                     <span style={{ color: '#7090b0' }}>Toeslag ter plekke betalen</span>

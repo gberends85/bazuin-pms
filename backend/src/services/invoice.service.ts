@@ -115,10 +115,14 @@ export async function generateInvoiceHtml(token: string): Promise<string | null>
   if (paymentSurcharge > 0) {
     serviceRows += `<tr><td>Toeslag PayPal</td><td class="num">1×</td><td class="num">${fmtMoney(r.payment_surcharge)}</td></tr>`;
   }
+  const overbookingSurcharge = parseFloat(r.overbooking_surcharge || 0);
+  if (overbookingSurcharge > 0) {
+    serviceRows += `<tr><td>Overboekingstoeslag</td><td class="num">1×</td><td class="num">${fmtMoney(r.overbooking_surcharge)}</td></tr>`;
+  }
 
   // Parkeerkosten = totaal − seizoenstoeslag − laden − toeslagen, zodat de
   // factuurregels altijd optellen tot het totaalbedrag (ook na een wijziging).
-  let parkingPrice = Math.round((parseFloat(r.total_price || 0) - seasonSurcharge - evSum - onSiteSurcharge - paymentSurcharge) * 100) / 100;
+  let parkingPrice = Math.round((parseFloat(r.total_price || 0) - seasonSurcharge - evSum - onSiteSurcharge - paymentSurcharge - overbookingSurcharge) * 100) / 100;
   if (parkingPrice <= 0 && parseFloat(r.base_price || 0) > 0) parkingPrice = parseFloat(r.base_price); // veiligheidsnet
   // Manual extra invoice lines
   for (const it of extraItems) {

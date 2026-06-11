@@ -4924,12 +4924,17 @@ router.post('/reservations/token/:token/modify-dates-stripe-complete', async (re
   const claim = await query(
     `UPDATE reservation_modifications SET status='completed', accepted_at=NOW()
      WHERE reservation_id=$1 AND stripe_payment_intent_id=$2 AND status='pending_payment'
-     RETURNING id`,
+     RETURNING id, change_details`,
     [r.id, paymentIntentId]
   );
   if (claim.rows.length === 0) {
     return res.status(409).json({ error: 'Deze wijziging is al verwerkt of hoort niet bij deze reservering' });
   }
+  // Overboekingstoeslag uit de wijziging halen (online betaald via Stripe)
+  const claimedDetails = typeof claim.rows[0].change_details === 'string'
+    ? JSON.parse(claim.rows[0].change_details || '{}')
+    : (claim.rows[0].change_details || {});
+  const overbookingTotal = Math.round((parseFloat(claimedDetails.overbookingTotal || 0)) * 100) / 100;
 
   const vehicleCountResult = await query('SELECT COUNT(*) as cnt FROM vehicles WHERE reservation_id = $1', [r.id]);
   const vehicleCount = parseInt(vehicleCountResult.rows[0].cnt);
@@ -4944,19 +4949,26 @@ router.post('/reservations/token/:token/modify-dates-stripe-complete', async (re
   }
 
   const newTotalPrice = Math.round((newPriceInfo.totalPrice + servicesTotal) * 100) / 100;
+  // Toeslagen vastleggen zodat ze in de prijsopbouw én op de factuur zichtbaar zijn.
+  const existingOnSite = parseFloat(r.on_site_surcharge || '0');
+  const newBasePrice = Math.round(((newPriceInfo.basePrice ?? newPriceInfo.totalPrice) * 100)) / 100;
+  const newSeason = Math.round((newPriceInfo.seasonSurchargeAmount || 0) * 100) / 100;
+  const newFullTotal = Math.round((newTotalPrice + existingOnSite + overbookingTotal) * 100) / 100;
 
   // Als de originele boeking onbetaald was, markeer nu als betaald
   const wasUnpaid = intent.metadata?.originalUnpaid === 'true';
   if (wasUnpaid) {
     await query(
       `UPDATE reservations SET arrival_date=$1, departure_date=$2, total_price=$3,
+       base_price=$6, season_surcharge_amount=$7, overbooking_surcharge=$8,
        payment_status='paid', stripe_payment_intent_id=$5, updated_at=NOW() WHERE id=$4`,
-      [newArrivalDate, newDepartureDate, newTotalPrice, r.id, paymentIntentId]
+      [newArrivalDate, newDepartureDate, newFullTotal, r.id, paymentIntentId, newBasePrice, newSeason, overbookingTotal]
     );
   } else {
     await query(
-      `UPDATE reservations SET arrival_date=$1, departure_date=$2, total_price=$3, updated_at=NOW() WHERE id=$4`,
-      [newArrivalDate, newDepartureDate, newTotalPrice, r.id]
+      `UPDATE reservations SET arrival_date=$1, departure_date=$2, total_price=$3,
+       base_price=$5, season_surcharge_amount=$6, overbooking_surcharge=$7, updated_at=NOW() WHERE id=$4`,
+      [newArrivalDate, newDepartureDate, newFullTotal, r.id, newBasePrice, newSeason, overbookingTotal]
     );
   }
 
@@ -5040,17 +5052,27 @@ router.post('/reservations/token/:token/modify-dates-on-site', async (req: Reque
     : Math.round((priceDiff + modFee2) * 100) / 100;
   const netDue = Math.round((chargeBase2 + onSiteSurcharge + overbookingTotal2) * 100) / 100;
 
+  // Toeslagen op de reservering vastleggen, zodat ze in de prijsopbouw én op de
+  // factuur zichtbaar zijn. total_price = parkeren + diensten + ter-plekke-toeslag
+  // + overboekingstoeslag.
+  const newBasePrice2 = Math.round(((newPriceInfo.basePrice ?? newPriceInfo.totalPrice) * 100)) / 100;
+  const newSeason2 = Math.round((newPriceInfo.seasonSurchargeAmount || 0) * 100) / 100;
+  const newFullTotal2 = Math.round((newTotalPrice2 + onSiteSurcharge + overbookingTotal2) * 100) / 100;
+
   // Auto-accept: apply dates immediately, customer pays on arrival
   if (originalUnpaid2) {
     await query(
       `UPDATE reservations SET arrival_date=$1, departure_date=$2, total_price=$3,
+       base_price=$5, season_surcharge_amount=$6, on_site_surcharge=$7, overbooking_surcharge=$8,
        payment_status='on_site', updated_at=NOW() WHERE id=$4`,
-      [newArrivalDate, newDepartureDate, newTotalPrice2, r.id]
+      [newArrivalDate, newDepartureDate, newFullTotal2, r.id, newBasePrice2, newSeason2, onSiteSurcharge, overbookingTotal2]
     );
   } else {
     await query(
-      `UPDATE reservations SET arrival_date=$1, departure_date=$2, total_price=$3, updated_at=NOW() WHERE id=$4`,
-      [newArrivalDate, newDepartureDate, newTotalPrice2, r.id]
+      `UPDATE reservations SET arrival_date=$1, departure_date=$2, total_price=$3,
+       base_price=$5, season_surcharge_amount=$6, on_site_surcharge=$7, overbooking_surcharge=$8,
+       updated_at=NOW() WHERE id=$4`,
+      [newArrivalDate, newDepartureDate, newFullTotal2, r.id, newBasePrice2, newSeason2, onSiteSurcharge, overbookingTotal2]
     );
   }
 

@@ -888,7 +888,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         </div>
       )}
 
-      {!preview.duringStay && !checkedInEarlier && preview.priceDifference < 0 && preview.cancellationRefundPct < 100 && (
+      {!preview.duringStay && !checkedInEarlier && !preview.originalUnpaid && preview.priceDifference < 0 && preview.cancellationRefundPct < 100 && (
         <div style={{ background: '#f4f6f9', border: '0.5px solid rgba(10,34,64,0.15)', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#556070', marginBottom: 12 }}>
           Op basis van het annuleringsbeleid ontvangt u <strong>{preview.cancellationRefundPct}%</strong> restitutie over het verschil ({preview.policyDescription}).
         </div>
@@ -965,8 +965,9 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         </div>
       )}
 
-      {/* No-extra-payment scenario with no availability: show overbooking or block */}
-      {!preview.duringStay && !checkedInEarlier && preview.netAmountDue <= 0 && preview.overbookingOption && !useOverbooked && (
+      {/* No-extra-payment scenario with no availability: show overbooking or block.
+          Bij onbetaalde boeking wordt dit al door het bovenste blok afgehandeld. */}
+      {!preview.duringStay && !checkedInEarlier && !preview.originalUnpaid && preview.netAmountDue <= 0 && preview.overbookingOption && !useOverbooked && (
         <div style={{ background: '#fff8e6', border: '1.5px solid #e8a020', borderRadius: 8, padding: '12px 14px', marginBottom: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#7a5010', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
             <ExclamationTriangleIcon className="w-4 h-4" />Geen plaatsen beschikbaar
@@ -986,7 +987,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       )}
 
       {/* Overboeking geaccepteerd maar netAmountDue <= 0: toon betaalbuttons voor enkel overbookingTotal */}
-      {!preview.duringStay && !checkedInEarlier && preview.netAmountDue <= 0 && preview.overbookingOption && useOverbooked && (
+      {!preview.duringStay && !checkedInEarlier && !preview.originalUnpaid && preview.netAmountDue <= 0 && preview.overbookingOption && useOverbooked && (
         <div style={{ marginBottom: 16 }}>
           <div style={{ background: '#fff8e6', border: '0.5px solid #e8a020', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#7a5010', marginBottom: 10 }}>
             Overboekingstoeslag: <strong>€ {preview.overbookingTotal?.toFixed(2).replace('.', ',')}</strong>

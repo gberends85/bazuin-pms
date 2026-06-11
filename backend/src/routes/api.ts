@@ -3548,13 +3548,14 @@ router.get('/reservations/token/:token/modification-preview', async (req: Reques
 
   const anchorStr = isoDate(r.policy_anchor_date || r.arrival_date);
   const currentArrivalStr = isoDate(r.arrival_date);
-  const isAvailable = available >= vehicleCount;
 
-  // Overboeking: toeslag alleen voor NIEUW toegevoegde dagen die vol zijn
-  // (niet over de al gereserveerde dagen).
-  const fullNewDays = !isAvailable
-    ? await countFullNewDays(lotId, newArrival, newDeparture, currentArrivalStr, isoDate(r.departure_date), r.id, vehicleCount)
-    : 0;
+  // Overboeking: toeslag/waarschuwing alleen voor NIEUW toegevoegde dagen die
+  // vol zijn. Dagen die al in de oorspronkelijke boeking zaten tellen NIET mee —
+  // ook niet als die (door andere boekingen) krap zitten. Een inkorting of
+  // verschuiving binnen de al gereserveerde periode voegt geen nieuwe dagen toe
+  // en is dus altijd beschikbaar zonder toeslag.
+  const fullNewDays = await countFullNewDays(lotId, newArrival, newDeparture, currentArrivalStr, isoDate(r.departure_date), r.id, vehicleCount);
+  const isAvailable = fullNewDays === 0;
   const overbookingTotal = Math.round(fullNewDays * overbookingFeePerNight * 100) / 100;
 
   // Als de originele boeking nog niet betaald is (pending), moet het VOLLEDIGE nieuwe bedrag
@@ -3665,11 +3666,11 @@ router.post('/reservations/token/:token/modify', async (req: Request, res: Respo
   const vehicleCount = parseInt(vehicleCountResult.rows[0].cnt);
   const lotId = r.parking_lot_id;
 
-  // Per-nacht beschikbaarheid incl. overrides, eigen reservering uitgesloten
-  const { minAvailable } = await checkNightlyAvailability(lotId, newArrivalDate, newDepartureDate, r.id);
-  const available = minAvailable;
+  // Beschikbaarheid: alleen NIEUW toegevoegde dagen tellen. Een inkorting of
+  // verschuiving binnen de al gereserveerde periode voegt geen dagen toe.
+  const fullNewDaysCheck = await countFullNewDays(lotId, newArrivalDate, newDepartureDate, isoDate(r.arrival_date), isoDate(r.departure_date), r.id, vehicleCount);
   // Bij overboeking: check overrulen toegestaan (klant heeft bewust gekozen voor overboeking)
-  if (available < vehicleCount && !overbooked) return res.status(409).json({ error: `Onvoldoende plaatsen beschikbaar voor de gekozen periode`, overbookingOption: true });
+  if (fullNewDaysCheck > 0 && !overbooked) return res.status(409).json({ error: `Onvoldoende plaatsen beschikbaar voor de gekozen periode`, overbookingOption: true });
 
   let newPriceInfo: any;
   try {
@@ -4806,11 +4807,9 @@ router.post('/reservations/token/:token/modify-dates-stripe-pay', async (req: Re
   const modFee = parseFloat(cfg['modification_fee'] || '0');
   const overbookingFeePerNight = parseFloat(cfg['overbooking_fee'] || '20');
 
-  // Beschikbaarheidscheck per nacht incl. overrides
-  if (!overbooked) {
-    const { minAvailable } = await checkNightlyAvailability(lotId, newArrivalDate, newDepartureDate, r.id);
-    if (minAvailable < vehicleCount) return res.status(409).json({ error: 'Onvoldoende plaatsen beschikbaar voor de gekozen periode', overbookingOption: true });
-  }
+  // Beschikbaarheid: alleen NIEUW toegevoegde volle dagen blokkeren
+  const fullNewDays = await countFullNewDays(lotId, newArrivalDate, newDepartureDate, isoDate(r.arrival_date), isoDate(r.departure_date), r.id, vehicleCount);
+  if (!overbooked && fullNewDays > 0) return res.status(409).json({ error: 'Onvoldoende plaatsen beschikbaar voor de gekozen periode', overbookingOption: true });
 
   const currentPrice = parseFloat(r.total_price);
   const servicesTotal = parseFloat(r.services_total || '0');
@@ -4825,10 +4824,7 @@ router.post('/reservations/token/:token/modify-dates-stripe-pay', async (req: Re
   const priceDiff = Math.round((newTotalPrice - currentPrice) * 100) / 100;
 
   // Overboekingstoeslag alleen voor nieuw toegevoegde, volle dagen
-  const fullNewDays = overbooked
-    ? await countFullNewDays(lotId, newArrivalDate, newDepartureDate, isoDate(r.arrival_date), isoDate(r.departure_date), r.id, vehicleCount)
-    : 0;
-  const overbookingTotal = Math.round(fullNewDays * overbookingFeePerNight * 100) / 100;
+  const overbookingTotal = overbooked ? Math.round(fullNewDays * overbookingFeePerNight * 100) / 100 : 0;
 
   // Onbetaalde boeking (pending): geen verschil maar vol nieuw bedrag innen
   const originalUnpaid = r.payment_status === 'pending';
@@ -5013,11 +5009,9 @@ router.post('/reservations/token/:token/modify-dates-on-site', async (req: Reque
   const overbookingFeePerNight2 = parseFloat(cfg2['overbooking_fee'] || '20');
   const onSiteSurcharge = 5;
 
-  // Beschikbaarheidscheck per nacht incl. overrides
-  if (!overbooked) {
-    const { minAvailable } = await checkNightlyAvailability(lotId, newArrivalDate, newDepartureDate, r.id);
-    if (minAvailable < vehicleCount) return res.status(409).json({ error: 'Onvoldoende plaatsen beschikbaar voor de gekozen periode', overbookingOption: true });
-  }
+  // Beschikbaarheid: alleen NIEUW toegevoegde volle dagen blokkeren
+  const fullNewDays2 = await countFullNewDays(lotId, newArrivalDate, newDepartureDate, isoDate(r.arrival_date), isoDate(r.departure_date), r.id, vehicleCount);
+  if (!overbooked && fullNewDays2 > 0) return res.status(409).json({ error: 'Onvoldoende plaatsen beschikbaar voor de gekozen periode', overbookingOption: true });
 
   const currentPrice = parseFloat(r.total_price);
   const servicesTotal2 = parseFloat(r.services_total || '0');
@@ -5032,10 +5026,7 @@ router.post('/reservations/token/:token/modify-dates-on-site', async (req: Reque
   const priceDiff = Math.round((newTotalPrice2 - currentPrice) * 100) / 100;
 
   // Overboekingstoeslag alleen voor nieuw toegevoegde, volle dagen
-  const fullNewDays2 = overbooked
-    ? await countFullNewDays(lotId, newArrivalDate, newDepartureDate, isoDate(r.arrival_date), isoDate(r.departure_date), r.id, vehicleCount)
-    : 0;
-  const overbookingTotal2 = Math.round(fullNewDays2 * overbookingFeePerNight2 * 100) / 100;
+  const overbookingTotal2 = overbooked ? Math.round(fullNewDays2 * overbookingFeePerNight2 * 100) / 100 : 0;
 
   // Onbetaalde boeking (pending): vol nieuw bedrag innen bij aankomst
   const originalUnpaid2 = r.payment_status === 'pending';

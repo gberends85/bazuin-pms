@@ -953,9 +953,12 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
                 style={{ ...S.btnGhost, marginTop: 0, opacity: step === 'dates-confirming' ? 0.6 : 1 }}
               >
                 <HomeIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6 }} />
-                {preview.originalUnpaid
-                  ? `Betalen ter plekke — € ${((preview.fullAmountDue ?? preview.newPrice) + 5).toFixed(2).replace('.', ',')} (+€5,00 toeslag)`
-                  : 'Betalen ter plekke (+€5,00)'}
+                {(() => {
+                  const onSiteBase = useOverbooked
+                    ? (preview.fullAmountDueOverbooked ?? preview.overbookingNetDue)
+                    : (preview.originalUnpaid ? preview.fullAmountDue : preview.netAmountDue);
+                  return `Betalen ter plekke — € ${((onSiteBase ?? preview.newPrice) + 5).toFixed(2).replace('.', ',')} (+€5,00 toeslag)`;
+                })()}
               </button>
             </>
           )}

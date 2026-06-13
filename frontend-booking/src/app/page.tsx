@@ -166,10 +166,14 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
             const dayCapFull = !isPast && !isStart && !isEnd && isDayFull(ds);
             const RED = '#f3a9a9';
             const cellBg = inRange && !isBlocked ? '#eaf1fb' : 'transparent';
+            // Alleen de kant van de daadwerkelijk volle nacht kleurt rood:
+            //  linkerrand = vorige nacht (d-1→d), rechterrand = volgende nacht (d→d+1).
+            // Beide nachten vol (overdag nog plek) → 20% rood / 60% wit / 20% rood.
             const dayBg = (isStart || isEnd) ? '#19499e'
               : dayCapFull ? RED
-              : nextNightFull ? `linear-gradient(to right, ${RED} 0 20%, transparent 20% 80%, ${RED} 80% 100%)`  // eigen nacht vol, overdag plek → dagje parkeren kan
-              : prevNightFull ? `linear-gradient(to right, ${RED} 0 20%, transparent 20% 100%)`                  // alleen vorige nacht vol (blok-eind): wel aankomen/blijven
+              : (prevNightFull && nextNightFull) ? `linear-gradient(to right, ${RED} 0 20%, transparent 20% 80%, ${RED} 80% 100%)`  // beide nachten vol, overdag plek
+              : nextNightFull ? `linear-gradient(to right, transparent 0 80%, ${RED} 80% 100%)`                 // alleen eigen nacht vol → rechts rood
+              : prevNightFull ? `linear-gradient(to right, ${RED} 0 20%, transparent 20% 100%)`                 // alleen vorige nacht vol → links rood
               : 'transparent';
             const dayColor = (isStart || isEnd) ? 'white' : isPast ? '#c8d4df' : isToday ? '#19499e' : '#142440';
             const dayWeight = (isStart || isEnd || isToday) ? 800 : 400;

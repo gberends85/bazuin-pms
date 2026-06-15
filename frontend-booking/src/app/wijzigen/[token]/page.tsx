@@ -1298,7 +1298,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
                 </>
               ) : (
                 <div style={{ color: '#556070' }}>
-                  Elektrisch voertuig — opladen tijdens uw verblijf is mogelijk.
+                  Accugegevens zijn niet beschikbaar bij het RDW — kies gerust een laadpakket hieronder, of neem contact met ons op voor advies.
                 </div>
               )}
               {/* Laden kiezen — zelfde tarieven als de boekingspagina */}

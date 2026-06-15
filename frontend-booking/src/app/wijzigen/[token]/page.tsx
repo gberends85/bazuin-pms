@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   CheckIcon, ArrowRightIcon, ArrowLeftIcon, ArrowPathIcon, EnvelopeIcon,
   DocumentTextIcon, ClipboardDocumentListIcon, BoltIcon, LockClosedIcon,
@@ -269,6 +269,9 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   // Plate sub-form state
   const [plateValues, setPlateValues] = useState<{ vehicleId: string; oldPlate: string; newPlate: string }[]>([]);
   const [plateLoading, setPlateLoading] = useState(false);
+  // RDW-info per voertuig (index) voor laadadvies bij elektrische auto's
+  const [plateRdw, setPlateRdw] = useState<Record<number, any>>({});
+  const lookedUpPlates = useRef<Record<number, string>>({});
 
   // Contact sub-form state
   const [contactEmail, setContactEmail] = useState('');
@@ -437,6 +440,25 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       setStep('dates-on-site-confirm');
     } catch (e: any) { setError(e.message); }
   }
+
+  // RDW-lookup per voertuig (gedebounced) voor het laadadvies. We zoeken het
+  // ingevulde kenteken op; bij een elektrische auto tonen we hetzelfde advies
+  // als op de boekingspagina.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      plateValues.forEach((v, i) => {
+        const norm = (v.newPlate || '').replace(/[-\s]/g, '').toUpperCase();
+        if (norm.length < 6) return;
+        if (lookedUpPlates.current[i] === norm) return; // al opgezocht
+        lookedUpPlates.current[i] = norm;
+        bookingApi.lookupPlate(norm)
+          .then(info => setPlateRdw(p => ({ ...p, [i]: { ...(info || { found: false }), _plate: norm } })))
+          .catch(() => setPlateRdw(p => ({ ...p, [i]: { found: false, _plate: norm } })));
+      });
+    }, 500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plateValues]);
 
   // ── Plate handler ─────────────────────────────────────────────
   async function submitPlate() {
@@ -1113,7 +1135,15 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         <p style={{ color: '#7090b0', fontSize: 13 }}>Geen voertuigen gevonden bij deze reservering.</p>
       )}
 
-      {plateValues.map((v, i) => (
+      {plateValues.map((v, i) => {
+        const rdw = plateRdw[i];
+        const ev = rdw?.found ? rdw.ev : null;
+        const fuel = (rdw?.fuelType || '').toLowerCase();
+        const isCombustion = fuel.includes('benzine') || fuel.includes('diesel') || fuel.includes('lpg');
+        const isElectric = !!rdw?.found && !isCombustion && !!fuel; // elektrisch / (plug-in) hybride
+        const realisticKm = ev ? Math.round(ev.batteryCapacityKwh * ev.realisticKmPerKwh) : 0;
+        const suggestedKm = ev ? Math.round(ev.suggestedKwh * ev.realisticKmPerKwh) : 0;
+        return (
         <div key={v.vehicleId} style={{ marginBottom: 16 }}>
           <label style={S.label}>Voertuig {i + 1} — huidig kenteken: <span style={{ color: '#142440' }}>{v.oldPlate}</span></label>
           <input
@@ -1123,8 +1153,45 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
             placeholder={v.oldPlate}
             style={{ ...S.input, textTransform: 'uppercase' }}
           />
+          {rdw?.found && (rdw.make || rdw.model) && (
+            <div style={{ marginTop: 6, fontSize: 12, color: '#7090b0' }}>
+              {[rdw.make, rdw.model, rdw.color].filter(Boolean).join(' · ')}
+            </div>
+          )}
+          {/* Laadadvies — enkel voor elektrische auto's */}
+          {isElectric && (
+            <div style={{ marginTop: 8, padding: '12px 14px', background: '#f0f7ff', borderRadius: 8, fontSize: 12 }}>
+              <div style={{ fontWeight: 700, color: '#142440', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <BoltIcon className="w-4 h-4" />Laadadvies
+              </div>
+              {ev ? (
+                <>
+                  <div style={{ color: '#142440', marginBottom: 4 }}>
+                    Geschatte accucapaciteit: <strong>~{ev.batteryCapacityKwh} kWh</strong>
+                  </div>
+                  <div style={{ color: '#556070' }}>
+                    WLTP-bereik: {ev.wltpRangeKm} km · realistisch ~{realisticKm} km
+                  </div>
+                  <div style={{ color: '#556070', marginTop: 2 }}>
+                    Ca. {ev.realisticKmPerKwh} km extra per geladen kWh
+                  </div>
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '0.5px solid rgba(10,34,64,0.1)', color: '#123a80', fontWeight: 600 }}>
+                    Aanbevolen laadpakket: ~{ev.suggestedKwh} kWh (±{suggestedKm} km extra)
+                  </div>
+                </>
+              ) : (
+                <div style={{ color: '#556070' }}>
+                  Elektrisch voertuig — opladen tijdens uw verblijf is mogelijk.
+                </div>
+              )}
+              <div style={{ marginTop: 6, color: '#7090b0', fontWeight: 400 }}>
+                Laden toevoegen? Neem contact met ons op, dan regelen we het bij aankomst.
+              </div>
+            </div>
+          )}
         </div>
-      ))}
+        );
+      })}
 
       {error && <ErrorBox msg={error} />}
 

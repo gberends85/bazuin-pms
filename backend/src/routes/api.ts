@@ -5100,6 +5100,145 @@ router.post('/reservations/token/:token/modify-dates-on-site', async (req: Reque
 });
 
 // ============================================================
+// CUSTOMER — LADEN TOEVOEGEN/AANPASSEN (via token)
+// Zelfde tarieven als de boekingspagina (services-tabel). Betaling via Stripe
+// of ter plekke (+€5), net als bij een datumwijziging. We werken met een
+// delta-aanpak op total_price: enkel het services-deel wordt omgeruild,
+// base_price/seizoenstoeslag/overige toeslagen blijven onaangeroerd.
+// ============================================================
+async function evPriceFor(evServiceId: string | null): Promise<number> {
+  if (!evServiceId) return 0;
+  const s = await query('SELECT price FROM services WHERE id = $1', [evServiceId]);
+  return s.rows.length ? Math.round(parseFloat(s.rows[0].price) * 100) / 100 : 0;
+}
+
+async function chargingDelta(reservationId: string, items: any[]): Promise<number> {
+  const cur = await query('SELECT id::text AS id, COALESCE(ev_price,0) AS ev_price FROM vehicles WHERE reservation_id = $1', [reservationId]);
+  const curMap: Record<string, number> = {};
+  cur.rows.forEach((row: any) => { curMap[row.id] = parseFloat(row.ev_price); });
+  let delta = 0;
+  for (const it of items) {
+    const np = await evPriceFor(it.evServiceId || null);
+    delta += np - (curMap[it.vehicleId] ?? 0);
+  }
+  return Math.round(delta * 100) / 100;
+}
+
+async function applyCharging(reservationId: string, items: any[]): Promise<void> {
+  for (const it of items) {
+    if (it.evServiceId) {
+      const price = await evPriceFor(it.evServiceId);
+      await query('UPDATE vehicles SET ev_service_id=$1, ev_kwh=$2, ev_price=$3 WHERE id=$4 AND reservation_id=$5',
+        [it.evServiceId, it.evKwh || null, price, it.vehicleId, reservationId]);
+    } else {
+      await query('UPDATE vehicles SET ev_service_id=NULL, ev_kwh=NULL, ev_price=NULL WHERE id=$1 AND reservation_id=$2',
+        [it.vehicleId, reservationId]);
+    }
+  }
+  await query(
+    `UPDATE reservations SET
+       total_price = total_price - COALESCE(services_total,0) + COALESCE((SELECT SUM(ev_price) FROM vehicles WHERE reservation_id=$1),0),
+       services_total = COALESCE((SELECT SUM(ev_price) FROM vehicles WHERE reservation_id=$1),0),
+       updated_at = NOW()
+     WHERE id = $1`, [reservationId]);
+}
+
+router.post('/reservations/token/:token/modify-charging-stripe-pay', async (req: Request, res: Response) => {
+  const { vehicles } = req.body;
+  if (!Array.isArray(vehicles) || vehicles.length === 0) return res.status(400).json({ error: 'Geen voertuigen opgegeven' });
+
+  const result = await query(
+    `SELECT r.*, c.email FROM reservations r JOIN customers c ON c.id = r.customer_id WHERE r.cancellation_token = $1`,
+    [req.params.token]
+  );
+  if (result.rows.length === 0) return res.status(404).json({ error: 'Niet gevonden' });
+  const r = result.rows[0];
+  if (['cancelled', 'completed'].includes(r.status)) return res.status(400).json({ error: 'Deze reservering kan niet worden gewijzigd' });
+
+  const delta = await chargingDelta(r.id, vehicles);
+  if (delta <= 0) return res.status(400).json({ error: 'Geen extra laden geselecteerd' });
+
+  const Stripe = (await import('stripe')).default;
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: Math.round(delta * 100),
+    currency: 'eur',
+    metadata: { reservationId: r.id, type: 'charging_modification' },
+    receipt_email: r.email,
+  });
+
+  const newTotal = Math.round((parseFloat(r.total_price) + delta) * 100) / 100;
+  await query(
+    `INSERT INTO reservation_modifications
+       (reservation_id, modified_by, old_arrival_date, old_departure_date, new_arrival_date, new_departure_date,
+        old_total_price, new_total_price, price_difference, modification_fee, status, modification_type, during_stay, change_details, stripe_payment_intent_id)
+     VALUES ($1,'customer',$2,$3,$2,$3,$4,$5,$6,0,'pending_payment','charging',false,$7,$8)`,
+    [r.id, r.arrival_date, r.departure_date, r.total_price, newTotal, delta,
+     JSON.stringify({ paymentMethod: 'stripe', vehicles, amount: delta }), paymentIntent.id]
+  );
+  return res.json({ clientSecret: paymentIntent.client_secret, amount: delta });
+});
+
+router.post('/reservations/token/:token/modify-charging-stripe-complete', async (req: Request, res: Response) => {
+  const { paymentIntentId } = req.body;
+  if (!paymentIntentId) return res.status(400).json({ error: 'paymentIntentId is verplicht' });
+
+  const result = await query('SELECT * FROM reservations WHERE cancellation_token = $1', [req.params.token]);
+  if (result.rows.length === 0) return res.status(404).json({ error: 'Niet gevonden' });
+  const r = result.rows[0];
+
+  const Stripe = (await import('stripe')).default;
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
+  const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+  if (intent.status !== 'succeeded' || intent.metadata?.reservationId !== r.id || intent.metadata?.type !== 'charging_modification') {
+    return res.status(400).json({ error: 'Betaling hoort niet bij deze wijziging' });
+  }
+
+  const claim = await query(
+    `UPDATE reservation_modifications SET status='completed', accepted_at=NOW()
+     WHERE reservation_id=$1 AND stripe_payment_intent_id=$2 AND status='pending_payment'
+     RETURNING id, change_details`,
+    [r.id, paymentIntentId]
+  );
+  if (claim.rows.length === 0) return res.status(409).json({ error: 'Deze wijziging is al verwerkt' });
+  const cd = typeof claim.rows[0].change_details === 'string' ? JSON.parse(claim.rows[0].change_details || '{}') : (claim.rows[0].change_details || {});
+  await applyCharging(r.id, cd.vehicles || []);
+
+  sendModificationConfirmation(r.id).catch(err => console.error('Laden (Stripe) bevestigingsmail mislukt:', err));
+  return res.json({ success: true });
+});
+
+router.post('/reservations/token/:token/modify-charging-on-site', async (req: Request, res: Response) => {
+  const { vehicles } = req.body;
+  if (!Array.isArray(vehicles) || vehicles.length === 0) return res.status(400).json({ error: 'Geen voertuigen opgegeven' });
+
+  const result = await query('SELECT * FROM reservations WHERE cancellation_token = $1', [req.params.token]);
+  if (result.rows.length === 0) return res.status(404).json({ error: 'Niet gevonden' });
+  const r = result.rows[0];
+  if (['cancelled', 'completed'].includes(r.status)) return res.status(400).json({ error: 'Deze reservering kan niet worden gewijzigd' });
+
+  const delta = await chargingDelta(r.id, vehicles);
+  if (delta <= 0) return res.status(400).json({ error: 'Geen extra laden geselecteerd' });
+  const onSiteSurcharge = 5;
+  const netDue = Math.round((delta + onSiteSurcharge) * 100) / 100;
+
+  await applyCharging(r.id, vehicles);
+
+  const newTotal = Math.round((parseFloat(r.total_price) + delta) * 100) / 100;
+  await query(
+    `INSERT INTO reservation_modifications
+       (reservation_id, modified_by, old_arrival_date, old_departure_date, new_arrival_date, new_departure_date,
+        old_total_price, new_total_price, price_difference, modification_fee, status, modification_type, during_stay, change_details)
+     VALUES ($1,'customer',$2,$3,$2,$3,$4,$5,$6,$7,'pending_payment','charging',false,$8)`,
+    [r.id, r.arrival_date, r.departure_date, r.total_price, newTotal, delta, onSiteSurcharge,
+     JSON.stringify({ paymentMethod: 'on_site', vehicles, netDue, onSiteSurcharge, note: 'Laden — betaling ter plekke bij aankomst' })]
+  );
+
+  sendModificationConfirmation(r.id).catch(err => console.error('Laden (ter plekke) bevestigingsmail mislukt:', err));
+  return res.json({ success: true, amount: netDue });
+});
+
+// ============================================================
 // ADMIN — APPLY ON-SITE PAYMENT FOR MODIFICATION
 // ============================================================
 router.post('/admin/modifications/:id/apply-on-site-payment', requireAuth, async (req: Request, res: Response) => {

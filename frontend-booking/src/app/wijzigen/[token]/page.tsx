@@ -17,6 +17,7 @@ type Step =
   | 'dates-form' | 'dates-preview' | 'dates-confirming' | 'dates-pay' | 'dates-done'
   | 'dates-pay-preStay' | 'dates-on-site-confirm'
   | 'plate' | 'plate-done'
+  | 'charging-pay' | 'charging-done'
   | 'contact' | 'phone-done' | 'email-verify-sent'
   | 'ferry' | 'ferry-done'
   | 'all-reservations'
@@ -134,6 +135,53 @@ function PreStayPaymentForm({
           cursor: paying ? 'not-allowed' : 'pointer',
         }}
       >
+        {paying ? 'Betaling verwerken...' : `Nu betalen — € ${amount.toFixed(2).replace('.', ',')}`}
+      </button>
+    </form>
+  );
+}
+
+// ── Stripe sub-component for charging (laden) payment ─────────────────────────
+function ChargingPaymentForm({
+  token, payload, amount, onSuccess, onError,
+}: {
+  token: string; payload: any[]; amount: number;
+  onSuccess: () => void; onError: (msg: string) => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [paying, setPaying] = useState(false);
+
+  async function handlePay(e: React.FormEvent) {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setPaying(true);
+    const returnUrl = `${window.location.origin}${window.location.pathname}?pay_type=charging`;
+    try {
+      const { error, paymentIntent } = await stripe.confirmPayment({
+        elements,
+        redirect: 'if_required',
+        confirmParams: { return_url: returnUrl },
+      });
+      if (error) { onError(error.message || 'Betaling mislukt'); return; }
+      if (paymentIntent?.status === 'succeeded') {
+        await bookingApi.modifyChargingStripeComplete(token, paymentIntent.id, payload);
+        onSuccess();
+      } else {
+        onError('Betaling niet succesvol. Probeer opnieuw.');
+      }
+    } catch (err: any) {
+      onError(err.message || 'Er is een fout opgetreden');
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handlePay}>
+      <PaymentElement options={{ layout: 'tabs' }} />
+      <button type="submit" disabled={paying || !stripe}
+        style={{ width: '100%', marginTop: 20, padding: '13px', borderRadius: 9, background: paying ? '#ccc' : '#19499e', color: 'white', border: 'none', fontSize: 15, fontWeight: 700, cursor: paying ? 'not-allowed' : 'pointer' }}>
         {paying ? 'Betaling verwerken...' : `Nu betalen — € ${amount.toFixed(2).replace('.', ',')}`}
       </button>
     </form>
@@ -272,6 +320,14 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   // RDW-info per voertuig (index) voor laadadvies bij elektrische auto's
   const [plateRdw, setPlateRdw] = useState<Record<number, any>>({});
   const lookedUpPlates = useRef<Record<number, string>>({});
+  // Laden: beschikbare tarieven + gekozen kWh per voertuig (index)
+  const [services, setServices] = useState<any[]>([]);
+  const [evSel, setEvSel] = useState<Record<number, number | undefined>>({});
+  // Stripe-betaling voor laden
+  const [chargingClientSecret, setChargingClientSecret] = useState('');
+  const [chargingAmount, setChargingAmount] = useState(0);
+  const [chargingPayload, setChargingPayload] = useState<any[]>([]);
+  const [onSiteChargingAmount, setOnSiteChargingAmount] = useState(0);
 
   // Contact sub-form state
   const [contactEmail, setContactEmail] = useState('');
@@ -334,12 +390,20 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
             oldPlate: v.license_plate,
             newPlate: v.license_plate,
           })));
+          const sel: Record<number, number | undefined> = {};
+          data.vehicles.forEach((v: any, i: number) => { sel[i] = v.ev_kwh || undefined; });
+          setEvSel(sel);
         }
+        bookingApi.getServices().then(s => setServices(Array.isArray(s) ? s : [])).catch(() => {});
 
         // Handle Stripe redirect return
         if (piId && redirectStatus === 'succeeded') {
           try {
-            if (payType === 'pre_stay' && returnArrival && returnDeparture) {
+            if (payType === 'charging') {
+              await bookingApi.modifyChargingStripeComplete(params.token, piId, []);
+              setDoneData({ chargingPaid: true });
+              setStep('charging-done');
+            } else if (payType === 'pre_stay' && returnArrival && returnDeparture) {
               setNewArrival(returnArrival);
               setNewDeparture(returnDeparture);
               await bookingApi.modifyDatesStripeComplete(params.token, piId, returnArrival, returnDeparture);
@@ -438,6 +502,59 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       const data = await bookingApi.modifyDatesOnSite(params.token, newArrival, newDeparture, overbooked);
       setOnSiteAmount(data.amount);
       setStep('dates-on-site-confirm');
+    } catch (e: any) { setError(e.message); }
+  }
+
+  // ── Laden: tarieven, selectie en betaling ─────────────────────
+  // Zelfde tarieven als de boekingspagina: alleen niet-admin EV-pakketten, per
+  // uniek kWh-niveau, oplopend gesorteerd.
+  const evSvcs = services
+    .filter((s: any) => s.kwh && !s.admin_only)
+    .filter((s: any, idx: number, arr: any[]) => arr.findIndex((x: any) => x.kwh === s.kwh) === idx)
+    .sort((a: any, b: any) => a.kwh - b.kwh);
+
+  function serviceForKwh(kwh?: number) {
+    if (!kwh) return null;
+    return evSvcs.find((s: any) => s.kwh === kwh) || null;
+  }
+  function chargingPayloadNow() {
+    return plateValues.map((v, i) => {
+      const svc = serviceForKwh(evSel[i]);
+      return { vehicleId: v.vehicleId, evServiceId: svc?.id || null, evKwh: evSel[i] || null };
+    });
+  }
+  // Bij te betalen bedrag = som van (nieuw EV-tarief − huidig EV-tarief) per voertuig.
+  const chargingDeltaNow = (() => {
+    if (!res?.vehicles) return 0;
+    let d = 0;
+    plateValues.forEach((v, i) => {
+      const svc = serviceForKwh(evSel[i]);
+      const newP = svc ? parseFloat(svc.price) : 0;
+      const curP = parseFloat(res.vehicles[i]?.ev_price || '0');
+      d += newP - curP;
+    });
+    return Math.round(d * 100) / 100;
+  })();
+
+  async function payChargingStripe() {
+    setError('');
+    const payload = chargingPayloadNow();
+    try {
+      const data = await bookingApi.modifyChargingStripePay(params.token, payload);
+      setChargingClientSecret(data.clientSecret);
+      setChargingAmount(data.amount);
+      setChargingPayload(payload);
+      setStep('charging-pay');
+    } catch (e: any) { setError(e.message); }
+  }
+  async function payChargingOnSite() {
+    setError('');
+    const payload = chargingPayloadNow();
+    try {
+      const data = await bookingApi.modifyChargingOnSite(params.token, payload);
+      setOnSiteChargingAmount(data.amount);
+      setDoneData({ chargingOnSite: true });
+      setStep('charging-done');
     } catch (e: any) { setError(e.message); }
   }
 
@@ -1184,9 +1301,43 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
                   Elektrisch voertuig — opladen tijdens uw verblijf is mogelijk.
                 </div>
               )}
-              <div style={{ marginTop: 6, color: '#7090b0', fontWeight: 400 }}>
-                Laden toevoegen? Neem contact met ons op, dan regelen we het bij aankomst.
-              </div>
+              {/* Laden kiezen — zelfde tarieven als de boekingspagina */}
+              {evSvcs.length > 0 && (() => {
+                const suggestedTierKwh = ev && ev.suggestedKwh != null
+                  ? (evSvcs.filter((o: any) => o.kwh >= ev.suggestedKwh)[0]?.kwh ?? evSvcs[evSvcs.length - 1]?.kwh)
+                  : null;
+                const curKwh = res.vehicles?.[i]?.ev_kwh;
+                return (
+                  <div style={{ marginTop: 10, paddingTop: 8, borderTop: '0.5px solid rgba(10,34,64,0.1)' }}>
+                    <div style={{ fontWeight: 600, color: '#142440', marginBottom: 6 }}>Laden toevoegen (type 2 kabel)</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      <button type="button" onClick={() => setEvSel(p => ({ ...p, [i]: undefined }))}
+                        style={{ padding: '7px 12px', borderRadius: 8, border: !evSel[i] ? '2px solid #142440' : '0.5px solid rgba(10,34,64,0.2)', background: !evSel[i] ? '#142440' : 'white', color: !evSel[i] ? 'white' : '#142440', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                        Geen laden
+                      </button>
+                      {evSvcs.map((s: any) => {
+                        const sel = evSel[i] === s.kwh;
+                        const isSuggested = suggestedTierKwh != null && s.kwh === suggestedTierKwh;
+                        const extraKm = ev ? Math.round(Math.min(s.kwh, ev.batteryCapacityKwh) * ev.realisticKmPerKwh) : null;
+                        return (
+                          <button key={s.id} type="button" onClick={() => setEvSel(p => ({ ...p, [i]: s.kwh }))}
+                            style={{ padding: '7px 12px', borderRadius: 8, border: sel ? '2px solid #19499e' : '0.5px solid rgba(10,34,64,0.18)', background: sel ? '#eaf1fb' : 'white', cursor: 'pointer', textAlign: 'center', position: 'relative', minWidth: 64 }}>
+                            {isSuggested && !sel && (
+                              <span style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)', background: '#3a80c0', color: 'white', fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 10, whiteSpace: 'nowrap' }}>aanbevolen</span>
+                            )}
+                            <div style={{ fontSize: 13, fontWeight: 700, color: sel ? '#19499e' : '#142440' }}>{s.kwh} kWh</div>
+                            <div style={{ fontSize: 11, color: '#7090b0' }}>€ {parseFloat(s.price).toFixed(0)}</div>
+                            {extraKm && <div style={{ fontSize: 10, color: sel ? '#19499e' : '#7090b0' }}>+{extraKm} km</div>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {curKwh ? (
+                      <div style={{ marginTop: 6, fontSize: 11, color: '#7090b0' }}>Reeds geboekt: {curKwh} kWh. Een hoger pakket kiezen = bijbetalen voor het verschil.</div>
+                    ) : null}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -1196,9 +1347,70 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       {error && <ErrorBox msg={error} />}
 
       <button onClick={submitPlate} disabled={plateLoading || plateValues.length === 0} style={{ ...S.btnPrimary, opacity: plateLoading ? 0.7 : 1 }}>
-        {plateLoading ? 'Bezig...' : <span>Wijziging opslaan <ArrowRightIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle' }} /></span>}
+        {plateLoading ? 'Bezig...' : <span>Kentekenwijziging opslaan <ArrowRightIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle' }} /></span>}
       </button>
+
+      {/* Laden afrekenen — verschijnt zodra er extra laden is gekozen */}
+      {chargingDeltaNow > 0 && (
+        <div style={{ marginTop: 18, padding: '14px 16px', background: '#f0f7ff', border: '1.5px solid #19499e', borderRadius: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#142440', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <BoltIcon className="w-4 h-4" />Laden afrekenen
+          </div>
+          <div style={{ fontSize: 13, color: '#142440', marginBottom: 10 }}>
+            Toe te voegen laden: <strong>€ {chargingDeltaNow.toFixed(2).replace('.', ',')}</strong>
+          </div>
+          <button onClick={payChargingStripe}
+            style={{ ...S.btnPrimary, marginBottom: 10 }}>
+            <CreditCardIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6 }} />Nu betalen via Stripe: € {chargingDeltaNow.toFixed(2).replace('.', ',')} <ArrowRightIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle' }} />
+          </button>
+          <button onClick={payChargingOnSite} style={{ ...S.btnGhost, marginTop: 0 }}>
+            <HomeIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6 }} />Betalen ter plekke — € {(chargingDeltaNow + 5).toFixed(2).replace('.', ',')} (+€5,00 toeslag)
+          </button>
+        </div>
+      )}
+
       <BackBtn onClick={() => { setError(''); setStep('menu'); }} />
+    </div></div>
+  );
+
+  // ── Charging payment (Stripe) ─────────────────────────────────
+  if (step === 'charging-pay') return (
+    <div style={S.page}><div style={S.card}>
+      <Logo />
+      <div style={{ background: '#f0f7ff', border: '1.5px solid #19499e', borderRadius: 10, padding: '14px 18px', marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#19499e', textTransform: 'uppercase', marginBottom: 6 }}>Laden — bijbetaling</div>
+        <div style={{ fontSize: 14, color: '#142440' }}>Te betalen: <strong>€ {chargingAmount.toFixed(2).replace('.', ',')}</strong></div>
+      </div>
+      {error && <ErrorBox msg={error} />}
+      {chargingClientSecret && (
+        <Elements stripe={stripePromise} options={{ clientSecret: chargingClientSecret, appearance: { theme: 'stripe' } }}>
+          <ChargingPaymentForm
+            token={params.token}
+            payload={chargingPayload}
+            amount={chargingAmount}
+            onSuccess={() => { setDoneData({ chargingPaid: true }); setStep('charging-done'); }}
+            onError={msg => setError(msg)}
+          />
+        </Elements>
+      )}
+      <button onClick={() => { setStep('plate'); setError(''); }} style={S.btnGhost}><ArrowLeftIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />Terug</button>
+    </div></div>
+  );
+
+  // ── Charging done ─────────────────────────────────────────────
+  if (step === 'charging-done') return (
+    <div style={S.page}><div style={{ ...S.card, textAlign: 'center' }}>
+      <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eaf1fb', color: '#19499e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+        <CheckIcon className="w-7 h-7" />
+      </div>
+      <h2 style={{ margin: '0 0 8px', color: '#142440' }}>Laden toegevoegd!</h2>
+      <p style={{ color: '#7090b0', fontSize: 14, marginBottom: 20 }}>
+        {doneData?.chargingOnSite
+          ? `Uw laadkeuze is verwerkt. Betaal € ${onSiteChargingAmount.toFixed(2).replace('.', ',')} (incl. €5,- toeslag) ter plekke bij aankomst.`
+          : 'Uw betaling is ontvangen en het laden is toegevoegd aan uw reservering.'} U ontvangt een bevestiging per e-mail.
+      </p>
+      <button onClick={() => { window.location.href = window.location.pathname; }} style={S.btnPrimary}>Terug naar wijzigingen</button>
+      <button onClick={() => window.close()} style={S.btnGhost}>Sluiten</button>
     </div></div>
   );
 

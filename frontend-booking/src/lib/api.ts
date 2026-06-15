@@ -152,6 +152,16 @@ export const bookingApi = {
   modifyDatesOnSite: (token: string, newArrivalDate: string, newDepartureDate: string, overbooked?: boolean) =>
     post<{ success: boolean; amount: number }>(`/reservations/token/${token}/modify-dates-on-site`, { newArrivalDate, newDepartureDate, overbooked: !!overbooked }),
 
+  // ── Laden toevoegen/aanpassen (via token) ─────────────────────
+  modifyChargingStripePay: (token: string, vehicles: { vehicleId: string; evServiceId: string | null; evKwh: number | null }[]) =>
+    post<{ clientSecret: string; amount: number }>(`/reservations/token/${token}/modify-charging-stripe-pay`, { vehicles }),
+
+  modifyChargingStripeComplete: (token: string, paymentIntentId: string, vehicles: { vehicleId: string; evServiceId: string | null; evKwh: number | null }[]) =>
+    post<{ success: boolean }>(`/reservations/token/${token}/modify-charging-stripe-complete`, { paymentIntentId, vehicles }),
+
+  modifyChargingOnSite: (token: string, vehicles: { vehicleId: string; evServiceId: string | null; evKwh: number | null }[]) =>
+    post<{ success: boolean; amount: number }>(`/reservations/token/${token}/modify-charging-on-site`, { vehicles }),
+
   // ── Invoice group modification (public token-based) ───────────
   getInvoiceGroupByToken: (token: string) =>
     get<any>(`/invoice-group-modify/${token}`),

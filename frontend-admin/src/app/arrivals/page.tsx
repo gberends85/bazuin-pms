@@ -128,6 +128,22 @@ function DetailPanel({ res, onClose, onUpdate }: { res: any; onClose: () => void
     finally { setResending(false); }
   }
 
+  // Admin notitie snel bewerken
+  const [editNote, setEditNote] = useState(false);
+  const [noteVal, setNoteVal] = useState(res.admin_notes || '');
+  const [noteSaving, setNoteSaving] = useState(false);
+
+  async function saveNote() {
+    setNoteSaving(true);
+    try {
+      await api.reservations.update(res.id, { admin_notes: noteVal.trim() });
+      toast('Admin notitie opgeslagen ✓');
+      setEditNote(false);
+      onUpdate();
+    } catch (e: any) { toastError(e?.message || 'Opslaan mislukt'); }
+    finally { setNoteSaving(false); }
+  }
+
   // Dirty state — show save button only when something changed
   const isDirty = (() => {
     const origPlates = initPlates();
@@ -471,13 +487,34 @@ function DetailPanel({ res, onClose, onUpdate }: { res: any; onClose: () => void
           ) : null;
         })()}
 
-        {/* Admin notitie */}
-        {res.admin_notes && (
-          <div style={{ ...section, background: '#f4f6f9' }}>
-            <label style={{ ...label, color: '#4a6080', display:'flex', alignItems:'center', gap:4 }}><ClipboardDocumentIcon className="w-3 h-3" />Admin notitie</label>
-            <div style={{ fontSize: 13, color: '#2a3a50', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{res.admin_notes}</div>
+        {/* Admin notitie — bewerkbaar */}
+        <div style={{ ...section, background: '#f4f6f9' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+            <label style={{ ...label, color: '#4a6080', display:'flex', alignItems:'center', gap:4, marginBottom: 0 }}><ClipboardDocumentIcon className="w-3 h-3" />Admin notitie</label>
+            {!editNote && (
+              <button onClick={() => { setNoteVal(res.admin_notes || ''); setEditNote(true); }} title="Admin notitie bewerken"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7090b0', padding: 2, display: 'flex', alignItems: 'center' }}>
+                <PencilIcon className="w-3 h-3" />
+              </button>
+            )}
           </div>
-        )}
+          {editNote ? (
+            <div>
+              <textarea value={noteVal} onChange={e => setNoteVal(e.target.value)} rows={3} placeholder="Interne notitie…"
+                style={{ ...input, resize: 'vertical', minHeight: 64, lineHeight: 1.4 }} />
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button className="btn btn-primary btn-sm" onClick={saveNote} disabled={noteSaving} style={{ flex: 1 }}>
+                  <CheckIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />{noteSaving ? 'Opslaan…' : 'Opslaan'}
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setEditNote(false); setNoteVal(res.admin_notes || ''); }}>Annuleren</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: res.admin_notes ? '#2a3a50' : '#9aa8b8', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+              {res.admin_notes || 'Geen notitie — klik op het potlood om er een toe te voegen.'}
+            </div>
+          )}
+        </div>
 
         {/* Opslaan — alleen zichtbaar bij wijzigingen */}
         {isDirty && (
@@ -527,6 +564,14 @@ function DetailPanel({ res, onClose, onUpdate }: { res: any; onClose: () => void
               Volledige reservering →
             </a>
           </div>
+          {res.cancellation_token && (
+            <a href={`https://www.parkeren-harlingen.nl/boeken/wijzigen/${res.cancellation_token}`}
+              target="_blank" rel="noopener noreferrer"
+              className="btn btn-ghost btn-sm"
+              style={{ textAlign: 'center', textDecoration: 'none', fontSize: 12, color: '#19499e' }}>
+              <PencilIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Klant-wijzigpagina openen →
+            </a>
+          )}
         </div>
       </div>
 

@@ -1259,7 +1259,12 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         const isCombustion = fuel.includes('benzine') || fuel.includes('diesel') || fuel.includes('lpg');
         const isElectric = !!rdw?.found && !isCombustion && !!fuel; // elektrisch / (plug-in) hybride
         const realisticKm = ev ? Math.round(ev.batteryCapacityKwh * ev.realisticKmPerKwh) : 0;
-        const suggestedKm = ev ? Math.round(ev.suggestedKwh * ev.realisticKmPerKwh) : 0;
+        // Aanbevolen = het dichtstbijzijnde ECHT bestaande laadpakket bij het advies
+        // (bv. advies 43,3 kWh → 40 kWh-pakket), i.p.v. de ruwe adviewaarde.
+        const recTier = (ev && evSvcs.length)
+          ? evSvcs.reduce((b: any, s: any) => Math.abs(s.kwh - ev.suggestedKwh) < Math.abs(b.kwh - ev.suggestedKwh) ? s : b, evSvcs[0])
+          : null;
+        const recKm = recTier ? Math.round(Math.min(recTier.kwh, ev.batteryCapacityKwh) * ev.realisticKmPerKwh) : 0;
         return (
         <div key={v.vehicleId} style={{ marginBottom: 16 }}>
           <label style={S.label}>Voertuig {i + 1} — huidig kenteken: <span style={{ color: '#142440' }}>{v.oldPlate}</span></label>
@@ -1292,9 +1297,11 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
                   <div style={{ color: '#556070', marginTop: 2 }}>
                     Ca. {ev.realisticKmPerKwh} km extra per geladen kWh
                   </div>
-                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '0.5px solid rgba(10,34,64,0.1)', color: '#123a80', fontWeight: 600 }}>
-                    Aanbevolen laadpakket: ~{ev.suggestedKwh} kWh (±{suggestedKm} km extra)
-                  </div>
+                  {recTier && (
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '0.5px solid rgba(10,34,64,0.1)', color: '#123a80', fontWeight: 600 }}>
+                      Aanbevolen laadpakket: {recTier.kwh} kWh (±{recKm} km extra)
+                    </div>
+                  )}
                 </>
               ) : (
                 <div style={{ color: '#556070' }}>
@@ -1303,9 +1310,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
               )}
               {/* Laden kiezen — zelfde tarieven als de boekingspagina */}
               {evSvcs.length > 0 && (() => {
-                const suggestedTierKwh = ev && ev.suggestedKwh != null
-                  ? (evSvcs.filter((o: any) => o.kwh >= ev.suggestedKwh)[0]?.kwh ?? evSvcs[evSvcs.length - 1]?.kwh)
-                  : null;
+                const suggestedTierKwh = recTier ? recTier.kwh : null;
                 const curKwh = res.vehicles?.[i]?.ev_kwh;
                 return (
                   <div style={{ marginTop: 10, paddingTop: 8, borderTop: '0.5px solid rgba(10,34,64,0.1)' }}>

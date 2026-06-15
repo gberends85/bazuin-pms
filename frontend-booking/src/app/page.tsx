@@ -1217,10 +1217,10 @@ export default function BookingPage() {
                             Geen laden
                           </button>
                           {availableSvcs.map(s => {
-                            // Kleinste optie die >= benodigde kWh (volledig opladen), anders de grootste beschikbare
-                            const suggestedOpt = suggestedKwh !== null
-                              ? (availableSvcs.filter(o => o.kwh >= suggestedKwh).sort((a, b) => a.kwh - b.kwh)[0]
-                                 ?? availableSvcs[availableSvcs.length - 1])
+                            // Dichtstbijzijnde ECHT bestaande pakket bij het advies (bv. advies
+                            // 43,3 kWh → 40 kWh-pakket), zodat de aanbeveling een koopbaar pakket is.
+                            const suggestedOpt = suggestedKwh !== null && availableSvcs.length > 0
+                              ? availableSvcs.reduce((b, o) => Math.abs(o.kwh - suggestedKwh) < Math.abs(b.kwh - suggestedKwh) ? o : b, availableSvcs[0])
                               : null;
                             const isSuggested = suggestedOpt !== null && s.kwh === suggestedOpt.kwh;
                             // "Zeker vol" label op de tier die de accu vult

@@ -26,8 +26,8 @@ export default function LoginPage() {
     <div style={{minHeight:'100vh',background:'#0a2240',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
       <div style={{background:'white',borderRadius:14,padding:40,width:380,boxShadow:'0 16px 64px rgba(0,0,0,0.3)'}}>
         <div style={{textAlign:'center',marginBottom:28}}>
-          <div style={{width:52,height:52,background:'#e8a020',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:20,color:'#0a2240',margin:'0 auto 14px'}}>AB</div>
-          <h1 style={{margin:'0 0 4px',fontSize:20,fontWeight:800,color:'#0a2240'}}>Autostalling De Bazuin</h1>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="Autostalling De Bazuin" style={{height:54,width:'auto',maxWidth:'80%',margin:'0 auto 12px',display:'block'}} />
           <p style={{margin:0,color:'#7090b0',fontSize:13}}>Beheerportaal — Harlingen</p>
         </div>
         <form onSubmit={handleSubmit}>

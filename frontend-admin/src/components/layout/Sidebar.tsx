@@ -108,19 +108,16 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         className={`sidebar ${open ? 'sidebar-open' : 'sidebar-closed'}`}
       >
         {/* Logo + close button */}
-        <div style={{ padding: '16px 12px 14px', borderBottom: '0.5px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 34, height: 34, background: '#e8a020', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, color: '#0a2240', flexShrink: 0 }}>AB</div>
-            <div>
-              <div style={{ color: 'white', fontWeight: 700, fontSize: 13, lineHeight: 1.2 }}>De Bazuin</div>
-              <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10 }}>Beheerportaal</div>
-            </div>
+        <div style={{ padding: '14px 12px', borderBottom: '0.5px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ background: '#fff', borderRadius: 8, padding: '7px 10px', flex: 1, display: 'flex', justifyContent: 'center', minWidth: 0 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="Autostalling De Bazuin" style={{ height: 30, width: 'auto', maxWidth: '100%', display: 'block' }} />
           </div>
           {/* Close button (visible on mobile) */}
           <button
             onClick={onClose}
             className="sidebar-close-btn"
-            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '2px 6px', lineHeight: 1, display: 'flex', alignItems: 'center' }}
+            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '2px 6px', lineHeight: 1, display: 'flex', alignItems: 'center', flexShrink: 0 }}
             title="Menu sluiten"
           ><XMarkIcon className="w-5 h-5" /></button>
         </div>

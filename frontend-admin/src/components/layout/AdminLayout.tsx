@@ -1,9 +1,17 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
+import Link from 'next/link';
 import { useAuthGuard } from '@/lib/auth';
 import { api } from '@/lib/api';
 import Sidebar from './Sidebar';
+
+// Altijd zichtbare snelknoppen in het topmenu
+const TOP_LINKS = [
+  { href: '/arrivals', label: 'Reserveringen' },
+  { href: '/calendar', label: 'Agenda' },
+  { href: '/contract-invoices', label: 'Contractfacturatie' },
+];
 
 const MOD_LABELS: Record<string, string> = {
   dates: 'Datumwijziging',
@@ -20,6 +28,7 @@ function fmtShort(d: any): string {
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const ready = useAuthGuard();
   const router = useRouter();
+  const path = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   // Openstaande wijzigingsverzoeken (pending_review) — voor badge + popup
@@ -60,6 +69,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     setSidebarOpen(false);
     if (typeof window !== 'undefined' && window.innerWidth >= 768) localStorage.setItem('adminSidebarCollapsed', '1');
   }
+  function toggleSidebar() { sidebarOpen ? closeSidebar() : openSidebar(); }
 
   const pendingCount = pendingMods.length;
   const visibleMods = pendingMods.filter(m => !dismissed.has(m.id));
@@ -99,37 +109,35 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div style={{ display: 'flex', minHeight: '100vh', position: 'relative' }}>
       <Sidebar open={sidebarOpen} onClose={closeSidebar} />
-      {/* Desktop: knop om het ingeklapte menu weer te openen (met badge) */}
-      {!sidebarOpen && (
-        <button
-          className="desktop-open-btn"
-          onClick={openSidebar}
-          title="Menu openen"
-          style={{ position: 'fixed' }}
-        >☰<Badge /></button>
-      )}
       <main style={{ flex: 1, overflowY: 'auto', maxHeight: '100vh', minWidth: 0 }}>
-        {/* Mobile top bar with hamburger */}
-        <div className="mobile-topbar" style={{
-          display: 'none',
-          alignItems: 'center',
-          padding: '0 16px',
-          height: 48,
-          background: '#0a2240',
-          position: 'sticky',
-          top: 0,
-          zIndex: 40,
-          gap: 12,
+        {/* Altijd zichtbaar topmenu: logo + snelknoppen + menu-toggle */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          padding: '8px 16px', minHeight: 56, background: '#fff',
+          borderBottom: '1px solid rgba(10,34,64,0.1)',
+          position: 'sticky', top: 0, zIndex: 40,
         }}>
           <button
-            onClick={openSidebar}
-            style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: '4px', fontSize: 22, color: 'white', lineHeight: 1 }}
-            title="Menu openen"
+            onClick={toggleSidebar}
+            style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: '4px', fontSize: 22, color: '#0a2240', lineHeight: 1 }}
+            title="Menu in-/uitklappen"
           >☰<Badge navy /></button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 26, height: 26, background: '#e8a020', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 11, color: '#0a2240' }}>AB</div>
-            <span style={{ color: 'white', fontWeight: 700, fontSize: 14 }}>De Bazuin</span>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="Autostalling De Bazuin" style={{ height: 34, width: 'auto', display: 'block' }} />
+          <nav style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
+            {TOP_LINKS.map(l => {
+              const active = path.startsWith(l.href);
+              return (
+                <Link key={l.href} href={l.href} style={{
+                  textDecoration: 'none', padding: '7px 12px', borderRadius: 8,
+                  fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
+                  color: active ? '#fff' : '#0a2240',
+                  background: active ? '#0a2240' : 'transparent',
+                  border: active ? 'none' : '0.5px solid rgba(10,34,64,0.15)',
+                }}>{l.label}</Link>
+              );
+            })}
+          </nav>
         </div>
         {children}
       </main>

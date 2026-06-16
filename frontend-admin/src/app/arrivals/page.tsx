@@ -57,9 +57,25 @@ function toIso(d: Date) { return d.toISOString().split('T')[0]; }
 function addDays(iso: string, n: number) {
   const d = new Date(iso); d.setDate(d.getDate() + n); return toIso(d);
 }
-function waLink(phone: string) {
-  const digits = phone.replace(/^0/, '31').replace(/\D/g, '');
-  return `whatsapp://send/?phone=%2B${digits}`;
+// Belgische kentekens: 1 cijfer + 3 letters + 3 cijfers (bv. 1-TCW-552).
+// Nederlandse platen zijn 6 tekens; deze 7-teken-vorm is kenmerkend Belgisch.
+function plateIsBelgian(plates?: string): boolean {
+  if (!plates) return false;
+  return plates.split(',').some(p => /^\d[A-Z]{3}\d{3}$/.test(p.replace(/[^A-Za-z0-9]/g, '').toUpperCase()));
+}
+// Telefoon → internationale cijferreeks voor WhatsApp. Respecteert een al
+// aanwezig landnummer (+.. of 00..); een nationaal 0-nummer krijgt +31 (NL) of
+// +32 (BE, bij een Belgische klant).
+function waDigits(phone: string, belgian = false): string {
+  const raw = (phone || '').trim();
+  if (raw.startsWith('+')) return raw.replace(/\D/g, '');
+  const d = raw.replace(/\D/g, '');
+  if (d.startsWith('00')) return d.slice(2);
+  if (d.startsWith('0')) return (belgian ? '32' : '31') + d.slice(1);
+  return d;
+}
+function waLink(phone: string, belgian = false) {
+  return `whatsapp://send/?phone=%2B${waDigits(phone, belgian)}`;
 }
 
 // ─── Detail Panel ────────────────────────────────────────────────────────────
@@ -548,7 +564,7 @@ function DetailPanel({ res, onClose, onUpdate }: { res: any; onClose: () => void
             <button className="btn btn-danger btn-sm" onClick={() => setCancelOpen(true)}><XMarkIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Annuleren</button>
           )}
           {res.phone && (
-            <a href={waLink(res.phone)} className="btn btn-wa btn-sm" style={{ textAlign: 'center', textDecoration: 'none' }}>
+            <a href={waLink(res.phone, plateIsBelgian(res.plates))} className="btn btn-wa btn-sm" style={{ textAlign: 'center', textDecoration: 'none' }}>
               <ChatBubbleLeftIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />WhatsApp {res.first_name}
             </a>
           )}
@@ -975,7 +991,7 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
         </>
       )}
       {res.phone && (
-        <a href={waLink(res.phone)} onClick={e => e.stopPropagation()}
+        <a href={waLink(res.phone, plateIsBelgian(res.plates))} onClick={e => e.stopPropagation()}
           style={{ background: '#25D366', border: 'none', color: 'white', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', textDecoration: 'none' }}
           title="WhatsApp">
           <ChatBubbleLeftIcon className="w-4 h-4" />
@@ -1031,7 +1047,7 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
             </div>
             <div style={{ fontSize: 10, color: '#9ab0c8', marginTop: 2, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <span>#{res.reference}</span>
-              {res.phone && <a href={waLink(res.phone)} onClick={stopProp} style={{ color: '#25D366', textDecoration: 'none', fontWeight: 600, display:'inline-flex', alignItems:'center', gap:3 }}><ChatBubbleLeftIcon className="w-3 h-3" style={{display:'inline',verticalAlign:'middle'}} />WA</a>}
+              {res.phone && <a href={waLink(res.phone, plateIsBelgian(res.plates))} onClick={stopProp} style={{ color: '#25D366', textDecoration: 'none', fontWeight: 600, display:'inline-flex', alignItems:'center', gap:3 }}><ChatBubbleLeftIcon className="w-3 h-3" style={{display:'inline',verticalAlign:'middle'}} />WA</a>}
               {res.has_ev && <span style={{ color: '#0a7c6e', fontWeight: 700 }}><><Zap size={11} style={{ display:'inline', verticalAlign:'middle', marginRight:2 }} />{res.ev_kwh_total > 0 ? res.ev_kwh_total + ' kWh' : 'vol'}</></span>}
               {res.created_at && <span style={{ color: '#b0c4d8' }}>gereserveerd {new Date(res.created_at).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
             </div>
@@ -1316,7 +1332,7 @@ function DepartureCard({ res, onUpdate, occupiedLockers = [] }: { res: any; onUp
     e.stopPropagation();
     if (!code.trim()) { toastError('Voer eerst een code in'); return; }
     if (!res.phone) { toastError('Geen telefoonnummer bekend'); return; }
-    const digits = res.phone.replace(/\D/g, '').replace(/^0/, '31');
+    const digits = waDigits(res.phone, plateIsBelgian(res.plates));
     window.open(`whatsapp://send/?phone=%2B${digits}&text=${encodeURIComponent(buildMessage(code.trim(), variant))}`);
     setSending(true);
     setShowVariants(false);
@@ -1481,7 +1497,7 @@ function DepartureCard({ res, onUpdate, occupiedLockers = [] }: { res: any; onUp
 
         {/* 📱 WhatsApp leeg bericht */}
         {res.phone && (
-          <button onClick={e => { e.stopPropagation(); const d = res.phone.replace(/\D/g,'').replace(/^0/,'31'); window.open(`whatsapp://send/?phone=%2B${d}`); }}
+          <button onClick={e => { e.stopPropagation(); const d = waDigits(res.phone, plateIsBelgian(res.plates)); window.open(`whatsapp://send/?phone=%2B${d}`); }}
             style={{ background: '#25D366', border: 'none', color: 'white', borderRadius: 6, padding: '5px 8px', cursor: 'pointer', flexShrink: 0, display:'flex', alignItems:'center' }}
             title="WhatsApp openen">
             <ChatBubbleOvalLeftEllipsisIcon className="w-4 h-4" />

@@ -4508,8 +4508,10 @@ router.post('/admin/modifications/:id/accept', requireAuth, async (req: Request,
     } else if (modType === 'ferry') {
       const out = fmtT(details.newOutboundTime || details.currentOutboundTime);
       const ret = fmtT(details.newReturnTime || details.currentReturnTime);
+      const arrHarlingen = fmtT(details.newReturnArrivalHarlingen || details.currentReturnArrivalHarlingen);
       if (out) items.push({ label: 'Vertrektijd heenreis', waarde: out });
       if (ret) items.push({ label: 'Vertrektijd terugreis', waarde: ret });
+      if (arrHarlingen) items.push({ label: 'Aankomst Harlingen', waarde: arrHarlingen });
     } else if (modType === 'plate') {
       const plates = Array.isArray(details.vehicles)
         ? details.vehicles.map((v: any) => String(v.newPlate || '').toUpperCase()).filter(Boolean)

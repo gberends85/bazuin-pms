@@ -10,6 +10,7 @@ import Sidebar from './Sidebar';
 const TOP_LINKS = [
   { href: '/arrivals', label: 'Reserveringen' },
   { href: '/calendar', label: 'Agenda' },
+  { href: '/modifications', label: 'Wijzigingsverzoeken' },
   { href: '/contract-invoices', label: 'Contractfacturatie' },
 ];
 
@@ -127,14 +128,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <nav style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
             {TOP_LINKS.map(l => {
               const active = path.startsWith(l.href);
+              const showBadge = l.href === '/modifications' && pendingCount > 0;
               return (
                 <Link key={l.href} href={l.href} style={{
+                  position: 'relative',
                   textDecoration: 'none', padding: '7px 12px', borderRadius: 8,
                   fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
                   color: active ? '#fff' : '#0a2240',
                   background: active ? '#0a2240' : 'transparent',
                   border: active ? 'none' : '0.5px solid rgba(10,34,64,0.15)',
-                }}>{l.label}</Link>
+                }}>{l.label}{showBadge && <Badge navy={!active} />}</Link>
               );
             })}
           </nav>

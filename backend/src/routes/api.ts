@@ -585,11 +585,15 @@ router.get('/rates/calculate', async (req: Request, res: Response) => {
 
   const vehicleCount = parseInt(vehicles || '1');
 
-  const priceInfo = await calculatePrice(
-    new Date(arrival), new Date(departure), lotId, vehicleCount
-  );
-
-  return res.json(priceInfo);
+  try {
+    const priceInfo = await calculatePrice(
+      new Date(arrival), new Date(departure), lotId, vehicleCount
+    );
+    return res.json(priceInfo);
+  } catch (e: any) {
+    // Geen (geldig) tarief voor de periode → boeken niet mogelijk (422, geen 500-ruis)
+    return res.status(422).json({ error: e?.message || 'Geen tarief beschikbaar voor de gekozen periode' });
+  }
 });
 
 // ============================================================

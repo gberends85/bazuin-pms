@@ -495,6 +495,7 @@ export default function BookingPage() {
 
   const [avail, setAvail] = useState<any>(null);
   const [price, setPrice] = useState<any>(null);
+  const [priceError, setPriceError] = useState(false); // geen geldig tarief voor de periode
   const [feriesOut, setFerriesOut] = useState<any[]>([]);
   const [ferriesRet, setFerriesRet] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
@@ -557,14 +558,14 @@ export default function BookingPage() {
   useEffect(() => {
     if (!state.arrival || !state.departure) return;
     if (state.departure < state.arrival) return; // gelijk = 1 dag parkeren (0 nachten) is toegestaan
-    setAvail(null); setPrice(null);
+    setAvail(null); setPrice(null); setPriceError(false);
     // Run both independently so a pricing error doesn't block the availability result
     bookingApi.checkAvailability(state.arrival, state.departure)
       .then(a => setAvail(a))
       .catch(err => setError(err.message));
     bookingApi.calculatePrice(state.arrival, state.departure, state.vehicleCount)
-      .then(p => setPrice(p))
-      .catch(() => { /* pricing error is non-fatal; user can still proceed */ });
+      .then(p => { if (p && p.totalPrice > 0) { setPrice(p); setPriceError(false); } else setPriceError(true); })
+      .catch(() => { setPrice(null); setPriceError(true); }); // geen tarief → boeken niet mogelijk
   }, [state.arrival, state.departure, state.vehicleCount]);
 
   // Load ferries when destination + dates known
@@ -822,6 +823,17 @@ export default function BookingPage() {
                     </div>
                   )}
                 </div>
+              ) : priceError ? (
+                /* Geen tarief voor de periode — boeken niet mogelijk */
+                <div style={{ ...S.card, background: '#fdeaea', border: '1.5px solid #e24b4a', padding: '18px 20px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <NoSymbolIcon className="w-7 h-7" style={{ color: '#e24b4a', flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: '#8a2020', marginBottom: 2 }}>Geen tarief beschikbaar</div>
+                      <div style={{ fontSize: 13, color: '#8a2020' }}>Voor de gekozen periode is (nog) geen tarief ingesteld, dus online boeken is niet mogelijk. Neem gerust contact met ons op.</div>
+                    </div>
+                  </div>
+                </div>
               ) : null
             )}
 
@@ -839,7 +851,8 @@ export default function BookingPage() {
             {(() => {
               const isFull = avail && avail.available < state.vehicleCount;
               const missingDates = !state.arrival || !state.departure;
-              const canProceed = avail && !isFull && state.arrival && state.departure;
+              // Zonder geldig tarief (price) is boeken niet mogelijk.
+              const canProceed = avail && !isFull && state.arrival && state.departure && !!price;
               return (
                 <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
                   {missingDates && avail === null && <span style={{ fontSize: 12, color: '#7090b0' }}>Kies aankomst- en vertrekdatum</span>}

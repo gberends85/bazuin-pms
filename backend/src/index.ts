@@ -22,6 +22,65 @@ function escapeHtml(s: unknown): string {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+/**
+ * Is er (weer) plek om deze reservering te plaatsen? Telt zowel de nacht- als de
+ * dagcapaciteit (wisselpiek), exclusief geannuleerde reserveringen en deze
+ * reservering zelf. Gebruikt bij een late betaling op een verlopen reservering:
+ * is er plek → gewoon heractiveren; zitten we vol → klant moet contact opnemen.
+ */
+async function hasSpaceForReservation(reservationId: string): Promise<boolean> {
+  const r = await query(
+    `SELECT r.parking_lot_id,
+            r.arrival_date::text   AS arrival_date,
+            r.departure_date::text AS departure_date,
+            (SELECT COUNT(*) FROM vehicles v WHERE v.reservation_id = r.id) AS vc
+     FROM reservations r WHERE r.id = $1`,
+    [reservationId]
+  );
+  if (r.rows.length === 0) return false;
+  const lotId = r.rows[0].parking_lot_id;
+  const arr = String(r.rows[0].arrival_date).slice(0, 10);
+  const dep = String(r.rows[0].departure_date).slice(0, 10);
+  const vc = parseInt(r.rows[0].vc) || 1;
+
+  const lot = await query(
+    `SELECT l.online_spots, COALESCE(l.daytime_spots, l.online_spots) AS daytime_spots
+     FROM parking_lots pl JOIN locations l ON l.id = pl.location_id WHERE pl.id = $1`,
+    [lotId]
+  );
+  const onlineSpots = lot.rows[0]?.online_spots ?? 50;
+  const daytimeSpots = lot.rows[0]?.daytime_spots ?? onlineSpots;
+
+  const cap = await query(
+    `WITH nights AS (
+       SELECT generate_series($2::date, $3::date - '1 day'::interval, '1 day'::interval)::date AS night
+     ),
+     night_cap AS (
+       SELECT n.night, COALESCE(ao.available_spots, $4) AS maxs,
+              (SELECT COUNT(DISTINCT v.id) FROM reservations res2 JOIN vehicles v ON v.reservation_id = res2.id
+               WHERE res2.parking_lot_id = $1 AND res2.status NOT IN ('cancelled') AND res2.id <> $5
+                 AND res2.arrival_date <= n.night AND res2.departure_date > n.night) AS booked
+       FROM nights n LEFT JOIN availability_overrides ao ON ao.parking_lot_id = $1 AND ao.override_date = n.night
+     ),
+     days AS (
+       SELECT generate_series($2::date, $3::date, '1 day'::interval)::date AS day
+     ),
+     day_cap AS (
+       SELECT d.day, COALESCE(ao.daytime_spots, $6) AS maxd,
+              (SELECT COUNT(DISTINCT v.id) FROM reservations res3 JOIN vehicles v ON v.reservation_id = res3.id
+               WHERE res3.parking_lot_id = $1 AND res3.status NOT IN ('cancelled') AND res3.id <> $5
+                 AND res3.arrival_date <= d.day AND res3.departure_date >= d.day) AS present
+       FROM days d LEFT JOIN availability_overrides ao ON ao.parking_lot_id = $1 AND ao.override_date = d.day
+     )
+     SELECT COALESCE((SELECT MIN(maxs - booked) FROM night_cap), $4) AS night_av,
+            COALESCE((SELECT MIN(maxd - present) FROM day_cap), $6) AS day_av`,
+    [lotId, arr, dep, onlineSpots, reservationId, daytimeSpots]
+  );
+  const nightAv = parseInt(cap.rows[0].night_av) || 0;
+  const dayAv = parseInt(cap.rows[0].day_av) || 0;
+  return Math.min(nightAv, dayAv) >= vc;
+}
+
 // Vertel Express dat hij achter een reverse proxy (nginx) draait.
 // Nodig voor express-rate-limit zodat X-Forwarded-For correct wordt verwerkt.
 app.set('trust proxy', 1);
@@ -59,39 +118,61 @@ app.post(
             const currentStatus = currentRes.rows[0]?.status;
 
             if (currentStatus === 'cancelled') {
-              // ── Betaling ontvangen voor GEANNULEERDE reservering ──────────────
-              // Niet automatisch heractiveren (risico op dubbele bezetting).
-              // Sla betaling op, markeer voor handmatige controle, en mail de klant.
-              const flagResult = await query(
-                `UPDATE reservations
-                 SET payment_status = 'paid',
-                     stripe_payment_intent_id = $1,
-                     admin_notes = COALESCE(admin_notes, '') || E'\n[⚠️ BETALING ONTVANGEN NA ANNULERING — Controleer en herstel handmatig indien gast nog komt]',
-                     updated_at = NOW()
-                 WHERE id = $2
-                   AND payment_status NOT IN ('paid', 'refunded', 'partial_refund')`,
-                [intent.id, reservationId]
-              );
-              if ((flagResult.rowCount ?? 0) > 0) {
-                console.warn(`[Webhook] ⚠️ Betaling ontvangen voor GEANNULEERDE reservering ${reservationId} — handmatige controle vereist`);
-                // Haal klantgegevens op voor de e-mail
-                const resData = await query(
-                  `SELECT r.reference, c.first_name, c.email, r.arrival_date, r.departure_date, r.total_price
-                   FROM reservations r JOIN customers c ON c.id = r.customer_id WHERE r.id = $1`,
-                  [reservationId]
+              // ── Betaling ontvangen voor VERLOPEN/GEANNULEERDE reservering ─────
+              // Is er nog plek? Dan heractiveren we de reservering gewoon en is een
+              // "neem contact op"-mail overbodig. Zitten we inmiddels vol, dan
+              // markeren we voor handmatige controle en mailen we de klant.
+              const spaceLeft = await hasSpaceForReservation(reservationId).catch(() => false);
+
+              if (spaceLeft) {
+                const reactivate = await query(
+                  `UPDATE reservations
+                   SET payment_status = 'paid', status = 'booked',
+                       stripe_payment_intent_id = $1,
+                       admin_notes = COALESCE(admin_notes, '') || E'\n[Heractiveerd na late betaling — er was nog plek beschikbaar]',
+                       updated_at = NOW()
+                   WHERE id = $2
+                     AND payment_status NOT IN ('paid', 'refunded', 'partial_refund')`,
+                  [intent.id, reservationId]
                 );
-                if (resData.rows.length > 0) {
-                  const { first_name, email, reference, arrival_date, departure_date, total_price } = resData.rows[0];
-                  const fmt = (d: string) => new Date(d).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
-                  sendSimpleEmail(
-                    email,
-                    `Uw betaling is ontvangen — neem contact met ons op (${reference})`,
-                    `<p>Beste ${escapeHtml(first_name)},</p>
-                    <p>Wij hebben uw betaling van <strong>€ ${Number(total_price).toFixed(2).replace('.', ',')}</strong> ontvangen voor reservering <strong>${reference}</strong> (${fmt(arrival_date)} – ${fmt(departure_date)}).</p>
-                    <p>Helaas was uw reservering op het moment van betaling al verlopen omdat de betalingstermijn was overschreden. Uw reservering staat daardoor op dit moment als geannuleerd.</p>
-                    <p><strong>Neem zo spoedig mogelijk contact met ons op via WhatsApp op 0517-412986</strong>, dan bespreken we hoe we dit voor u kunnen oplossen — of storten we uw betaling terug als er geen plek meer beschikbaar is.</p>
-                    <p>Met vriendelijke groet,<br>Autostalling De Bazuin</p>`
-                  ).catch(err => console.error('[Webhook] Klant-email na geannuleerde betaling mislukt:', err));
+                if ((reactivate.rowCount ?? 0) > 0) {
+                  console.log(`[Webhook] Verlopen reservering ${reservationId} heractiveerd na betaling (plek beschikbaar)`);
+                  sendBookingConfirmation(reservationId).catch(err =>
+                    console.error('Bevestigingsmail na heractivering mislukt:', err)
+                  );
+                }
+              } else {
+                // Geen plek meer → markeer voor handmatige controle en mail de klant.
+                const flagResult = await query(
+                  `UPDATE reservations
+                   SET payment_status = 'paid',
+                       stripe_payment_intent_id = $1,
+                       admin_notes = COALESCE(admin_notes, '') || E'\n[⚠️ BETALING ONTVANGEN NA ANNULERING — geen plek meer, handmatige controle vereist]',
+                       updated_at = NOW()
+                   WHERE id = $2
+                     AND payment_status NOT IN ('paid', 'refunded', 'partial_refund')`,
+                  [intent.id, reservationId]
+                );
+                if ((flagResult.rowCount ?? 0) > 0) {
+                  console.warn(`[Webhook] ⚠️ Betaling ontvangen voor GEANNULEERDE reservering ${reservationId} terwijl vol — handmatige controle vereist`);
+                  const resData = await query(
+                    `SELECT r.reference, c.first_name, c.email, r.arrival_date, r.departure_date, r.total_price
+                     FROM reservations r JOIN customers c ON c.id = r.customer_id WHERE r.id = $1`,
+                    [reservationId]
+                  );
+                  if (resData.rows.length > 0) {
+                    const { first_name, email, reference, arrival_date, departure_date, total_price } = resData.rows[0];
+                    const fmt = (d: string) => new Date(d).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+                    sendSimpleEmail(
+                      email,
+                      `Uw betaling is ontvangen — neem contact met ons op (${reference})`,
+                      `<p>Beste ${escapeHtml(first_name)},</p>
+                      <p>Wij hebben uw betaling van <strong>€ ${Number(total_price).toFixed(2).replace('.', ',')}</strong> ontvangen voor reservering <strong>${reference}</strong> (${fmt(arrival_date)} – ${fmt(departure_date)}).</p>
+                      <p>Helaas was uw reservering op het moment van betaling al verlopen omdat de betalingstermijn was overschreden, en is de stalling inmiddels vol.</p>
+                      <p><strong>Neem zo spoedig mogelijk contact met ons op via WhatsApp op 0517-412986</strong>, dan bespreken we hoe we dit voor u kunnen oplossen — of storten we uw betaling terug als er geen plek meer beschikbaar is.</p>
+                      <p>Met vriendelijke groet,<br>Autostalling De Bazuin</p>`
+                    ).catch(err => console.error('[Webhook] Klant-email na geannuleerde betaling mislukt:', err));
+                  }
                 }
               }
             } else {

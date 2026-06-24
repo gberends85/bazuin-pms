@@ -3482,31 +3482,50 @@ router.get('/reservations/token/:token/modification-preview', async (req: Reques
   const arrivalDate = new Date(isoDate(r.arrival_date) + 'T12:00:00');
   const currentDepartureDate = new Date(isoDate(r.departure_date) + 'T12:00:00');
   const duringStay = today >= arrivalDate && today < currentDepartureDate;
-  // Verlengen ná inchecken volgt dezelfde flow als verlengen tijdens verblijf:
-  // vast dagtarief per extra dag, direct via Stripe.
-  const isDepartureExtension = isoDate(newDeparture) > isoDate(r.departure_date) && isoDate(newArrival) === isoDate(r.arrival_date);
-  const flatRateExtension = duringStay || (r.status === 'checked_in' && isDepartureExtension);
+  // Tijdens verblijf of na inchecken: alleen de vertrekdatum mag wijzigen.
+  //  • Eerder (vervroegen) → ter beoordeling, geen restitutie.
+  //  • Later (verlengen)   → vast dagtarief per extra dag, direct via Stripe.
+  const currentArrivalStr = isoDate(r.arrival_date);
+  const currentDepStr = isoDate(r.departure_date);
+  const stayContext = duringStay || r.status === 'checked_in';
 
-  if (flatRateExtension) {
-    const currentArrivalStr = isoDate(r.arrival_date);
-    if (newArrival !== currentArrivalStr) return res.status(400).json({ error: 'U kunt alleen de vertrekdatum wijzigen.' });
-    if (newDeparture <= isoDate(r.departure_date)) return res.status(400).json({ error: 'De verblijfsduur kan niet worden verkort.' });
+  if (stayContext) {
+    if (isoDate(newArrival) !== currentArrivalStr) {
+      return res.status(400).json({ error: 'Tijdens uw verblijf kunt u alleen de vertrekdatum wijzigen.' });
+    }
+    const currentPrice = parseFloat(r.total_price);
 
-    const newDepartureDateObj = new Date(newDeparture + 'T12:00:00');
-    const extraDays = differenceInDays(newDepartureDateObj, currentDepartureDate);
-    const extraCharge = Math.round(extraDays * duringStayDailyRate * 100) / 100;
-    const newPrice = parseFloat(r.total_price) + extraCharge;
+    // Vervroegen → ter beoordeling, geen restitutie.
+    if (isoDate(newDeparture) < currentDepStr) {
+      return res.json({
+        reservationId: r.id, reference: r.reference,
+        currentArrival: r.arrival_date, currentDeparture: r.departure_date, currentPrice,
+        newArrival, newDeparture, newPrice: currentPrice,
+        priceDifference: 0, modificationFee: 0, netAmountDue: 0, netRefundAmount: 0,
+        cancellationRefundPct: 0, policyDescription: 'Geen restitutie — vervroegen tijdens verblijf',
+        duringStay, earlierDeparture: true, available: true, pendingReview: true,
+      });
+    }
 
-    return res.json({
-      reservationId: r.id, reference: r.reference,
-      currentArrival: r.arrival_date, currentDeparture: r.departure_date, currentPrice: parseFloat(r.total_price),
-      newArrival, newDeparture, newPrice,
-      priceDifference: extraCharge, modificationFee: 0,
-      netAmountDue: extraCharge, netRefundAmount: 0,
-      cancellationRefundPct: 0, policyDescription: 'Geen restitutie tijdens verblijf',
-      duringStay: true, extraDays, duringStayDailyRate,
-      available: true, pendingReview: true,
-    });
+    // Verlengen → vast dagtarief per extra dag, direct via Stripe.
+    if (isoDate(newDeparture) > currentDepStr) {
+      const newDepartureDateObj = new Date(newDeparture + 'T12:00:00');
+      const extraDays = differenceInDays(newDepartureDateObj, currentDepartureDate);
+      const extraCharge = Math.round(extraDays * duringStayDailyRate * 100) / 100;
+      const newPrice = currentPrice + extraCharge;
+
+      return res.json({
+        reservationId: r.id, reference: r.reference,
+        currentArrival: r.arrival_date, currentDeparture: r.departure_date, currentPrice,
+        newArrival, newDeparture, newPrice,
+        priceDifference: extraCharge, modificationFee: 0,
+        netAmountDue: extraCharge, netRefundAmount: 0,
+        cancellationRefundPct: 0, policyDescription: 'Geen restitutie tijdens verblijf',
+        duringStay: true, extraDays, duringStayDailyRate,
+        available: true, pendingReview: true,
+      });
+    }
+    // gelijke vertrekdatum valt door (calcPreview blokkeert dit al)
   }
 
   if (minDays > 0) {
@@ -3551,7 +3570,7 @@ router.get('/reservations/token/:token/modification-preview', async (req: Reques
   const netDue = priceDiff > 0 ? Math.round((priceDiff + modFee) * 100) / 100 : 0;
 
   const anchorStr = isoDate(r.policy_anchor_date || r.arrival_date);
-  const currentArrivalStr = isoDate(r.arrival_date);
+  // currentArrivalStr is hierboven al gedeclareerd (stay-context blok)
 
   // Overboeking: toeslag/waarschuwing alleen voor NIEUW toegevoegde dagen die
   // vol zijn. Dagen die al in de oorspronkelijke boeking zaten tellen NIET mee —
@@ -4742,11 +4761,17 @@ router.post('/reservations/token/:token/modify-checkedin-departure', async (req:
   if (result.rows.length === 0) return res.status(404).json({ error: 'Niet gevonden' });
   const r = result.rows[0];
 
-  if (r.status !== 'checked_in') {
-    return res.status(400).json({ error: 'Deze route is alleen beschikbaar voor ingecheckte reserveringen' });
+  const isoDate = (d: any) => d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+  const todayMid = new Date(); todayMid.setHours(0, 0, 0, 0);
+  const arrMid = new Date(isoDate(r.arrival_date) + 'T12:00:00');
+  const depMid = new Date(isoDate(r.departure_date) + 'T12:00:00');
+  const duringStay = todayMid >= arrMid && todayMid < depMid;
+
+  // Vervroegen mag tijdens het verblijf én na inchecken.
+  if (r.status !== 'checked_in' && !duringStay) {
+    return res.status(400).json({ error: 'Vervroegen kan alleen tijdens uw verblijf of na inchecken' });
   }
 
-  const isoDate = (d: any) => d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
   const currentDepStr = isoDate(r.departure_date);
 
   if (newDepartureDate >= currentDepStr) {
@@ -4759,7 +4784,7 @@ router.post('/reservations/token/:token/modify-checkedin-departure', async (req:
     `INSERT INTO reservation_modifications
      (reservation_id, modified_by, old_arrival_date, old_departure_date, new_arrival_date, new_departure_date,
       old_total_price, new_total_price, price_difference, modification_fee, status, modification_type, during_stay, change_details)
-     VALUES ($1,'customer',$2,$3,$2,$4,$5,$5,0,0,'pending_review','checkedin_departure',false,$6)`,
+     VALUES ($1,'customer',$2,$3,$2,$4,$5,$5,0,0,'pending_review','checkedin_departure',$7,$6)`,
     [
       r.id,
       r.arrival_date,
@@ -4767,6 +4792,7 @@ router.post('/reservations/token/:token/modify-checkedin-departure', async (req:
       newDepartureDate,
       currentPrice,
       JSON.stringify({ reason: 'Vervroegd vertrek door klant' }),
+      duringStay,
     ]
   );
 

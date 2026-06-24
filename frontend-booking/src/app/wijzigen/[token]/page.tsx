@@ -450,16 +450,16 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
     finally { setPreviewLoading(false); }
   }
 
-  // Is this a checked-in earlier departure scenario?
-  const checkedInEarlier = isCheckedIn && !duringStay && preview && newDeparture < (res?.departure_date?.slice(0, 10) || '');
+  // Vervroegd vertrek (tijdens verblijf óf na inchecken) — backend bepaalt dit.
+  const checkedInEarlier = !!preview?.earlierDeparture;
 
   async function confirmDates() {
     // If checkedIn with earlier departure → call special endpoint
     if (checkedInEarlier) {
       setStep('dates-confirming');
       try {
-        const result = await bookingApi.modifyCheckedinDeparture(params.token, newDeparture);
-        setDoneData({ pending: true });
+        await bookingApi.modifyCheckedinDeparture(params.token, newDeparture);
+        setDoneData({ pending: true, sendWa: true });
         setStep('dates-done');
       } catch (e: any) { setError(e.message); setStep('dates-preview'); }
       return;
@@ -484,6 +484,22 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       const result = await bookingApi.confirmModification(params.token, newArrival, newDeparture);
       setDoneData(result); setStep('dates-done');
     } catch (e: any) { setError(e.message); setStep('dates-preview'); }
+  }
+
+  // WhatsApp-link met de wijziging (kenteken + oude/nieuwe afhaaldatum + tijd) naar De Bazuin.
+  function pickupChangeWaLink(): string {
+    const num = '31517412986';
+    const plates = (res?.vehicles || []).map((v: any) => v.license_plate).filter(Boolean).join(', ') || '—';
+    const t = String(res?.ferry_return_time || res?.ferry_return_custom_time || '').slice(0, 5);
+    const tStr = t ? ` (terugboot ${t})` : '';
+    const oldDate = res?.departure_date ? fmtDate(res.departure_date.slice(0, 10)) : '—';
+    const newDate = newDeparture ? fmtDate(newDeparture) : '—';
+    const msg =
+      `Wijziging ophaaldatum reservering ${res?.reference || ''}\n` +
+      `Kenteken: ${plates}\n` +
+      `Oude afhaaldatum: ${oldDate}${tStr}\n` +
+      `Nieuwe afhaaldatum: ${newDate}${tStr}`;
+    return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
   }
 
   async function handlePreStayStripePay(overbooked = false) {
@@ -826,6 +842,15 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
           U ontvangt <strong>€ {doneData.netRefundAmount.toFixed(2)}</strong> restitutie binnen 5–10 werkdagen.
         </div>
       )}
+      {doneData?.sendWa && (
+        <>
+          <p style={{ color: '#7090b0', fontSize: 13, marginBottom: 8 }}>Laat ons uw nieuwe ophaaldatum weten via WhatsApp:</p>
+          <a href={pickupChangeWaLink()} target="_blank" rel="noopener noreferrer"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: '13px', borderRadius: 9, background: '#25D366', color: '#fff', textDecoration: 'none', fontWeight: 700, fontSize: 15, marginBottom: 10, boxSizing: 'border-box' }}>
+            Stuur de wijziging via WhatsApp →
+          </a>
+        </>
+      )}
       <button onClick={() => { window.location.href = window.location.pathname; }} style={S.btnPrimary}>Terug naar wijzigingen</button>
       <button onClick={() => window.close()} style={S.btnGhost}>Sluiten</button>
     </div></div>
@@ -1015,7 +1040,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         </div>
       )}
 
-      {preview.duringStay && preview.netAmountDue === 0 && (
+      {preview.duringStay && preview.netAmountDue === 0 && !checkedInEarlier && (
         <div style={{ background: '#fff8e6', border: '1.5px solid #e8a020', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#7a5010', marginBottom: 12 }}>
           <strong>Wijziging tijdens verblijf</strong> — uw verzoek wordt ter beoordeling aangeboden aan Autostalling De Bazuin.
         </div>
@@ -1182,7 +1207,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
 
         {duringStay && (
           <div style={{ background: '#fff8e6', border: '1.5px solid #e8a020', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#7a5010', marginBottom: 16 }}>
-            U verblijft momenteel bij Autostalling De Bazuin. U kunt alleen de vertrekdatum verlengen.
+            U verblijft momenteel bij Autostalling De Bazuin. U kunt uw vertrekdatum <strong>vervroegen</strong> of <strong>verlengen</strong>. Vervroegen wordt ter beoordeling aangeboden (geen restitutie); verlengen rekenen we per dag.
           </div>
         )}
 
@@ -1212,12 +1237,12 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
           <label style={S.label}>Vertrekdatum</label>
           <input
             type="date"
-            min={duringStay ? res.departure_date?.slice(0, 10) : (isCheckedIn ? todayStr : (newArrival || todayStr))}
+            min={(duringStay || isCheckedIn) ? todayStr : (newArrival || todayStr)}
             value={newDeparture}
             onChange={e => { setNewDeparture(e.target.value); setCheckinEarlierError(''); }}
             style={S.input}
           />
-          {isCheckedIn && !duringStay && (
+          {(isCheckedIn || duringStay) && (
             <div style={{ fontSize: 11, color: '#7090b0', marginTop: 4 }}>Een eerdere datum = vervroegen (geen restitutie, wordt ter beoordeling aangeboden). Een latere datum = verlengen tegen het dagtarief.</div>
           )}
           {checkinEarlierError && (

@@ -77,6 +77,11 @@ function waDigits(phone: string, belgian = false): string {
 function waLink(phone: string, belgian = false) {
   return `whatsapp://send/?phone=%2B${waDigits(phone, belgian)}`;
 }
+// Betaald — inclusief 'partial_refund' (was betaald, daarna deels terugbetaald),
+// zodat zo'n reservering niet onterecht als "nog te betalen / open" verschijnt.
+function isPaidStatus(s?: string): boolean {
+  return s === 'paid' || s === 'partial_refund';
+}
 
 // ─── Detail Panel ────────────────────────────────────────────────────────────
 
@@ -750,7 +755,7 @@ function PaymentDropdown({ res, onUpdate }: { res: any; onUpdate: () => void }) 
   }, [open]);
 
   const isInvoice = res.payment_method === 'invoice' || res.payment_status === 'invoiced';
-  const isPaid    = res.payment_status === 'paid';
+  const isPaid    = isPaidStatus(res.payment_status);
   if (isPaid || isInvoice) return null;
 
   async function register(method: string) {
@@ -887,7 +892,7 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
   async function doPayOnSite(method: string) {
     setLoading(true);
     try {
-      const isFullUnpaid = res.payment_status !== 'paid' && res.payment_status !== 'invoiced' && res.payment_method !== 'invoice';
+      const isFullUnpaid = !isPaidStatus(res.payment_status) && res.payment_status !== 'invoiced' && res.payment_method !== 'invoice';
       if (isFullUnpaid) {
         // Volledige betaling ter plekke — markeer als betaald en pas eventuele wijziging toe
         await api.reservations.updatePaymentStatus(res.id, 'paid', method);
@@ -923,6 +928,8 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
 
   const payBadge = res.payment_status === 'paid'
     ? <span style={{ fontSize: 9, fontWeight: 700, background: '#e8f5eb', color: '#2a7a3a', borderRadius: 3, padding: '1px 6px' }}>✓ betaald</span>
+    : res.payment_status === 'partial_refund'
+    ? <span style={{ fontSize: 9, fontWeight: 700, background: '#e8f5eb', color: '#2a7a3a', borderRadius: 3, padding: '1px 6px' }}>✓ betaald · deels terug</span>
     : res.payment_method === 'invoice' || res.payment_status === 'invoiced'
     ? <a href={`/facturen/${res.invoice_group_id}`} onClick={stopProp}
         style={{ fontSize: 9, fontWeight: 700, background: '#e8f0fe', color: '#1a4fa0', borderRadius: 3, padding: '1px 6px', textDecoration: 'none', cursor: 'pointer' }}>
@@ -932,7 +939,7 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
     ? <span style={{ fontSize: 9, fontWeight: 700, background: '#fff0cc', color: '#8a5f00', borderRadius: 3, padding: '1px 6px' }}>● ter plekke</span>
     : <span style={{ fontSize: 9, fontWeight: 700, background: '#fdeaea', color: '#8a2020', borderRadius: 3, padding: '1px 6px' }}>! open</span>;
 
-  const needsPayment = res.payment_status !== 'paid' && res.payment_status !== 'invoiced' && res.payment_method !== 'invoice';
+  const needsPayment = !isPaidStatus(res.payment_status) && res.payment_status !== 'invoiced' && res.payment_method !== 'invoice';
 
   const payBlock = (needsPayment || pendingAmt > 0) ? (
     <div onClick={stopProp} style={{
@@ -1249,7 +1256,7 @@ function DepartureCard({ res, onUpdate, occupiedLockers = [] }: { res: any; onUp
 
   const pendingAmtDep = parseFloat(res.pending_payment_amount || 0);
   const pendingModIdDep = res.pending_modification_id || null;
-  const needsPaymentDep = res.payment_status !== 'paid' && res.payment_status !== 'invoiced' && res.payment_method !== 'invoice';
+  const needsPaymentDep = !isPaidStatus(res.payment_status) && res.payment_status !== 'invoiced' && res.payment_method !== 'invoice';
 
   async function doPayDeparture(method: string) {
     setPayLoading(true);

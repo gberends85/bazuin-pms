@@ -107,9 +107,9 @@ export default function ReservationCard({ res, onUpdate, showCheckin = true, sho
     booked: '#badge-booked', checked_in: 'badge-checked_in', completed: 'badge-completed',
     cancelled: 'badge-cancelled',
   };
-  const payColor: Record<string, string> = { paid: 'badge-paid', on_site: 'badge-on_site', pending: 'badge-pending', refunded: 'badge-refunded' };
+  const payColor: Record<string, string> = { paid: 'badge-paid', partial_refund: 'badge-paid', on_site: 'badge-on_site', pending: 'badge-pending', refunded: 'badge-refunded' };
   const statusLabel: Record<string, string> = { booked: 'Geboekt', checked_in: 'Ingecheckt', completed: 'Voltooid', cancelled: 'Geannuleerd' };
-  const payLabel: Record<string, string> = { paid: 'Betaald', on_site: 'Ter plekke', pending: 'Wacht', refunded: 'Terugbetaald' };
+  const payLabel: Record<string, string> = { paid: 'Betaald', partial_refund: 'Betaald (deels terug)', on_site: 'Ter plekke', pending: 'Wacht', refunded: 'Terugbetaald' };
 
   return (
     <>

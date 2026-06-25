@@ -7337,6 +7337,18 @@ router.get('/admin/contract-invoices', requireAuth, async (req: Request, res: Re
   return res.json(r.rows);
 });
 
+// Robuuste ISO-datum (YYYY-MM-DD). node-postgres geeft DATE/TIMESTAMP als een
+// Date-object terug; String(date).slice(0,10) levert dan "Mon Mar 02", wat door
+// new Date() als jaar 2001 wordt geïnterpreteerd. Daarom lokale datumdelen.
+function contractIsoDate(v: any): string {
+  if (!v) return '';
+  if (v instanceof Date) {
+    return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
+  }
+  const s = String(v);
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : s;
+}
+
 router.get('/admin/contract-invoices/:id/pdf', requireAuth, async (req: Request, res: Response) => {
   const r = await query('SELECT * FROM contract_invoices WHERE id = $1', [req.params.id]);
   if (r.rows.length === 0) return res.status(404).json({ error: 'Factuur niet gevonden' });
@@ -7345,10 +7357,10 @@ router.get('/admin/contract-invoices/:id/pdf', requireAuth, async (req: Request,
 
   const pdf = await generateContractInvoicePdf({
     customer: snap.customer,
-    periodFrom: String(inv.period_from).slice(0, 10),
-    periodTo: String(inv.period_to).slice(0, 10),
+    periodFrom: contractIsoDate(inv.period_from),
+    periodTo: contractIsoDate(inv.period_to),
     invoiceNumber: inv.invoice_number,
-    invoiceDate: String(inv.created_at).slice(0, 10),
+    invoiceDate: contractIsoDate(inv.created_at),
     rateType: snap.rateType || 'daily',
     fixedPeriodDays: snap.fixed_period_days,
     fixedPeriodRate: snap.fixed_period_rate,
@@ -7377,10 +7389,10 @@ async function pdfFromStoredContractInvoice(inv: any, paymentUrl?: string): Prom
   return generateContractInvoicePdf({
     paymentUrl,
     customer: snap.customer,
-    periodFrom: String(inv.period_from).slice(0, 10),
-    periodTo: String(inv.period_to).slice(0, 10),
+    periodFrom: contractIsoDate(inv.period_from),
+    periodTo: contractIsoDate(inv.period_to),
     invoiceNumber: inv.invoice_number,
-    invoiceDate: String(inv.created_at).slice(0, 10),
+    invoiceDate: contractIsoDate(inv.created_at),
     rateType: snap.rateType || 'daily',
     fixedPeriodDays: snap.fixed_period_days,
     fixedPeriodRate: snap.fixed_period_rate,

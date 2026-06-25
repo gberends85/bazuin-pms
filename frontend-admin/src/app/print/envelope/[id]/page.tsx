@@ -133,19 +133,22 @@ function C6Envelope({ res, mods }: { res: any; mods: any[] }) {
               <div className="balance-amount">{eur(pendingAmt)}</div>
               {surchargeNote && <div className="balance-note">{surchargeNote}</div>}
             </div>
-          ) : (
-            <div className={`payment-status payment-${res.payment_status}`}>
-              {res.payment_status === 'paid'          ? 'Betaald' :
-               res.payment_status === 'invoiced'      ? 'Op factuur' :
-               res.payment_status === 'pending'       ? 'Nog te betalen' :
-               res.payment_status === 'partial_refund'? 'Deels terugbetaald' :
-               res.payment_status === 'refunded'      ? 'Terugbetaald' :
-               res.payment_status || '—'}
-              {res.payment_status !== 'paid' && res.payment_status !== 'invoiced' && res.total_price != null && (
-                <span className="payment-amount"> · {eur(Number(res.total_price))}</span>
-              )}
-            </div>
-          )}
+          ) : (() => {
+            // partial_refund = wél betaald (alleen deels terug volgens beleid) → toon "Betaald".
+            const paidLike = res.payment_status === 'paid' || res.payment_status === 'partial_refund';
+            return (
+              <div className={`payment-status payment-${paidLike ? 'paid' : res.payment_status}`}>
+                {paidLike                               ? 'Betaald' :
+                 res.payment_status === 'invoiced'      ? 'Op factuur' :
+                 res.payment_status === 'pending'       ? 'Nog te betalen' :
+                 res.payment_status === 'refunded'      ? 'Terugbetaald' :
+                 res.payment_status || '—'}
+                {!paidLike && res.payment_status !== 'invoiced' && res.total_price != null && (
+                  <span className="payment-amount"> · {eur(Number(res.total_price))}</span>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* RECHTER KOLOM */}
@@ -188,6 +191,13 @@ function C6Envelope({ res, mods }: { res: any; mods: any[] }) {
             const diff = parseFloat(mod.price_difference || '0');
             const fee  = parseFloat(mod.modification_fee  || '0');
             const extraAmt = Math.round((Math.abs(diff) + (diff > 0 ? fee : 0)) * 100) / 100;
+            // Werkelijke restitutie = prijsverschil × restitutie% (annuleringsbeleid).
+            // Zonder vastgelegd percentage tonen we het volledige verschil.
+            const refundPct = (mod.cancellation_refund_pct !== null && mod.cancellation_refund_pct !== undefined && mod.cancellation_refund_pct !== '')
+              ? parseFloat(mod.cancellation_refund_pct) : null;
+            const refundShown = refundPct !== null
+              ? Math.round(Math.abs(diff) * (refundPct / 100) * 100) / 100
+              : Math.abs(diff);
             return (
               <div key={mod.id} className={`hs-row hs-mod-${mod.status}`}>
                 <span className="hs-type">{modTypeLabel(mod.modification_type)}</span>
@@ -200,8 +210,8 @@ function C6Envelope({ res, mods }: { res: any; mods: any[] }) {
                 <span className="hs-amt">
                   {diff > 0 && mod.status === 'pending_payment' && <span className="hs-due">+{eur(extraAmt)}</span>}
                   {diff > 0 && mod.status === 'completed'       && <span className="hs-paid">+{eur(extraAmt)}</span>}
-                  {diff < 0 && mod.status === 'completed'       && <span className="hs-refunded">−{eur(Math.max(0, Math.abs(diff)))}</span>}
-                  {diff < 0 && mod.status !== 'completed'       && <span className="hs-back">−{eur(Math.max(0, Math.abs(diff) - fee))}</span>}
+                  {diff < 0 && mod.status === 'completed'       && <span className="hs-refunded">−{eur(refundShown)}</span>}
+                  {diff < 0 && mod.status !== 'completed'       && <span className="hs-back">−{eur(Math.max(0, refundShown - fee))}</span>}
                   {diff === 0 && <span className="hs-zero">—</span>}
                 </span>
                 <span className={`hs-badge hs-badge-mod-${mod.status}`}>

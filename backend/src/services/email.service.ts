@@ -30,6 +30,9 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
+}, {
+  // Default voor álle uitgaande mails: antwoorden komen bij info@parkeren-harlingen.nl.
+  replyTo: process.env.EMAIL_REPLY_TO || 'info@parkeren-harlingen.nl',
 });
 
 // Whitelist: als EMAIL_WHITELIST is ingesteld, worden mails alleen naar deze adressen verstuurd.

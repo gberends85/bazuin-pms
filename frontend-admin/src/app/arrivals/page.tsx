@@ -810,6 +810,7 @@ function PaymentDropdown({ res, onUpdate }: { res: any; onUpdate: () => void }) 
 
 function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect: () => void; onUpdate: () => void; compact?: boolean }) {
   const isCheckedIn = res.status === 'checked_in';
+  const isCancelled = res.status === 'cancelled';
   const isNew = res.created_at && new Date(res.created_at).toDateString() === new Date().toDateString();
   const plates = (res.plates || '').split(', ').filter(Boolean);
   const [checkinMailOpen, setCheckinMailOpen] = useState(false);
@@ -941,7 +942,7 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
 
   const needsPayment = !isPaidStatus(res.payment_status) && res.payment_status !== 'invoiced' && res.payment_method !== 'invoice';
 
-  const payBlock = (needsPayment || pendingAmt > 0) ? (
+  const payBlock = (!isCancelled && (needsPayment || pendingAmt > 0)) ? (
     <div onClick={stopProp} style={{
       background: '#fef3e2',
       border: '1.5px solid #f0a030',
@@ -1019,14 +1020,16 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
         onClick={onSelect}
         className="arrival-card"
         style={{
-          background: 'white', borderRadius: 8, marginBottom: 5,
+          background: isCancelled ? '#faf3f3' : 'white', borderRadius: 8, marginBottom: 5,
           border: pendingCheckin
             ? '2px solid #0a7c6e'
             : isCheckedIn
                 ? '1.5px solid #0a7c6e'
-                : '0.5px solid rgba(10,34,64,0.1)',
+                : isCancelled
+                    ? '1.5px solid rgba(200,0,0,0.3)'
+                    : '0.5px solid rgba(10,34,64,0.1)',
           cursor: 'pointer', overflow: 'hidden',
-          opacity: fadingOut ? 0 : 1,
+          opacity: fadingOut ? 0 : (isCancelled ? 0.72 : 1),
           transform: fadingOut ? 'translateX(30px)' : 'none',
           transition: 'opacity 0.35s ease, transform 0.35s ease, border-color 0.2s ease',
         }}
@@ -1048,9 +1051,10 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
           {/* 2. Naam + meta */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: 14, color: '#0a2240', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{res.first_name} {res.last_name}</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', ...(isCancelled ? { textDecoration: 'line-through', color: '#9a6a6a' } : {}) }}>{res.first_name} {res.last_name}</span>
+              {isCancelled && <span style={{ fontSize: 9, fontWeight: 800, color: '#fff', background: '#c0392b', borderRadius: 3, padding: '1px 6px', flexShrink: 0, letterSpacing: '0.3px' }}>GEANNULEERD</span>}
               {isCheckedIn && <span style={{ fontSize: 9, fontWeight: 700, color: '#0a7c6e', background: '#e6f7f5', borderRadius: 3, padding: '1px 5px', flexShrink: 0 }}>✓ IN</span>}
-              {isNew && <span style={{ fontSize: 9, fontWeight: 800, color: '#0a7c6e', background: '#e6f7f5', borderRadius: 3, padding: '1px 6px', flexShrink: 0, letterSpacing: '0.3px' }}>NIEUW</span>}
+              {isNew && !isCancelled && <span style={{ fontSize: 9, fontWeight: 800, color: '#0a7c6e', background: '#e6f7f5', borderRadius: 3, padding: '1px 6px', flexShrink: 0, letterSpacing: '0.3px' }}>NIEUW</span>}
             </div>
             <div style={{ fontSize: 10, color: '#9ab0c8', marginTop: 2, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <span>#{res.reference}</span>
@@ -1060,7 +1064,7 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
             </div>
             <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 12, fontWeight: 800, color: '#0a2240' }}>€ {parseFloat(res.total_price || 0).toFixed(2)}</span>
-              {payBadge}
+              {!isCancelled && payBadge}
               {res.payment_status === 'paid' && res.paid_at && (
                 <span style={{ fontSize: 9, color: '#5a8060', fontWeight: 600 }}>
                   {fmtPaidAt(res.paid_at, res.payment_method)}
@@ -1118,9 +1122,10 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
             {/* Naam + badges + ferry-info — midden */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 14, color: '#0a2240', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{res.first_name} {res.last_name}</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', ...(isCancelled ? { textDecoration: 'line-through', color: '#9a6a6a' } : {}) }}>{res.first_name} {res.last_name}</span>
+                {isCancelled && <span style={{ fontSize: 9, fontWeight: 800, color: '#fff', background: '#c0392b', borderRadius: 3, padding: '1px 6px', flexShrink: 0, letterSpacing: '0.3px' }}>GEANNULEERD</span>}
                 {isCheckedIn && <span style={{ fontSize: 9, fontWeight: 700, color: '#0a7c6e', background: '#e6f7f5', borderRadius: 3, padding: '1px 5px', flexShrink: 0 }}>✓ IN</span>}
-                {isNew && <span style={{ fontSize: 9, fontWeight: 800, color: '#0a7c6e', background: '#e6f7f5', borderRadius: 3, padding: '1px 6px', flexShrink: 0, letterSpacing: '0.3px' }}>NIEUW</span>}
+                {isNew && !isCancelled && <span style={{ fontSize: 9, fontWeight: 800, color: '#0a7c6e', background: '#e6f7f5', borderRadius: 3, padding: '1px 6px', flexShrink: 0, letterSpacing: '0.3px' }}>NIEUW</span>}
               </div>
               {/* Heen + terug op één rij — datum zwart, tijd donkergroen */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginTop: 3, flexWrap: 'wrap', lineHeight: 1.3 }}>
@@ -1134,7 +1139,7 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
             {/* Bedrag + betaalstatus — rechtsboven (geen betaaldetails op mobiel) */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
               <span style={{ fontSize: 14, fontWeight: 800, color: '#0a2240', whiteSpace: 'nowrap' }}>€ {parseFloat(res.total_price || 0).toFixed(2)}</span>
-              {payBadge}
+              {!isCancelled && payBadge}
             </div>
           </div>
 

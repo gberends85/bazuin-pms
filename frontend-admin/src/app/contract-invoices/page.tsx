@@ -685,6 +685,18 @@ export default function ContractInvoicesPage() {
     catch (e: any) { toastError(e.message); }
   }
 
+  const [sendingInvoice, setSendingInvoice] = useState<string | null>(null);
+  async function sendInvoice(id: string, nr: string) {
+    if (!confirm(`Factuur ${nr} per e-mail versturen naar de klant?`)) return;
+    setSendingInvoice(id);
+    try {
+      const r = await api.contractInvoices.sendEmail(id);
+      toast(`Factuur verstuurd naar ${r.email} ✓`);
+      await loadInvoices();
+    } catch (e: any) { toastError(e?.message || 'Versturen mislukt'); }
+    finally { setSendingInvoice(null); }
+  }
+
   const weekTotal = days.reduce((s, d) => s + (entries[isoDate(d)] || 0), 0);
   const weekStays = stays.filter(s => s.arrival_date <= isoDate(days[6]) && s.departure_date >= isoDate(days[0]));
 
@@ -1127,8 +1139,10 @@ export default function ContractInvoicesPage() {
                       <td style={{ ...tdSt, textAlign: 'right' }}>{inv.total_cars}</td>
                       <td style={{ ...tdSt, textAlign: 'right', fontWeight: 700 }}>€ {parseFloat(inv.total_incl_vat).toFixed(2).replace('.',',')}</td>
                       <td style={{ ...tdSt, color: '#7090b0', fontSize: 12 }}>{new Date(inv.created_at).toLocaleDateString('nl-NL',{day:'numeric',month:'short',year:'numeric'})}</td>
-                      <td style={{ ...tdSt, textAlign: 'right' }}>
+                      <td style={{ ...tdSt, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {inv.sent_at && <span title={`Verstuurd op ${new Date(inv.sent_at).toLocaleString('nl-NL')}`} style={{ fontSize: 10, fontWeight: 700, color: '#2a7a3a', marginRight: 6 }}>✓ verstuurd</span>}
                         <button onClick={() => openInvoice(inv.id)} style={{ background: '#0a7c6e', color: 'white', border: 'none', borderRadius: 5, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', marginRight: 4 }}>PDF</button>
+                        <button onClick={() => sendInvoice(inv.id, inv.invoice_number)} disabled={sendingInvoice === inv.id} style={{ background: '#0a2240', color: 'white', border: 'none', borderRadius: 5, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: sendingInvoice === inv.id ? 'default' : 'pointer', marginRight: 4, opacity: sendingInvoice === inv.id ? 0.6 : 1 }}>{sendingInvoice === inv.id ? 'Versturen…' : (inv.sent_at ? 'Opnieuw mailen' : 'Mailen')}</button>
                         <button onClick={() => deleteInvoice(inv.id, inv.invoice_number)} style={{ background: 'none', border: '0.5px solid rgba(200,50,50,0.3)', color: '#c83232', borderRadius: 5, padding: '4px 8px', fontSize: 11, cursor: 'pointer' }}><Trash2 size={13} /></button>
                       </td>
                     </tr>

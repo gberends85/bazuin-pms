@@ -7327,6 +7327,7 @@ router.get('/admin/contract-invoices', requireAuth, async (req: Request, res: Re
   const r = await query(
     `SELECT ci.id, ci.invoice_number, ci.contract_customer_id, ci.period_from, ci.period_to,
             ci.total_cars, ci.subtotal_excl_vat, ci.vat_amount, ci.total_incl_vat, ci.created_at,
+            ci.sent_at, ci.paid_at,
             cc.name as customer_name, cc.company as customer_company
      FROM contract_invoices ci
      JOIN contract_customers cc ON cc.id = ci.contract_customer_id

@@ -4,7 +4,7 @@ import AdminLayout from '@/components/layout/AdminLayout';
 import Modal from '@/components/ui/Modal';
 import Toaster, { toast, toastError } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
-import { addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, format, isToday } from 'date-fns';
+import { addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, format, isToday, getISOWeek } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { PencilSquareIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
@@ -110,50 +110,58 @@ export default function CalendarPage() {
         <h2 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 800, color: '#0a2240', textTransform: 'capitalize' }}>
           {format(month, 'MMMM yyyy', { locale: nl })}
         </h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 3, marginBottom: 3 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto repeat(7,1fr)', gap: 3, marginBottom: 3 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#aab8cc', minWidth: 22 }}>wk</div>
           {['Ma','Di','Wo','Do','Vr','Za','Zo'].map(d => (
             <div key={d} style={{ textAlign: 'center', fontSize: 10, fontWeight: 700, color: '#7090b0', padding: '3px 0' }}>{d}</div>
           ))}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 3 }}>
-          {Array.from({ length: firstDow }).map((_, i) => <div key={`e${i}`} />)}
-          {days.map(day => {
-            const dateStr = format(day, 'yyyy-MM-dd');
-            const a = availMap[dateStr];
-            return (
-              <div key={dateStr} onClick={() => openOverride(dateStr)}
-                style={{
-                  padding: '4px 2px 6px',
-                  textAlign: 'center',
-                  borderRadius: 7,
-                  cursor: 'pointer',
-                  background: dayColor(a),
-                  border: isToday(day)
-                    ? '2px solid #0a2240'
-                    : a?.has_override
-                      ? '1.5px dashed #7a5010'
-                      : '0.5px solid rgba(10,34,64,0.1)',
-                  minHeight: 58,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'flex-start',
-                  transition: 'opacity 0.12s',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.opacity = '0.8')}
-                onMouseLeave={e => (e.currentTarget.style.opacity = '1')}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: isToday(day) ? '#0a2240' : '#333', marginBottom: 1 }}>{format(day, 'd')}</div>
-                {a ? (
-                  <>
-                    <div style={{ fontSize: 10, fontWeight: 800, color: dayTextColor(a), lineHeight: 1.2 }}>{a.available} vrij</div>
-                    <div style={{ fontSize: 9, color: '#7090b0', lineHeight: 1.2 }}>{a.booked}/{a.max_available} nacht</div>
-                    <div style={{ fontSize: 8, color: a.daytime_present >= a.daytime_max ? '#8a2020' : '#aab8cc', lineHeight: 1.2 }}>{a.daytime_present}/{a.daytime_max} dag</div>
-                    {a.has_override && <PencilSquareIcon className="w-2 h-2" style={{ color: '#7a5010', marginTop: 1 }} />}
-                  </>
-                ) : null}
-              </div>
-            );
-          })}
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto repeat(7,1fr)', gap: 3 }}>
+          {(() => {
+            const cells: (Date | null)[] = [...Array.from({ length: firstDow }, () => null as Date | null), ...days];
+            const out: JSX.Element[] = [];
+            for (let r = 0; r < cells.length; r += 7) {
+              const row = cells.slice(r, r + 7);
+              const firstDay = row.find(c => c instanceof Date) as Date | undefined;
+              out.push(
+                <div key={`wk-${r}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#aab8cc', minWidth: 22 }}>
+                  {firstDay ? getISOWeek(firstDay) : ''}
+                </div>
+              );
+              row.forEach((c, j) => {
+                if (!c) { out.push(<div key={`e-${r}-${j}`} />); return; }
+                const day = c;
+                const dateStr = format(day, 'yyyy-MM-dd');
+                const a = availMap[dateStr];
+                out.push(
+                  <div key={dateStr} onClick={() => openOverride(dateStr)}
+                    style={{
+                      padding: '4px 2px 6px', textAlign: 'center', borderRadius: 7, cursor: 'pointer',
+                      background: dayColor(a),
+                      border: isToday(day)
+                        ? '2px solid #0a2240'
+                        : a?.has_override
+                          ? '1.5px dashed #7a5010'
+                          : '0.5px solid rgba(10,34,64,0.1)',
+                      minHeight: 58, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', transition: 'opacity 0.12s',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.opacity = '0.8')}
+                    onMouseLeave={e => (e.currentTarget.style.opacity = '1')}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: isToday(day) ? '#0a2240' : '#333', marginBottom: 1 }}>{format(day, 'd')}</div>
+                    {a ? (
+                      <>
+                        <div style={{ fontSize: 10, fontWeight: 800, color: dayTextColor(a), lineHeight: 1.2 }}>{a.available} vrij</div>
+                        <div style={{ fontSize: 9, color: '#7090b0', lineHeight: 1.2 }}>{a.booked}/{a.max_available} nacht</div>
+                        <div style={{ fontSize: 8, color: a.daytime_present >= a.daytime_max ? '#8a2020' : '#aab8cc', lineHeight: 1.2 }}>{a.daytime_present}/{a.daytime_max} dag</div>
+                        {a.has_override && <PencilSquareIcon className="w-2 h-2" style={{ color: '#7a5010', marginTop: 1 }} />}
+                      </>
+                    ) : null}
+                  </div>
+                );
+              });
+            }
+            return out;
+          })()}
         </div>
       </div>
     );

@@ -1144,6 +1144,17 @@ export default function ContractInvoicesPage() {
 }
 
 // ── WeekNav ───────────────────────────────────────────────────
+// ISO-weeknummer (maandag = start van de week)
+function isoWeekNumber(date: Date): number {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dayNum + 3); // donderdag van deze week
+  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const firstDayNum = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNum + 3);
+  return 1 + Math.round((d.getTime() - firstThursday.getTime()) / (7 * 24 * 3600 * 1000));
+}
+
 function WeekNav({ days, weekStart, setWeekStart, saving }: { days: Date[]; weekStart: Date; setWeekStart: (d: Date) => void; saving: boolean }) {
   function sw(d: Date): Date {
     const r = new Date(d); r.setHours(12,0,0,0);
@@ -1155,7 +1166,7 @@ function WeekNav({ days, weekStart, setWeekStart, saving }: { days: Date[]; week
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 10 }}>
         <button onClick={() => setWeekStart(ad(weekStart,-7))} style={navBtnSt}>← Vorige week</button>
         <div style={{ textAlign: 'center', flex: 1 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Week van</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Week {isoWeekNumber(days[0])}</div>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#0a2240' }}>{fmtLong(days[0])} – {fmtLong(days[6])}</div>
         </div>
         <button onClick={() => setWeekStart(ad(weekStart, 7))} style={navBtnSt}>Volgende week →</button>

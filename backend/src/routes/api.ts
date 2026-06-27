@@ -445,6 +445,15 @@ router.get('/auth/guest/reservations', requireGuestAuth, async (req: Request, re
     `SELECT r.id, r.reference, r.arrival_date, r.departure_date, r.status,
             r.total_price, r.payment_status, r.cancellation_token,
             r.ferry_outbound_destination, r.refund_amount, r.cancelled_at,
+            -- Werkelijk betaald totaal: na een prijsverlaging met partiële restitutie
+            -- hoort het ingehouden deel erbij (zoals op de factuur). Bv. €110 + (€10 − €3) = €117.
+            (r.total_price + CASE WHEN COALESCE(r.refund_amount, 0) > 0
+               THEN GREATEST(0,
+                 COALESCE((SELECT SUM(CASE WHEN m.price_difference < 0 THEN -m.price_difference ELSE 0 END)
+                           FROM reservation_modifications m
+                           WHERE m.reservation_id = r.id AND m.status IN ('completed', 'accepted')), 0)
+                 - COALESCE(r.refund_amount, 0))
+               ELSE 0 END) AS billed_total,
             array_agg(v.license_plate ORDER BY v.sort_order) FILTER (WHERE v.id IS NOT NULL) AS plates
      FROM reservations r
      JOIN customers c ON c.id = r.customer_id

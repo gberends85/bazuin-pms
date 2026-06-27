@@ -194,7 +194,7 @@ export default function MijnReserveringenPage() {
                   <div style={{ fontSize: '13px', color: '#555' }}>
                     Totaal:{' '}
                     <strong style={{ color: '#111' }}>
-                      € {parseFloat(r.total_price || 0).toFixed(2).replace('.', ',')}
+                      € {parseFloat(r.billed_total ?? r.total_price ?? 0).toFixed(2).replace('.', ',')}
                     </strong>
                     {(() => {
                       // partial_refund is wél betaald (alleen deels terug volgens beleid)

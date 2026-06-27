@@ -87,7 +87,24 @@ export async function generateInvoiceHtml(token: string): Promise<string | null>
   const extraTotal = extraItems.reduce((sum: number, it: any) =>
     sum + Math.round(parseFloat(String(it.unit_price || '0')) * (parseInt(String(it.quantity)) || 1) * 100) / 100, 0);
 
-  const totalIncl = parseFloat(r.total_price || 0) + extraTotal;
+  // Annuleringskosten: bij een datumwijziging die de prijs verlaagde, is volgens
+  // het annuleringsbeleid vaak maar een deel terugbetaald. Het ingehouden deel
+  // (verlaging − restitutie) hoort op de factuur, zodat het totaal gelijk is aan
+  // het werkelijk betaalde bedrag (bv. €120 − €3 restitutie = €117, niet €110).
+  const refundAmount = parseFloat(r.refund_amount || '0');
+  let cancellationFee = 0;
+  if (refundAmount > 0) {
+    const modRes = await query(
+      `SELECT COALESCE(SUM(CASE WHEN price_difference < 0 THEN -price_difference ELSE 0 END), 0) AS reductions
+       FROM reservation_modifications
+       WHERE reservation_id = $1 AND status IN ('completed', 'accepted')`,
+      [r.id]
+    );
+    const reductions = parseFloat(modRes.rows[0]?.reductions || '0');
+    cancellationFee = Math.max(0, Math.round((reductions - refundAmount) * 100) / 100);
+  }
+
+  const totalIncl = parseFloat(r.total_price || 0) + extraTotal + cancellationFee;
   const totalExcl = Math.round((totalIncl / 1.21) * 100) / 100;
   const btwBedrag = Math.round((totalIncl - totalExcl) * 100) / 100;
 
@@ -118,6 +135,9 @@ export async function generateInvoiceHtml(token: string): Promise<string | null>
   const overbookingSurcharge = parseFloat(r.overbooking_surcharge || 0);
   if (overbookingSurcharge > 0) {
     serviceRows += `<tr><td>Overboekingstoeslag</td><td class="num">1×</td><td class="num">${fmtMoney(r.overbooking_surcharge)}</td></tr>`;
+  }
+  if (cancellationFee > 0) {
+    serviceRows += `<tr><td>Annuleringskosten (niet-restitueerbaar deel datumwijziging)</td><td class="num">1×</td><td class="num">${fmtMoney(cancellationFee)}</td></tr>`;
   }
 
   // Parkeerkosten = totaal − seizoenstoeslag − laden − toeslagen, zodat de

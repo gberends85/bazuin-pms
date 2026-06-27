@@ -483,9 +483,9 @@ export default function ReservationDetailPage({ params }: { params: { id: string
                         <button
                           className="btn btn-ghost btn-sm"
                           style={{ fontSize: 11, color: nameLinkCopied ? '#0a7c6e' : '#7090b0' }}
-                          title="Kopieer link zodat iemand anders de naam kan aanpassen"
+                          title="Kopieer de wijziglink voor de klant (zoals in de bevestigingsmail)"
                           onClick={() => {
-                            const url = `${window.location.origin}/guest/naam/${res.id}`;
+                            const url = `https://www.parkeren-harlingen.nl/boeken/wijzigen/${res.cancellation_token}`;
                             navigator.clipboard.writeText(url);
                             setNameLinkCopied(true);
                             setTimeout(() => setNameLinkCopied(false), 3000);

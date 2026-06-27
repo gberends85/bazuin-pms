@@ -196,9 +196,20 @@ export default function MijnReserveringenPage() {
                     <strong style={{ color: '#111' }}>
                       € {parseFloat(r.total_price || 0).toFixed(2).replace('.', ',')}
                     </strong>
-                    {r.payment_status === 'paid'
-                      ? <span style={{ marginLeft: '6px', fontSize: '11px', color: '#2a7a3a', fontWeight: '700' }}>✓ betaald</span>
-                      : <span style={{ marginLeft: '6px', fontSize: '11px', color: '#8a5f00', fontWeight: '700' }}>openstaand</span>}
+                    {(() => {
+                      // partial_refund is wél betaald (alleen deels terug volgens beleid)
+                      const paidLike = r.payment_status === 'paid' || r.payment_status === 'partial_refund';
+                      const refund = parseFloat(r.refund_amount || 0);
+                      if (paidLike) {
+                        return (
+                          <span style={{ marginLeft: '6px', fontSize: '11px', color: '#2a7a3a', fontWeight: '700' }}>
+                            ✓ betaald{r.payment_status === 'partial_refund' && refund > 0 ? ` · € ${refund.toFixed(2).replace('.', ',')} terug` : ''}
+                          </span>
+                        );
+                      }
+                      if (r.status === 'cancelled') return null; // geannuleerd → niet "openstaand"
+                      return <span style={{ marginLeft: '6px', fontSize: '11px', color: '#8a5f00', fontWeight: '700' }}>openstaand</span>;
+                    })()}
                   </div>
                 </div>
               </div>

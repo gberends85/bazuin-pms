@@ -400,7 +400,9 @@ setInterval(runDoeksenSync, 24 * 60 * 60 * 1000);
 // ── Cleanup verlaten betalingen (elke minuut) ─────────────────
 // Reserveringen met status 'pending_payment' ouder dan 30 minuten
 // worden geannuleerd zodat de plekken weer vrijkomen.
-// De klant ontvangt een e-mail zodat hij weet wat er is misgegaan.
+// Bewust GEEN e-mail bij een niet-voltooide of niet-op-tijd-betaalde
+// reservering. Alleen wanneer iemand TE LAAT betaalt én we inmiddels vol
+// zitten, krijgt de klant bericht — dat wordt in de Stripe-webhook afgehandeld.
 setInterval(async () => {
   try {
     const result = await query(
@@ -413,35 +415,11 @@ setInterval(async () => {
        RETURNING id, reference`
     );
     if (result.rows.length > 0) {
+      // Geen e-mail: de plek komt simpelweg weer vrij. Betaalt de klant alsnog
+      // (te laat), dan handelt de Stripe-webhook dat af — en pas als we vol zijn
+      // krijgt hij een bericht om contact op te nemen.
       console.log(`[Cleanup] ${result.rows.length} verlaten reservering(en) geannuleerd:`,
         result.rows.map((r: any) => r.reference).join(', '));
-
-      // Stuur elke geannuleerde klant een e-mail
-      for (const row of result.rows as any[]) {
-        try {
-          const resData = await query(
-            `SELECT r.reference, r.arrival_date, r.departure_date, r.total_price,
-                    c.first_name, c.email
-             FROM reservations r JOIN customers c ON c.id = r.customer_id
-             WHERE r.id = $1`,
-            [row.id]
-          );
-          if (resData.rows.length === 0) continue;
-          const { first_name, email, reference, arrival_date, departure_date, total_price } = resData.rows[0];
-          const fmt = (d: string) => new Date(d).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
-          await sendSimpleEmail(
-            email,
-            `Uw reservering is verlopen — ${reference}`,
-            `<p>Beste ${first_name},</p>
-            <p>Uw reservering <strong>${reference}</strong> (${fmt(arrival_date)} – ${fmt(departure_date)}, € ${Number(total_price).toFixed(2).replace('.', ',')}) is helaas verlopen omdat de betaling niet binnen 30 minuten is ontvangen.</p>
-            <p>Uw parkeerplek is daardoor vrijgegeven. Als u nog wilt parkeren, kunt u een <a href="${process.env.FRONTEND_BOOKING_URL || 'https://parkeren-harlingen.nl'}">nieuwe reservering</a> plaatsen.</p>
-            <p>Heeft u al wél betaald maar dit bericht ontvangen? Neem dan direct contact met ons op — dan lossen we dit samen op.</p>
-            <p>Met vriendelijke groet,<br>Autostalling De Bazuin</p>`
-          );
-        } catch (mailErr: any) {
-          console.error(`[Cleanup] E-mail aan klant mislukt voor ${row.reference}:`, mailErr.message);
-        }
-      }
     }
   } catch (err: any) {
     console.error('[Cleanup] Fout bij opruimen verlaten reserveringen:', err.message);

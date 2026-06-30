@@ -29,6 +29,8 @@ body {
   background: var(--white);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  /* Reserveert ruimte voor de tijdelijke melding-balk (--tsr-h), 0 als die er niet is */
+  padding-top: var(--tsr-h, 0px);
 }
 
 h1, h2, h3, h4, h5, h6 {

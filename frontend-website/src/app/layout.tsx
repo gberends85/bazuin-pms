@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import NoticeBanner from './components/NoticeBanner';
 
 const SITE_URL = 'https://www.parkeren-harlingen.nl';
 const BOOKING_URL = 'https://www.parkeren-harlingen.nl';
@@ -109,7 +110,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessSchema) }}
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <NoticeBanner />
+        {children}
+      </body>
     </html>
   );
 }

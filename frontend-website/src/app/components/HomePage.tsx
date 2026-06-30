@@ -94,12 +94,9 @@ export default function HomePage({ content }: { content: WebsiteContent }) {
   const [reviewData, setReviewData] = useState<ReviewData | null>(null);
   const [reviewPage, setReviewPage] = useState(0);
   const [reviewPaused, setReviewPaused] = useState(false);
-  // Tijdelijke Tall Ship Races-melding: automatisch tonen t/m 6 juli 2026.
-  const [showTSR, setShowTSR] = useState(false);
 
   useEffect(() => {
     fetch('/api/reviews').then(r => r.json()).then(setReviewData).catch(() => {});
-    setShowTSR(new Date() < new Date('2026-07-07T00:00:00'));
   }, []);
 
   const reviewCount = reviewData?.reviews.length ?? 0;
@@ -143,20 +140,6 @@ export default function HomePage({ content }: { content: WebsiteContent }) {
       }}>
         {/* Donkere overlay zodat witte tekst leesbaar blijft */}
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(13,28,51,0.55) 0%, rgba(13,28,51,0.35) 45%, rgba(13,28,51,0.70) 100%)' }} />
-
-        {/* Tijdelijke Tall Ship Races-melding (t/m 6 juli) */}
-        {showTSR && (
-          <div style={{
-            position: 'absolute', top: 72, left: 0, right: 0, zIndex: 5,
-            background: 'rgba(10,34,64,0.94)', color: '#fff',
-            padding: '11px 20px', textAlign: 'center', fontSize: 13.5, lineHeight: 1.55,
-            borderBottom: '2px solid #e8a020',
-          }}>
-            <div className="container" style={{ maxWidth: 940, margin: '0 auto' }}>
-              ⚓ <strong>Tall Ship Races Harlingen — 3 t/m 6 juli.</strong> Niet alle routes naar de stalling zijn dan altijd bereikbaar. Wij zijn <strong>altijd bereikbaar vanaf de noordkant</strong>: via de <strong>A31/N31, afrit Harlingen-havens</strong>. Houd rekening met mogelijk <strong>extra reistijd</strong> in en rond Harlingen.
-            </div>
-          </div>
-        )}
 
         <div className="container" style={{ position: 'relative', zIndex: 1, padding: '72px 20px', textAlign: 'center' }}>
           <h1 style={{ fontFamily: 'var(--font-display)', color: 'white', fontSize: 'clamp(32px, 5.5vw, 60px)', lineHeight: 1.12, marginBottom: 28, maxWidth: 900, marginLeft: 'auto', marginRight: 'auto', textShadow: '0 2px 16px rgba(0,0,0,0.45)' }}>

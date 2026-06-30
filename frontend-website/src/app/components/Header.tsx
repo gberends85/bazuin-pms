@@ -17,7 +17,7 @@ export default function Header() {
 
   return (
     <header style={{
-      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
+      position: 'fixed', top: 'var(--tsr-h, 0px)', left: 0, right: 0, zIndex: 100,
       background: scrolled
         ? 'linear-gradient(135deg, rgba(20,36,64,0.98), rgba(25,73,158,0.98))'
         : 'linear-gradient(180deg, rgba(10,18,36,0.55) 0%, transparent 100%)',

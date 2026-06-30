@@ -13,13 +13,27 @@ function getStripe(): Stripe {
   return _stripe;
 }
 
+// Nette NL-datum (bv. "3 juli 2026") voor in betaalomschrijvingen.
+function fmtNL(d: any): string {
+  return new Date(d).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+// Eenduidige betaalomschrijving: parkeerperiode + echt boekingsnummer.
+// Verschijnt in het Stripe-dashboard én op de betaalpagina/bon die de klant ziet.
+export function bookingPaymentDescription(reference: string, arrival: any, departure: any): string {
+  return `Parkeren De Bazuin ${fmtNL(arrival)} t/m ${fmtNL(departure)} (boeking ${reference})`;
+}
+
 // ── Payment Intent aanmaken ──────────────────────────────────
 export async function createPaymentIntent(
   reservationId: string,
   amountEuros: number,
   paymentMethod: string,
   customerEmail: string,
-  customerName: string
+  customerName: string,
+  reference?: string,
+  arrivalDate?: any,
+  departureDate?: any
 ): Promise<{ clientSecret: string; paymentIntentId: string }> {
   const stripe = getStripe();
 
@@ -69,7 +83,9 @@ export async function createPaymentIntent(
       reservation_id: reservationId,
       system: 'bazuin_pms',
     },
-    description: `Autostalling De Bazuin — reservering ${reservationId}`,
+    description: reference
+      ? bookingPaymentDescription(reference, arrivalDate, departureDate)
+      : `Autostalling De Bazuin — reservering ${reservationId}`,
   });
 
   // Sla Payment Intent ID op
@@ -167,6 +183,7 @@ export async function createCheckoutSessionForExtraPayment(
       quantity: 1,
     }],
     payment_intent_data: {
+      description,
       metadata: {
         reservation_id: reservationId,
         modification_id: modificationId,

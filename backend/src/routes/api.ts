@@ -13,6 +13,7 @@ import {
 import {
   createPaymentIntent, processRefund, getPaymentIntent,
   createCheckoutSessionForExtraPayment, createContractInvoicePaymentLink,
+  bookingPaymentDescription,
 } from '../services/stripe.service';
 import {
   requireAuth, requireAdminRole,
@@ -1057,7 +1058,10 @@ router.post('/payments/create-intent', async (req: Request, res: Response) => {
     parseFloat(res2.total_price),
     res2.payment_method,
     res2.email,
-    `${res2.first_name} ${res2.last_name}`
+    `${res2.first_name} ${res2.last_name}`,
+    res2.reference,
+    res2.arrival_date,
+    res2.departure_date
   );
 
   return res.json({ clientSecret, paymentIntentId });
@@ -4380,7 +4384,7 @@ router.post('/admin/modifications/:id/send-payment-link', requireAuth, async (re
   const r = resResult.rows[0];
 
   const extraAmount = Math.round((parseFloat(mod.price_difference) + parseFloat(mod.modification_fee || '0')) * 100) / 100;
-  const description = `Bijbetaling wijziging ${r.reference} — autostalling De Bazuin`;
+  const description = `Bijbetaling wijziging — ${bookingPaymentDescription(r.reference, mod.new_arrival_date, mod.new_departure_date)}`;
 
   const { url } = await createCheckoutSessionForExtraPayment(
     r.id, mod.id, extraAmount, r.email, description

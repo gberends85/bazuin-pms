@@ -3059,7 +3059,9 @@ router.get('/admin/invoice-groups/:id', requireAuth, async (req: Request, res: R
               COALESCE(r.guest_first_name, c.first_name) as first_name,
               COALESCE(r.guest_last_name, c.last_name) as last_name,
               c.email, COALESCE(NULLIF(r.guest_phone, ''), c.phone) AS phone,
-              (SELECT string_agg(v.license_plate, ', ' ORDER BY v.sort_order) FROM vehicles v WHERE v.reservation_id = r.id) as plates
+              (SELECT string_agg(v.license_plate, ', ' ORDER BY v.sort_order) FROM vehicles v WHERE v.reservation_id = r.id) as plates,
+              (SELECT COALESCE(SUM(v.ev_kwh), 0) FROM vehicles v WHERE v.reservation_id = r.id) as ev_kwh_total,
+              (SELECT COALESCE(SUM(v.ev_price), 0) FROM vehicles v WHERE v.reservation_id = r.id) as ev_price_total
        FROM reservations r
        JOIN customers c ON c.id = r.customer_id
        WHERE r.invoice_group_id = $1

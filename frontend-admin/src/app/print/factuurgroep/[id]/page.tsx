@@ -164,11 +164,19 @@ export default function PrintFactuurGroepPage({ params }: { params: { id: string
                     ferryRet ? `↙ terug ${ferryRet}` : null,
                   ].filter(Boolean).join('  ·  ')
                 : null;
+              const evKwh = parseFloat(r.ev_kwh_total || 0);
+              const evCost = parseFloat(r.ev_price_total || 0);
               return (
                 <tr key={r.id || i}>
                   <td style={{ fontWeight: 600 }}>
                     {r.first_name} {r.last_name}
                     {ferryLine && <div style={{ fontWeight: 400, fontSize: '7.5pt', color: '#7090b0', marginTop: 1 }}>{ferryLine}</div>}
+                    {evKwh > 0 && (
+                      <div style={{ fontWeight: 400, fontSize: '7.5pt', color: '#0a7c6e', marginTop: 1 }}>
+                        ⚡ Laden: {String(evKwh).replace('.', ',')} kWh · {fmtMoney(evCost)}
+                        <span style={{ color: '#9aa8b8' }}> (incl. in bedrag)</span>
+                      </div>
+                    )}
                   </td>
                   <td style={{ fontFamily: 'monospace', fontSize: '9pt', color: '#556070' }}>
                     {r.plates || 'Onbekend'}

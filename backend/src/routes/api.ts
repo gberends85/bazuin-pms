@@ -7020,8 +7020,10 @@ async function loadDbEvLines(customerId: string, from: string, to: string, custo
 }
 
 router.post('/admin/contract-customers/:id/invoice-preview', requireAuth, async (req: Request, res: Response) => {
-  const { from, to, evLines } = req.body || {};
+  const { from, to, evLines, invoiceDate, paymentTermDays } = req.body || {};
   if (!from || !to) return res.status(400).json({ error: 'from en to verplicht' });
+  const invDate = invoiceDate ? String(invoiceDate).slice(0, 10) : undefined;
+  const termDays = Number.isFinite(Number(paymentTermDays)) && Number(paymentTermDays) >= 0 ? Math.round(Number(paymentTermDays)) : 30;
   const c = await query('SELECT * FROM contract_customers WHERE id = $1', [req.params.id]);
   if (c.rows.length === 0) return res.status(404).json({ error: 'Klant niet gevonden' });
   const customer = c.rows[0];
@@ -7062,6 +7064,8 @@ router.post('/admin/contract-customers/:id/invoice-preview', requireAuth, async 
       dailyRate: 0,
       vatPercentage: parseFloat(customer.vat_percentage),
       evLines: allEvLines,
+      invoiceDate: invDate,
+      paymentTermDays: termDays,
       isPreview: true,
     });
   } else if (rateType === 'seasonal') {
@@ -7084,6 +7088,8 @@ router.post('/admin/contract-customers/:id/invoice-preview', requireAuth, async 
       nextYearHighSeasonRate: parseFloat(customer.next_year_high_season_rate) || 0,
       vatPercentage: parseFloat(customer.vat_percentage),
       evLines: allEvLines,
+      invoiceDate: invDate,
+      paymentTermDays: termDays,
       isPreview: true,
     });
   } else {
@@ -7102,6 +7108,8 @@ router.post('/admin/contract-customers/:id/invoice-preview', requireAuth, async 
       dailyRate: parseFloat(customer.daily_rate),
       vatPercentage: parseFloat(customer.vat_percentage),
       evLines: allEvLines,
+      invoiceDate: invDate,
+      paymentTermDays: termDays,
       isPreview: true,
     });
   }
@@ -7112,8 +7120,10 @@ router.post('/admin/contract-customers/:id/invoice-preview', requireAuth, async 
 });
 
 router.post('/admin/contract-customers/:id/invoice', requireAuth, async (req: Request, res: Response) => {
-  const { from, to, evLines } = req.body || {};
+  const { from, to, evLines, invoiceDate, paymentTermDays } = req.body || {};
   if (!from || !to) return res.status(400).json({ error: 'from en to verplicht' });
+  const invDate = invoiceDate ? String(invoiceDate).slice(0, 10) : null;
+  const termDays = Number.isFinite(Number(paymentTermDays)) && Number(paymentTermDays) >= 0 ? Math.round(Number(paymentTermDays)) : 30;
   const c = await query('SELECT * FROM contract_customers WHERE id = $1', [req.params.id]);
   if (c.rows.length === 0) return res.status(404).json({ error: 'Klant niet gevonden' });
   const customer = c.rows[0];
@@ -7256,6 +7266,10 @@ router.post('/admin/contract-customers/:id/invoice', requireAuth, async (req: Re
     };
   }
 
+  // Factuurdatum en betaaltermijn (instelbaar in de admin) in de snapshot bewaren.
+  (snapshot as any).invoice_date = invDate;
+  (snapshot as any).payment_term_days = termDays;
+
   // Use effective_from from seasonal snapshot (clamped to season_start_date) if available
   const storedFrom = (snapshot as any).effective_from || from;
   const ins = await query(
@@ -7334,7 +7348,8 @@ router.get('/admin/contract-invoices/:id/pdf', requireAuth, async (req: Request,
     periodFrom: contractIsoDate(inv.period_from),
     periodTo: contractIsoDate(inv.period_to),
     invoiceNumber: inv.invoice_number,
-    invoiceDate: contractIsoDate(inv.created_at),
+    invoiceDate: snap.invoice_date || contractIsoDate(inv.created_at),
+    paymentTermDays: snap.payment_term_days ?? 30,
     rateType: snap.rateType || 'daily',
     fixedPeriodDays: snap.fixed_period_days,
     fixedPeriodRate: snap.fixed_period_rate,
@@ -7366,7 +7381,8 @@ async function pdfFromStoredContractInvoice(inv: any, paymentUrl?: string): Prom
     periodFrom: contractIsoDate(inv.period_from),
     periodTo: contractIsoDate(inv.period_to),
     invoiceNumber: inv.invoice_number,
-    invoiceDate: contractIsoDate(inv.created_at),
+    invoiceDate: snap.invoice_date || contractIsoDate(inv.created_at),
+    paymentTermDays: snap.payment_term_days ?? 30,
     rateType: snap.rateType || 'daily',
     fixedPeriodDays: snap.fixed_period_days,
     fixedPeriodRate: snap.fixed_period_rate,

@@ -35,13 +35,13 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   return res.json();
 }
 
-export async function fetchContractInvoicePreview(customerId: string, from: string, to: string, evLines?: { description: string; kwh: number; ratePerKwh: number }[]): Promise<Blob> {
+export async function fetchContractInvoicePreview(customerId: string, from: string, to: string, evLines?: { description: string; kwh: number; ratePerKwh: number }[], invoiceDate?: string, paymentTermDays?: number): Promise<Blob> {
   const token = getToken();
   const res = await fetch(`${API_BASE}/admin/contract-customers/${customerId}/invoice-preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     credentials: 'include',
-    body: JSON.stringify({ from, to, evLines: evLines ?? [] }),
+    body: JSON.stringify({ from, to, evLines: evLines ?? [], invoiceDate, paymentTermDays }),
   });
   if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error((b as any).error || `Fout ${res.status}`); }
   return res.blob();
@@ -212,7 +212,7 @@ export const api = {
     saveEntries: (id: string, entries: any[]) => req<any>(`/admin/contract-customers/${id}/entries`, { method: 'PUT', body: JSON.stringify({ entries }) }),
     vehicleStays: (id: string, from: string, to: string) => req<any[]>(`/admin/contract-customers/${id}/vehicle-stays?from=${from}&to=${to}`),
     addVehicleStay: (id: string, d: any) => req<any>(`/admin/contract-customers/${id}/vehicle-stays`, { method: 'POST', body: JSON.stringify(d) }),
-    finalizeInvoice: (id: string, from: string, to: string, evLines?: { description: string; kwh: number; ratePerKwh: number }[]) => req<any>(`/admin/contract-customers/${id}/invoice`, { method: 'POST', body: JSON.stringify({ from, to, evLines: evLines ?? [] }) }),
+    finalizeInvoice: (id: string, from: string, to: string, evLines?: { description: string; kwh: number; ratePerKwh: number }[], invoiceDate?: string, paymentTermDays?: number) => req<any>(`/admin/contract-customers/${id}/invoice`, { method: 'POST', body: JSON.stringify({ from, to, evLines: evLines ?? [], invoiceDate, paymentTermDays }) }),
     invoicedPeriods: (id: string) => req<{ invoice_number: string; period_from: string; period_to: string }[]>(`/admin/contract-customers/${id}/invoiced-periods`),
     setAutoInvoice: (id: string, d: { enabled: boolean; intervalMonths: number; startDate: string | null }) => req<{ ok: boolean }>(`/admin/contract-customers/${id}/auto-invoice`, { method: 'PUT', body: JSON.stringify(d) }),
   },

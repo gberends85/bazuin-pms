@@ -399,6 +399,8 @@ export default function ContractInvoicesPage() {
 
   const [periodFrom, setPeriodFrom] = useState<string>('');
   const [periodTo, setPeriodTo] = useState<string>('');
+  const [invoiceDate, setInvoiceDate] = useState<string>('');
+  const [paymentTermDays, setPaymentTermDays] = useState<string>('30');
   const [generating, setGenerating] = useState(false);
 
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -426,6 +428,7 @@ export default function ContractInvoicesPage() {
   useEffect(() => {
     setRecentIds(getRecentIds());
     loadCustomers();
+    setInvoiceDate(isoDate(new Date()));
   }, []);
 
   useEffect(() => {
@@ -648,7 +651,7 @@ export default function ContractInvoicesPage() {
     setGenerating(true);
     try {
       if (!isFixedPeriod && !isSeasonal) await saveEntries();
-      const blob = await fetchContractInvoicePreview(customerId, periodFrom, periodTo, parsedEvLines());
+      const blob = await fetchContractInvoicePreview(customerId, periodFrom, periodTo, parsedEvLines(), invoiceDate || undefined, Number(paymentTermDays) || 30);
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
       setTimeout(() => URL.revokeObjectURL(url), 30000);
@@ -662,7 +665,7 @@ export default function ContractInvoicesPage() {
     setGenerating(true);
     try {
       if (!isFixedPeriod && !isSeasonal) await saveEntries();
-      const r = await api.contractCustomers.finalizeInvoice(customerId, periodFrom, periodTo, parsedEvLines());
+      const r = await api.contractCustomers.finalizeInvoice(customerId, periodFrom, periodTo, parsedEvLines(), invoiceDate || undefined, Number(paymentTermDays) || 30);
       toast(`Factuur ${r.invoice_number} aangemaakt ✓`);
       await loadInvoices();
       await loadInvoicedPeriods();
@@ -1035,6 +1038,16 @@ export default function ContractInvoicesPage() {
                 <span style={labelSt}>Tot en met</span>
                 <input type="date" value={periodTo} onChange={e => setPeriodTo(e.target.value)}
                   style={{ padding: '7px 10px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 6, fontSize: 13 }} />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={labelSt}>Factuurdatum</span>
+                <input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)}
+                  style={{ padding: '7px 10px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 6, fontSize: 13 }} />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={labelSt}>Betaaltermijn (dagen)</span>
+                <input type="number" min={0} value={paymentTermDays} onChange={e => setPaymentTermDays(e.target.value)}
+                  style={{ padding: '7px 10px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 6, fontSize: 13, width: 130 }} />
               </label>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button onClick={() => { setPeriodFrom(isoDate(days[0])); setPeriodTo(isoDate(days[6])); }} style={{ ...navBtnSt, fontSize: 11 }}>Deze week</button>

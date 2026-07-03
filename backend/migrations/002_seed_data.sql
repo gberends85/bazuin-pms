@@ -14,7 +14,7 @@ VALUES (
   'a0000000-0000-0000-0000-000000000001',
   'Autostalling De Bazuin',
   'Overdekte autostalling op loopafstand van de veerboten naar Terschelling en Vlieland.',
-  'Franekereind 13, 8861 KL Harlingen',
+  'Zeilmakersstraat 2, 8861 SE Harlingen',
   55, 50, 30, 120, 90, '31612345678'
 );
 
@@ -269,7 +269,7 @@ INSERT INTO settings (key, value, description) VALUES
   ('booking_url', 'https://parkeren-harlingen.nl', 'URL klantportal'),
   ('admin_url', 'https://admin.autostallingdebazuin.nl', 'URL admin portaal'),
   ('company_name', 'Autostalling De Bazuin', 'Bedrijfsnaam'),
-  ('company_address', 'Franekereind 13, 8861 KL Harlingen', 'Adres'),
+  ('company_address', 'Zeilmakersstraat 2, 8861 SE Harlingen', 'Adres'),
   ('company_phone', '+31 517 412345', 'Telefoonnummer'),
   ('company_email', 'info@autostallingdebazuin.nl', 'E-mailadres'),
   ('company_whatsapp', '31612345678', 'WhatsApp nummer (zonder +)'),

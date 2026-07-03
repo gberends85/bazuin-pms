@@ -64,9 +64,9 @@ const localBusinessSchema = {
   currenciesAccepted: 'EUR',
   address: {
     '@type': 'PostalAddress',
-    streetAddress: 'Industrieweg 1',
+    streetAddress: 'Zeilmakersstraat 2',
     addressLocality: 'Harlingen',
-    postalCode: '8861 NM',
+    postalCode: '8861 SE',
     addressCountry: 'NL',
   },
   geo: {

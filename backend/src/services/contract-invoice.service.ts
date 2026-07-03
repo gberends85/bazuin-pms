@@ -288,18 +288,16 @@ export function buildContractInvoiceHtml(input: ContractInvoiceInput): string {
       for (const w of weeks) {
         const dayParts = w.days
           .sort((a, b) => a.dow - b.dow)
-          .map(d => `${DAY_SHORT_NL[d.dow]}: ${d.count}`)
-          .join('  ');
+          .map(d => `${DAY_SHORT_NL[d.dow]} ${d.count}`)
+          .join(' · ');
         const weekLabel = `W${w.week}`;
         const dateRange = `${w.weekStart.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} – ${w.weekEnd.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })}`;
         const lineTotal = w.totalCars * input.dailyRate;
+        // Compacte regel: week, datumbereik en dagverdeling op één regel.
         rowsHtml += `<tr>
-          <td>
-            <strong>${weekLabel}</strong> · <span style="color:#555">${esc(dateRange)}</span><br>
-            <span style="font-size:9.5pt;color:#0a2240">${esc(dayParts)}</span>
-          </td>
-          <td class="num">${w.totalCars}×</td>
-          <td class="num">${fmtMoney(lineTotal)}</td>
+          <td style="padding-top:2mm;padding-bottom:2mm"><strong>${weekLabel}</strong> · <span style="color:#555">${esc(dateRange)}</span> &nbsp;<span style="font-size:8.5pt;color:#7090b0">${esc(dayParts)}</span></td>
+          <td class="num" style="padding-top:2mm;padding-bottom:2mm">${w.totalCars}×</td>
+          <td class="num" style="padding-top:2mm;padding-bottom:2mm">${fmtMoney(lineTotal)}</td>
         </tr>`;
       }
     }

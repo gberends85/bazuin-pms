@@ -7308,6 +7308,21 @@ function contractIsoDate(v: any): string {
   return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : s;
 }
 
+// Klantgegevens (adressering) live uit het klantrecord halen, met de snapshot als
+// terugval. Zo toont een factuur altijd het actuele adres; bedragen/periode blijven
+// ongewijzigd uit de snapshot.
+async function contractInvoiceCustomer(inv: any, snap: any): Promise<any> {
+  if (!inv.contract_customer_id) return snap?.customer;
+  const r = await query('SELECT * FROM contract_customers WHERE id = $1', [inv.contract_customer_id]);
+  const live = r.rows[0];
+  if (!live) return snap?.customer;
+  const merged: any = { ...(snap?.customer || {}) };
+  for (const [k, v] of Object.entries(live)) {
+    if (v !== null && v !== undefined && v !== '') merged[k] = v;
+  }
+  return merged;
+}
+
 router.get('/admin/contract-invoices/:id/pdf', requireAuth, async (req: Request, res: Response) => {
   const r = await query('SELECT * FROM contract_invoices WHERE id = $1', [req.params.id]);
   if (r.rows.length === 0) return res.status(404).json({ error: 'Factuur niet gevonden' });
@@ -7315,7 +7330,7 @@ router.get('/admin/contract-invoices/:id/pdf', requireAuth, async (req: Request,
   const snap = typeof inv.snapshot === 'string' ? JSON.parse(inv.snapshot) : inv.snapshot;
 
   const pdf = await generateContractInvoicePdf({
-    customer: snap.customer,
+    customer: await contractInvoiceCustomer(inv, snap),
     periodFrom: contractIsoDate(inv.period_from),
     periodTo: contractIsoDate(inv.period_to),
     invoiceNumber: inv.invoice_number,
@@ -7347,7 +7362,7 @@ async function pdfFromStoredContractInvoice(inv: any, paymentUrl?: string): Prom
   const snap = typeof inv.snapshot === 'string' ? JSON.parse(inv.snapshot) : inv.snapshot;
   return generateContractInvoicePdf({
     paymentUrl,
-    customer: snap.customer,
+    customer: await contractInvoiceCustomer(inv, snap),
     periodFrom: contractIsoDate(inv.period_from),
     periodTo: contractIsoDate(inv.period_to),
     invoiceNumber: inv.invoice_number,
@@ -7459,7 +7474,8 @@ router.post('/admin/contract-invoices/:id/send-email', requireAuth, async (req: 
   if (r.rows.length === 0) return res.status(404).json({ error: 'Factuur niet gevonden' });
   const inv = r.rows[0];
   const snap = typeof inv.snapshot === 'string' ? JSON.parse(inv.snapshot) : inv.snapshot;
-  const to = snap?.customer?.email;
+  const customer = await contractInvoiceCustomer(inv, snap);
+  const to = customer?.email;
   if (!to) return res.status(400).json({ error: 'Klant heeft geen e-mailadres' });
 
   // iDEAL-betaallink aanmaken (eenmalig, alleen als nog niet betaald)
@@ -7476,7 +7492,7 @@ router.post('/admin/contract-invoices/:id/send-email', requireAuth, async (req: 
   }
 
   const pdf = await pdfFromStoredContractInvoice(inv, payUrl || undefined);
-  await sendContractInvoiceEmail(to, snap?.customer?.name || '', inv.invoice_number, pdf, payUrl);
+  await sendContractInvoiceEmail(to, customer?.name || '', inv.invoice_number, pdf, payUrl);
   await query(`UPDATE contract_invoices SET sent_at = NOW() WHERE id = $1`, [req.params.id]).catch(() => {});
   return res.json({ ok: true, email: to, paymentLink: payUrl });
 });

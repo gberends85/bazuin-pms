@@ -3,11 +3,12 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AdminLayout from '@/components/layout/AdminLayout';
 import Toaster, { toast, toastError } from '@/components/ui/Toast';
-import { api } from '@/lib/api';
+import { api, fetchInvoiceGroupPdf } from '@/lib/api';
 import DateRangePicker from '@/components/ui/DateRangePicker';
 import {
   PlusIcon, TrashIcon, PaperAirplaneIcon,
   PencilSquareIcon, CheckIcon, ArrowPathIcon, DocumentTextIcon, LinkIcon,
+  ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
@@ -189,6 +190,18 @@ export default function FactuurDetailPage({ params }: { params: { id: string } }
     finally { setSending(false); }
   }
 
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  async function downloadPdf() {
+    setDownloadingPdf(true);
+    try {
+      const blob = await fetchInvoiceGroupPdf(id);
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (e: any) { toastError(e.message); }
+    finally { setDownloadingPdf(false); }
+  }
+
   async function markPaid() {
     try {
       await api.invoiceGroups.update(id, { ...billing, status: 'paid' });
@@ -283,6 +296,10 @@ export default function FactuurDetailPage({ params }: { params: { id: string } }
               style={{ padding: '8px 14px', borderRadius: 8, border: '0.5px solid rgba(10,34,64,0.2)', background: 'white', fontSize: 13, fontWeight: 600, color: '#0a2240', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, textDecoration: 'none' }}>
               <DocumentTextIcon style={{ width: 15, height: 15 }} />Factuurvoorbeeld
             </a>
+            <button onClick={downloadPdf} disabled={downloadingPdf}
+              style={{ padding: '8px 14px', borderRadius: 8, border: '0.5px solid rgba(10,34,64,0.2)', background: 'white', fontSize: 13, fontWeight: 600, color: '#0a2240', cursor: downloadingPdf ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 5, opacity: downloadingPdf ? 0.6 : 1 }}>
+              <ArrowDownTrayIcon style={{ width: 15, height: 15 }} />{downloadingPdf ? 'PDF maken…' : 'Download PDF'}
+            </button>
             {group.modification_token && (
               <button onClick={() => {
                 const origin = window.location.hostname === 'localhost'

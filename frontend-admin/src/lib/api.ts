@@ -57,6 +57,16 @@ export async function fetchContractInvoicePdf(id: string): Promise<Blob> {
   return res.blob();
 }
 
+export async function fetchInvoiceGroupPdf(id: string | number): Promise<Blob> {
+  const token = getToken();
+  const res = await fetch(`${API_BASE}/admin/invoice-groups/${id}/pdf`, {
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    credentials: 'include',
+  });
+  if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error((b as any).error || `Fout ${res.status}`); }
+  return res.blob();
+}
+
 export const api = {
   auth: {
     login: (email: string, password: string) => req<{accessToken:string;user:any}>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),

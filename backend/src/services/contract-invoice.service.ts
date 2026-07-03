@@ -1,7 +1,7 @@
-import puppeteer from 'puppeteer-core';
 import QRCode from 'qrcode';
 import { query } from '../db/pool';
 import { LOGO_B64 } from './invoice.service';
+import { htmlToPdfA4 } from './pdf.service';
 
 // ── Helpers ────────────────────────────────────────────────
 function toIsoDate(d: any): string {
@@ -512,35 +512,7 @@ export async function generateContractInvoicePdf(input: ContractInvoiceInput): P
     try { input.paymentQrDataUrl = await QRCode.toDataURL(input.paymentUrl, { margin: 1, width: 220, errorCorrectionLevel: 'M' }); }
     catch { /* QR is optioneel — bij een fout simpelweg geen QR tonen */ }
   }
-  const html = buildContractInvoiceHtml(input);
-
-  const chromiumPath = (() => {
-    const fs = require('fs');
-    const candidates = ['/usr/bin/chromium-browser', '/snap/bin/chromium', '/usr/bin/chromium', '/usr/bin/google-chrome'];
-    for (const p of candidates) {
-      try { if (fs.existsSync(p)) return p; } catch {}
-    }
-    return '/usr/bin/chromium-browser';
-  })();
-
-  const browser = await puppeteer.launch({
-    executablePath: chromiumPath,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-    headless: true,
-  });
-
-  try {
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-    const pdf = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' },
-    });
-    return Buffer.from(pdf);
-  } finally {
-    await browser.close();
-  }
+  return htmlToPdfA4(buildContractInvoiceHtml(input));
 }
 
 export async function generateNextContractInvoiceNumber(): Promise<string> {

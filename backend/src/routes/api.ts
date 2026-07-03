@@ -25,6 +25,7 @@ import { generateInvoicePdf, generateInvoiceHtml, generateCreditNoteHtml } from 
 import {
   generateContractInvoicePdf, generateNextContractInvoiceNumber,
 } from '../services/contract-invoice.service';
+import { generateInvoiceGroupPdf } from '../services/invoice-group.service';
 import { importUmbracoRecord } from '../services/umbraco-import.service';
 import { keysafeRouter } from './keysafe.routes';
 
@@ -3047,9 +3048,8 @@ router.post('/admin/invoice-groups', requireAuth, async (req: Request, res: Resp
   res.status(201).json(result.rows[0]);
 });
 
-// GET /admin/invoice-groups/:id — detail met reserveringen
-router.get('/admin/invoice-groups/:id', requireAuth, async (req: Request, res: Response) => {
-  const { id } = req.params;
+// Laadt een factuurgroep + zijn reserveringen (gedeeld door detail-, PDF- en verzendroute).
+async function loadInvoiceGroup(id: string): Promise<any | null> {
   const [ig, reservations] = await Promise.all([
     query('SELECT * FROM invoice_groups WHERE id = $1', [id]),
     query(
@@ -3069,8 +3069,25 @@ router.get('/admin/invoice-groups/:id', requireAuth, async (req: Request, res: R
       [id]
     ),
   ]);
-  if (ig.rows.length === 0) return res.status(404).json({ error: 'Factuurgroep niet gevonden' });
-  res.json({ ...ig.rows[0], reservations: reservations.rows });
+  if (ig.rows.length === 0) return null;
+  return { ...ig.rows[0], reservations: reservations.rows };
+}
+
+// GET /admin/invoice-groups/:id — detail met reserveringen
+router.get('/admin/invoice-groups/:id', requireAuth, async (req: Request, res: Response) => {
+  const group = await loadInvoiceGroup(req.params.id);
+  if (!group) return res.status(404).json({ error: 'Factuurgroep niet gevonden' });
+  res.json(group);
+});
+
+// GET /admin/invoice-groups/:id/pdf — nette PDF (echt logo, zelfde opmaak als contractfactuur)
+router.get('/admin/invoice-groups/:id/pdf', requireAuth, async (req: Request, res: Response) => {
+  const group = await loadInvoiceGroup(req.params.id);
+  if (!group) return res.status(404).json({ error: 'Factuurgroep niet gevonden' });
+  const pdf = await generateInvoiceGroupPdf(group);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="Factuur-${group.reference}.pdf"`);
+  return res.send(pdf);
 });
 
 // PUT /admin/invoice-groups/:id — bijwerken
@@ -3109,96 +3126,22 @@ router.delete('/admin/invoice-groups/:id/reservations/:resId', requireAuth, asyn
   res.json({ success: true });
 });
 
-// POST /admin/invoice-groups/:id/send — factuur versturen per e-mail
+// POST /admin/invoice-groups/:id/send — factuur als PDF-bijlage per e-mail versturen
 router.post('/admin/invoice-groups/:id/send', requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params;
+  const group = await loadInvoiceGroup(id);
+  if (!group) return res.status(404).json({ error: 'Factuurgroep niet gevonden' });
+  if (!group.billing_email) return res.status(400).json({ error: 'Deze factuurgroep heeft geen e-mailadres' });
+  if ((group.reservations || []).length === 0) return res.status(400).json({ error: 'Geen reserveringen in deze factuurgroep' });
 
-  const [igResult, resResult] = await Promise.all([
-    query('SELECT * FROM invoice_groups WHERE id = $1', [id]),
-    query(
-      `SELECT r.reference, r.arrival_date, r.departure_date, r.nights, r.total_price,
-              COALESCE(r.guest_first_name, c.first_name) as first_name,
-              COALESCE(r.guest_last_name, c.last_name) as last_name,
-              (SELECT string_agg(v.license_plate, ', ' ORDER BY v.sort_order) FROM vehicles v WHERE v.reservation_id = r.id) as plates
-       FROM reservations r
-       JOIN customers c ON c.id = r.customer_id
-       WHERE r.invoice_group_id = $1
-       ORDER BY r.arrival_date ASC`,
-      [id]
-    ),
-  ]);
-
-  if (igResult.rows.length === 0) return res.status(404).json({ error: 'Factuurgroep niet gevonden' });
-  if (resResult.rows.length === 0) return res.status(400).json({ error: 'Geen reserveringen in deze factuurgroep' });
-
-  const ig = igResult.rows[0];
-  const rows = resResult.rows;
-  const total = rows.reduce((s: number, r: any) => s + parseFloat(r.total_price), 0);
-
-  const fmt = (d: string) => new Date(d).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
-  const fmtEur = (n: number) => `€ ${n.toFixed(2).replace('.', ',')}`;
-
-  const rowsHtml = rows.map((r: any) => `
-    <tr style="border-bottom: 0.5px solid #e8edf3;">
-      <td style="padding: 10px 12px; font-size: 13px; color: #1a2e48;">${r.first_name} ${r.last_name}</td>
-      <td style="padding: 10px 12px; font-size: 13px; color: #1a2e48;">${r.plates || '—'}</td>
-      <td style="padding: 10px 12px; font-size: 13px; color: #1a2e48;">${fmt(r.arrival_date)} – ${fmt(r.departure_date)}</td>
-      <td style="padding: 10px 12px; font-size: 13px; color: #1a2e48; text-align: right;">${r.nights + 1} dag${(r.nights + 1) !== 1 ? 'en' : ''}</td>
-      <td style="padding: 10px 12px; font-size: 13px; color: #1a2e48; text-align: right; font-weight: 700;">${fmtEur(parseFloat(r.total_price))}</td>
-    </tr>`).join('');
-
-  const html = `
-  <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 680px; margin: 0 auto; background: #f4f6f9; padding: 32px 16px;">
-    <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(10,34,64,0.08);">
-      <div style="background: #0a2240; padding: 24px 32px; display: flex; align-items: center; gap: 16px;">
-        <div style="width: 44px; height: 44px; background: #e8a020; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; color: #0a2240;">AB</div>
-        <div>
-          <div style="color: white; font-size: 18px; font-weight: 800; margin: 0;">Autostalling De Bazuin</div>
-          <div style="color: rgba(255,255,255,0.6); font-size: 13px;">Zeilmakersstraat 2 · 8861 SE Harlingen</div>
-        </div>
-      </div>
-      <div style="padding: 28px 32px;">
-        <h2 style="margin: 0 0 4px; font-size: 22px; font-weight: 800; color: #0a2240;">Factuur ${ig.reference}</h2>
-        <p style="margin: 0 0 24px; font-size: 13px; color: #7090b0;">Aangemaakt op ${fmt(ig.created_at)}</p>
-
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
-          <thead>
-            <tr style="background: #f4f6f9;">
-              <th style="padding: 9px 12px; font-size: 11px; font-weight: 700; color: #7090b0; text-transform: uppercase; letter-spacing: 0.5px; text-align: left;">Naam</th>
-              <th style="padding: 9px 12px; font-size: 11px; font-weight: 700; color: #7090b0; text-transform: uppercase; letter-spacing: 0.5px; text-align: left;">Kenteken</th>
-              <th style="padding: 9px 12px; font-size: 11px; font-weight: 700; color: #7090b0; text-transform: uppercase; letter-spacing: 0.5px; text-align: left;">Periode</th>
-              <th style="padding: 9px 12px; font-size: 11px; font-weight: 700; color: #7090b0; text-transform: uppercase; letter-spacing: 0.5px; text-align: right;">Dagen</th>
-              <th style="padding: 9px 12px; font-size: 11px; font-weight: 700; color: #7090b0; text-transform: uppercase; letter-spacing: 0.5px; text-align: right;">Bedrag</th>
-            </tr>
-          </thead>
-          <tbody>${rowsHtml}</tbody>
-          <tfoot>
-            <tr style="background: #0a2240;">
-              <td colspan="4" style="padding: 12px 16px; font-size: 14px; font-weight: 700; color: white;">Totaal (incl. BTW)</td>
-              <td style="padding: 12px 16px; font-size: 16px; font-weight: 800; color: #e8a020; text-align: right;">${fmtEur(total)}</td>
-            </tr>
-          </tfoot>
-        </table>
-
-        ${ig.billing_vat_number ? `<p style="font-size: 12px; color: #7090b0; margin: 16px 0 0;">BTW-nummer: ${ig.billing_vat_number}</p>` : ''}
-
-        <div style="margin-top: 28px; padding: 16px 20px; background: #f4f6f9; border-radius: 8px; font-size: 13px; color: #1a2e48;">
-          <strong>Betaalinstructies</strong><br>
-          Maak het totaalbedrag over op rekening NL81 ABNA 0108 0879 48 t.n.v. Autostalling De Bazuin, onder vermelding van referentie <strong>${ig.reference}</strong>.
-        </div>
-
-        ${ig.notes ? `<div style="margin-top: 16px; font-size: 13px; color: #7090b0;"><strong>Opmerking:</strong> ${ig.notes}</div>` : ''}
-      </div>
-    </div>
-  </div>`;
-
-  const { sendSimpleEmail } = await import('../services/email.service');
-  await sendSimpleEmail(ig.billing_email, `Factuur ${ig.reference} — Autostalling De Bazuin`, html);
+  // Nette PDF met logo (zelfde opmaak als de contractfactuur) als bijlage.
+  const pdf = await generateInvoiceGroupPdf(group);
+  await sendContractInvoiceEmail(group.billing_email, group.billing_name || group.billing_company || '', group.reference, pdf);
 
   // Markeer als verstuurd
   await query(`UPDATE invoice_groups SET status='sent', updated_at=NOW() WHERE id=$1`, [id]);
 
-  res.json({ success: true, sentTo: ig.billing_email });
+  res.json({ success: true, sentTo: group.billing_email });
 });
 
 // ============================================================

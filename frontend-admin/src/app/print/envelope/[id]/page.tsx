@@ -112,10 +112,13 @@ function C6Envelope({ res, mods }: { res: any; mods: any[] }) {
             {res.ferry_return_time && <span className="return-dep">{res.ferry_return_time}</span>}
             {res.ferry_return_time && res.ferry_return_arrival_harlingen && <span className="arrow"> → </span>}
             {res.ferry_return_arrival_harlingen && <span className="return-arr">{res.ferry_return_arrival_harlingen}</span>}
+            {!res.ferry_return_time && !res.ferry_return_arrival_harlingen && res.ferry_return_custom_time &&
+              <span className="return-arr">{res.ferry_return_custom_time}</span>}
           </div>
           <div className="destination">
             {res.ferry_outbound_destination === 'terschelling' ? 'Terschelling' :
              res.ferry_outbound_destination === 'vlieland'     ? 'Vlieland' :
+             res.ferry_outbound_destination === 'anders'       ? 'Anders' :
              res.ferry_outbound_destination || '—'}
           </div>
 

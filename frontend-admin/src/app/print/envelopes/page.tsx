@@ -89,10 +89,13 @@ function C6Envelope({ res, mods }: { res: any; mods: any[] }) {
             {res.ferry_return_time && <span className="return-dep">{String(res.ferry_return_time).slice(0, 5)}</span>}
             {res.ferry_return_time && res.ferry_return_arrival_harlingen && <span className="arrow"> → </span>}
             {res.ferry_return_arrival_harlingen && <span className="return-arr">{res.ferry_return_arrival_harlingen}</span>}
+            {!res.ferry_return_time && !res.ferry_return_arrival_harlingen && res.ferry_return_custom_time &&
+              <span className="return-arr">{String(res.ferry_return_custom_time).slice(0, 5)}</span>}
           </div>
           <div className="destination">
             {res.ferry_outbound_destination === 'terschelling' ? 'Terschelling' :
              res.ferry_outbound_destination === 'vlieland'     ? 'Vlieland' :
+             res.ferry_outbound_destination === 'anders'       ? 'Anders' :
              res.ferry_outbound_destination || '—'}
           </div>
           {(res.payment_status === 'on_site' || res.payment_status === 'pending') ? (

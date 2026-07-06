@@ -1642,6 +1642,7 @@ router.get('/admin/reservations/today', requireAuth, async (req: Request, res: R
         )
       : null,
     ferry_return_time: r.ferry_return_time?.slice(0, 5) || null,
+    ferry_return_custom_time: r.ferry_return_custom_time?.slice(0, 5) || null,
     ferry_return_arrival_harlingen: r.ferry_return_time
       ? (r.ret_schedule_arrival ||
          (r.ferry_return_duration ? addMinutes(r.ferry_return_time.slice(0, 5), r.ferry_return_duration) : null) ||
@@ -1708,6 +1709,7 @@ router.get('/admin/reservations/:id', requireAuth, async (req: Request, res: Res
     ...r,
     ferry_outbound_time: r.ferry_outbound_time?.slice(0, 5) || null,
     ferry_return_time: r.ferry_return_time?.slice(0, 5) || null,
+    ferry_return_custom_time: r.ferry_return_custom_time?.slice(0, 5) || null,
     ferry_outbound_arrival_island: r.ferry_outbound_time ? addMin(r.ferry_outbound_time,
       r.ferry_outbound_duration ||
       (r.is_fast_ferry_outbound ? 50 : (r.ferry_outbound_destination === 'vlieland' ? 100 : 120))

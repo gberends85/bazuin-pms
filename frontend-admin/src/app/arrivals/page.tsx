@@ -1090,10 +1090,10 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
               ← {compact ? fmtDateCompact(res.departure_date) : fmtDateLong(res.departure_date)}
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              {res.ferry_return_time || res.ferry_return_arrival_harlingen
+              {res.ferry_return_time || res.ferry_return_arrival_harlingen || res.ferry_return_custom_time
                 ? <>{res.ferry_return_time && <span style={{ fontSize: 11, fontWeight: 600, color: '#7090b0' }}>{fmtTime(res.ferry_return_time)}</span>}
                     <span style={{ fontSize: 20, fontWeight: 900, color: '#0a7c6e' }}>
-                      {fmtTime(res.ferry_return_arrival_harlingen) || fmtTime(res.ferry_return_time)}
+                      {fmtTime(res.ferry_return_arrival_harlingen) || fmtTime(res.ferry_return_time) || fmtTime(res.ferry_return_custom_time)}
                     </span></>
                 : <span style={{ fontSize: 13, color: '#b0c4d8' }}>—</span>
               }
@@ -1133,7 +1133,7 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
                 <span style={{ fontSize: 12, fontWeight: 800, color: '#0a6050' }}>{fmtTime(res.ferry_outbound_time) || '—'}</span>
                 <span style={{ fontSize: 11, color: '#c8d8e8', margin: '0 4px' }}>·</span>
                 <span style={{ fontSize: 12, fontWeight: 700, color: '#0a2240' }}>{fmtDateShortNoYear(res.departure_date)}&nbsp;</span>
-                <span style={{ fontSize: 12, fontWeight: 800, color: '#0a6050' }}>{fmtTime(res.ferry_return_arrival_harlingen) || fmtTime(res.ferry_return_time) || '—'}</span>
+                <span style={{ fontSize: 12, fontWeight: 800, color: '#0a6050' }}>{fmtTime(res.ferry_return_arrival_harlingen) || fmtTime(res.ferry_return_time) || fmtTime(res.ferry_return_custom_time) || '—'}</span>
               </div>
             </div>
             {/* Bedrag + betaalstatus — rechtsboven (geen betaaldetails op mobiel) */}
@@ -1394,7 +1394,7 @@ function DepartureCard({ res, onUpdate, occupiedLockers = [] }: { res: any; onUp
         <div style={{ flexShrink: 0, minWidth: 54, textAlign: 'center' }}>
           <div style={{ fontSize: 10, color: '#7090b0', fontWeight: 600, lineHeight: 1 }}>Hrl</div>
           <div style={{ fontSize: 22, fontWeight: 900, color: '#0a2240', lineHeight: 1.1 }}>
-            {res.ferry_return_arrival_harlingen || res.ferry_return_time || '—'}
+            {res.ferry_return_arrival_harlingen || res.ferry_return_time || res.ferry_return_custom_time || '—'}
           </div>
           {res.ferry_return_time && res.ferry_return_arrival_harlingen && (
             <div style={{ fontSize: 9, color: '#9ab0c8' }}>boot {res.ferry_return_time}</div>
@@ -2043,8 +2043,8 @@ export default function ArrivalsPage() {
               ? allDepartures.filter((r: any) => r.status === 'completed')
               : allDepartures.filter((r: any) => r.status !== 'completed')
             )].sort((a, b) => {
-              const ta = a.ferry_return_arrival_harlingen || a.ferry_return_time || '99:99';
-              const tb = b.ferry_return_arrival_harlingen || b.ferry_return_time || '99:99';
+              const ta = a.ferry_return_arrival_harlingen || a.ferry_return_time || a.ferry_return_custom_time || '99:99';
+              const tb = b.ferry_return_arrival_harlingen || b.ferry_return_time || b.ferry_return_custom_time || '99:99';
               return ta.localeCompare(tb);
             }).map((r: any) => {
               // Bezette kluizen = alle andere vertrekkers die vandaag al een kluis hebben

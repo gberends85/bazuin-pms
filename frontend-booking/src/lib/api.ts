@@ -118,6 +118,9 @@ export const bookingApi = {
   modifyContact: (token: string, email: string, phone: string) =>
     post<any>(`/reservations/token/${token}/modify-contact`, { email, phone }),
 
+  saveInvoiceDetails: (token: string, company: string, btwNumber: string) =>
+    post<{ success: boolean }>(`/reservations/token/${token}/invoice-details`, { company, btwNumber }),
+
   modifyPhone: (token: string, phone: string) =>
     post<{ success: boolean }>(`/reservations/token/${token}/modify-phone`, { phone }),
 

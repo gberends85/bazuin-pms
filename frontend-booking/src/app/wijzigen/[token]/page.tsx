@@ -19,6 +19,7 @@ type Step =
   | 'plate' | 'plate-done'
   | 'charging-pay' | 'charging-done'
   | 'contact' | 'phone-done' | 'email-verify-sent'
+  | 'invoice-details'
   | 'ferry' | 'ferry-done'
   | 'all-reservations'
   | 'pending' | 'error';
@@ -333,6 +334,10 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [contactLoading, setContactLoading] = useState(false);
+  const [invCompany, setInvCompany] = useState('');
+  const [invBtw, setInvBtw] = useState('');
+  const [invLoading, setInvLoading] = useState(false);
+  const [invSaved, setInvSaved] = useState(false);
 
   // Ferry sub-form state
   const [ferryOutboundTime, setFerryOutboundTime] = useState('');
@@ -634,6 +639,16 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       setStep('pending');
     } catch (e: any) { setError(e.message); }
     finally { setContactLoading(false); }
+  }
+
+  async function submitInvoiceDetails() {
+    setError(''); setInvLoading(true); setInvSaved(false);
+    try {
+      await bookingApi.saveInvoiceDetails(params.token, invCompany.trim(), invBtw.trim());
+      setInvSaved(true);
+      setRes((prev: any) => prev ? { ...prev, guest_company: invCompany.trim(), guest_btw_number: invBtw.trim() } : prev);
+    } catch (e: any) { setError(e.message); }
+    finally { setInvLoading(false); }
   }
 
   // ── Ferry handler ─────────────────────────────────────────────
@@ -1486,12 +1501,10 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   {r.cancellation_token && (
                     <a
-                      href={`${API_BASE}/invoice-html/${r.cancellation_token}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      href={`${API_BASE}/invoice/${r.cancellation_token}`}
                       style={{ fontSize: 11, color: '#556070', textDecoration: 'none', border: '0.5px solid #c0c8d4', borderRadius: 6, padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                     >
-                      <DocumentTextIcon className="w-3 h-3" />Factuur
+                      <DocumentTextIcon className="w-3 h-3" />Factuur (PDF)
                     </a>
                   )}
                   {isCurrentRes ? (
@@ -1570,6 +1583,39 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
           {contactLoading ? 'Bezig...' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><EnvelopeIcon className="w-4 h-4" />Verificatiemail versturen <ArrowRightIcon className="w-4 h-4" /></span>}
         </button>
       </div>
+
+      {error && <ErrorBox msg={error} />}
+
+      <BackBtn onClick={() => { setError(''); setStep('menu'); }} />
+    </div></div>
+  );
+
+  // ── Factuurgegevens (bedrijfsnaam + BTW-nummer) ───────────────
+  if (step === 'invoice-details') return (
+    <div style={S.page}><div style={S.card}>
+      <Logo />
+      <ReservationInfo />
+
+      <h3 style={{ margin: '0 0 8px', fontSize: 15, fontWeight: 700, color: '#142440' }}>Factuurgegevens</h3>
+      <p style={{ margin: '0 0 16px', fontSize: 13, color: '#7090b0' }}>
+        Vul een bedrijfsnaam en BTW-nummer in om deze op uw factuur te tonen. Daarna kunt u de factuur als PDF downloaden.
+      </p>
+
+      <div style={{ background: '#f4f6f9', borderRadius: 10, padding: '14px 16px', marginBottom: 16 }}>
+        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>Bedrijfsnaam</label>
+        <input type="text" value={invCompany} onChange={e => { setInvCompany(e.target.value); setInvSaved(false); }} placeholder="Bedrijfsnaam B.V." style={{ ...S.input, marginBottom: 14 }} />
+        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>BTW-nummer</label>
+        <input type="text" value={invBtw} onChange={e => { setInvBtw(e.target.value); setInvSaved(false); }} placeholder="NL123456789B01" style={{ ...S.input, marginBottom: 14 }} />
+        <button onClick={submitInvoiceDetails} disabled={invLoading} style={{ ...S.btnPrimary, padding: '10px', fontSize: 14, opacity: invLoading ? 0.7 : 1 }}>
+          {invLoading ? 'Bezig...' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon className="w-4 h-4" />Factuurgegevens opslaan</span>}
+        </button>
+        {invSaved && <div style={{ marginTop: 10, fontSize: 13, color: '#0a7c6e', fontWeight: 600 }}>✓ Opgeslagen. U kunt de factuur nu downloaden.</div>}
+      </div>
+
+      <a href={`${API_BASE}/invoice/${params.token}`} target="_blank" rel="noopener noreferrer"
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '12px 14px', borderRadius: 10, textDecoration: 'none', fontSize: 14, fontWeight: 700, color: 'white', background: '#19499e', marginBottom: 16 }}>
+        <DocumentTextIcon className="w-4 h-4" />Factuur downloaden (PDF)
+      </a>
 
       {error && <ErrorBox msg={error} />}
 
@@ -1723,16 +1769,14 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <a
-            href={`${API_BASE}/invoice-html/${params.token}`}
-            target="_blank"
-            rel="noopener noreferrer"
+            href={`${API_BASE}/invoice/${params.token}`}
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               padding: '12px 14px', borderRadius: 10, textDecoration: 'none', fontSize: 14, fontWeight: 600,
               color: '#142440', border: '0.5px solid rgba(10,34,64,0.2)', background: 'white',
             }}
           >
-            <DocumentTextIcon className="w-4 h-4" />Factuur bekijken
+            <DocumentTextIcon className="w-4 h-4" />Factuur downloaden (PDF)
           </a>
           {isCancelled && res.refund_amount > 0 && (
             <a
@@ -1789,6 +1833,12 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       label: 'Persoonsgegevens',
       sub: 'E-mailadres of telefoonnummer wijzigen',
       onClick: () => { setError(''); setStep('contact'); },
+    },
+    {
+      icon: <DocumentTextIcon className="w-6 h-6" />,
+      label: 'Factuurgegevens',
+      sub: 'Bedrijfsnaam en BTW-nummer voor op de factuur',
+      onClick: () => { setError(''); setInvSaved(false); setInvCompany(res?.guest_company || ''); setInvBtw(res?.guest_btw_number || ''); setStep('invoice-details'); },
     },
     {
       icon: <ClipboardDocumentListIcon className="w-6 h-6" />,
@@ -1850,16 +1900,14 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       {/* Quick links: invoice (current res) + new reservation */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
         <a
-          href={`${API_BASE}/invoice-html/${params.token}`}
-          target="_blank"
-          rel="noopener noreferrer"
+          href={`${API_BASE}/invoice/${params.token}`}
           style={{
             flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             padding: '11px 14px', borderRadius: 10, textDecoration: 'none', fontSize: 13, fontWeight: 600,
             color: '#142440', border: '0.5px solid rgba(10,34,64,0.18)', background: 'white',
           }}
         >
-          <DocumentTextIcon className="w-4 h-4" />Factuur
+          <DocumentTextIcon className="w-4 h-4" />Factuur (PDF)
         </a>
         <a
           href={`/boeken/boeken?email=${encodeURIComponent(res?.email || '')}&telefoon=${encodeURIComponent(res?.phone || '')}&naam=${encodeURIComponent(((res?.first_name || '') + ' ' + (res?.last_name || '')).trim())}${res?.vehicles?.[0]?.license_plate ? '&kenteken=' + encodeURIComponent(res.vehicles[0].license_plate) : ''}`}

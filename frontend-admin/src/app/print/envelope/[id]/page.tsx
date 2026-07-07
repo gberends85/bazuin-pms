@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { formatPlate, detectPlateStyle } from '@/lib/plate';
+import { formatPlate } from '@/lib/plate';
 import { PrinterIcon } from '@heroicons/react/24/outline';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -85,25 +85,14 @@ function C6Envelope({ res, mods }: { res: any; mods: any[] }) {
         {/* LINKER KOLOM */}
         <div className="col col-left">
           <div className="plates">
-            {vehicles.map((v: any, idx: number) => {
-              const st = v.license_plate ? detectPlateStyle(v.license_plate, v.rdw_make ? true : (v.rdw_fetched_at ? false : undefined)) : null;
-              return (
+            {vehicles.map((v: any, idx: number) => (
               <div key={v.license_plate || `empty-${idx}`}>
-                <div className="plate" style={st ? { background: st.bg, borderColor: st.border, color: st.textColor } : undefined}>
-                  {st && st.euBg ? (
-                    <span className="plate-eu" style={{ background: st.euBg, width: '13pt', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif', lineHeight: 1 }}>
-                      <span style={{ fontSize: '5pt', color: '#ffd700' }}>★</span>
-                      <span style={{ fontSize: '5pt', fontWeight: 700, color: '#fff' }}>{st.euCode}</span>
-                    </span>
-                  ) : st && st.euCode ? (
-                    <span className="plate-eu" style={{ background: '#003399', width: '13pt', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif', fontSize: '6.5pt', fontWeight: 700, color: '#fff' }}>{st.euCode}</span>
-                  ) : null}
+                <div className="plate">
                   <span className="plate-text">{v.license_plate ? formatPlate(v.license_plate) : ''}</span>
                 </div>
                 {carInfoLine(v) && <div className="car-info">{carInfoLine(v)}</div>}
               </div>
-              );
-            })}
+            ))}
           </div>
           {res.ferry_outbound_time && (
             <div className="outbound-time">
@@ -335,13 +324,12 @@ export default function PrintEnvelopePage({ params }: { params: { id: string } }
         .plates { margin-bottom: 2mm; }
         .plate {
           display: inline-flex; align-items: stretch;
-          background: #e8e8e8; border: 2px solid #999; border-radius: 4px;
+          background: #ffffff; border: 2px solid #000; border-radius: 4px;
           font-family: 'Arial Narrow', Arial, sans-serif;
-          font-size: 15pt; font-weight: 700; letter-spacing: 2px; color: #111;
+          font-size: 15pt; font-weight: 700; letter-spacing: 2px; color: #000;
           margin-bottom: 1mm; overflow: hidden;
           -webkit-print-color-adjust: exact; print-color-adjust: exact;
         }
-        .plate-eu { display: block; width: 7pt; background: #555; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .plate-text { padding: 1mm 3mm 1mm 2mm; display: flex; align-items: center; text-transform: uppercase; min-width: 35mm; min-height: 6.5mm; }
         .car-info { font-size: 6pt; color: #555; margin-top: 0.5mm; margin-bottom: 1mm; line-height: 1.2; }
         .name { font-size: 8.5pt; font-weight: 700; color: #000; margin-top: 1mm; }

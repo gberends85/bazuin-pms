@@ -230,6 +230,7 @@ export async function generateInvoiceHtml(token: string): Promise<string | null>
     <tbody>
       ${r.guest_company ? `<tr><td>Bedrijf</td><td><strong>${esc(r.guest_company)}</strong></td></tr>` : ''}
       <tr><td>Klant</td><td><strong>${esc(r.first_name)} ${esc(r.last_name)}</strong></td></tr>
+      ${(r.guest_address || r.guest_postal_code || r.guest_city) ? `<tr><td>Adres</td><td>${[esc(r.guest_address || ''), esc(`${r.guest_postal_code || ''} ${r.guest_city || ''}`.trim())].filter(Boolean).join('<br>')}</td></tr>` : ''}
       ${(r.guest_btw_number || r.btw_number) ? `<tr><td>BTW-nummer</td><td>${esc(r.guest_btw_number || r.btw_number)}</td></tr>` : ''}
       <tr><td>E-mail</td><td>${esc(r.email)}</td></tr>
       ${r.phone ? `<tr><td>Telefoon</td><td>${esc(r.phone)}</td></tr>` : ''}
@@ -369,6 +370,7 @@ export async function generateCreditNoteHtml(token: string): Promise<string | nu
     <tbody>
       ${r.guest_company ? `<tr><td>Bedrijf</td><td><strong>${esc(r.guest_company)}</strong></td></tr>` : ''}
       <tr><td>Klant</td><td><strong>${esc(r.first_name)} ${esc(r.last_name)}</strong></td></tr>
+      ${(r.guest_address || r.guest_postal_code || r.guest_city) ? `<tr><td>Adres</td><td>${[esc(r.guest_address || ''), esc(`${r.guest_postal_code || ''} ${r.guest_city || ''}`.trim())].filter(Boolean).join('<br>')}</td></tr>` : ''}
       ${(r.guest_btw_number || r.btw_number) ? `<tr><td>BTW-nummer</td><td>${esc(r.guest_btw_number || r.btw_number)}</td></tr>` : ''}
       <tr><td>E-mail</td><td>${esc(r.email)}</td></tr>
       <tr><td style="padding-top:4mm">Creditnotadatum</td><td style="padding-top:4mm">${creditDate}</td></tr>

@@ -336,6 +336,9 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   const [contactLoading, setContactLoading] = useState(false);
   const [invCompany, setInvCompany] = useState('');
   const [invBtw, setInvBtw] = useState('');
+  const [invAddress, setInvAddress] = useState('');
+  const [invPostal, setInvPostal] = useState('');
+  const [invCity, setInvCity] = useState('');
   const [invLoading, setInvLoading] = useState(false);
   const [invSaved, setInvSaved] = useState(false);
 
@@ -644,9 +647,10 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   async function submitInvoiceDetails() {
     setError(''); setInvLoading(true); setInvSaved(false);
     try {
-      await bookingApi.saveInvoiceDetails(params.token, invCompany.trim(), invBtw.trim());
+      const d = { company: invCompany.trim(), btwNumber: invBtw.trim(), address: invAddress.trim(), postalCode: invPostal.trim(), city: invCity.trim() };
+      await bookingApi.saveInvoiceDetails(params.token, d);
       setInvSaved(true);
-      setRes((prev: any) => prev ? { ...prev, guest_company: invCompany.trim(), guest_btw_number: invBtw.trim() } : prev);
+      setRes((prev: any) => prev ? { ...prev, guest_company: d.company, guest_btw_number: d.btwNumber, guest_address: d.address, guest_postal_code: d.postalCode, guest_city: d.city } : prev);
     } catch (e: any) { setError(e.message); }
     finally { setInvLoading(false); }
   }
@@ -1598,12 +1602,24 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
 
       <h3 style={{ margin: '0 0 8px', fontSize: 15, fontWeight: 700, color: '#142440' }}>Factuurgegevens</h3>
       <p style={{ margin: '0 0 16px', fontSize: 13, color: '#7090b0' }}>
-        Vul een bedrijfsnaam en BTW-nummer in om deze op uw factuur te tonen. Daarna kunt u de factuur als PDF downloaden.
+        Vul bedrijfsnaam, adres en BTW-nummer in om deze op uw factuur te tonen. Daarna kunt u de factuur als PDF downloaden.
       </p>
 
       <div style={{ background: '#f4f6f9', borderRadius: 10, padding: '14px 16px', marginBottom: 16 }}>
         <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>Bedrijfsnaam</label>
         <input type="text" value={invCompany} onChange={e => { setInvCompany(e.target.value); setInvSaved(false); }} placeholder="Bedrijfsnaam B.V." style={{ ...S.input, marginBottom: 14 }} />
+        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>Adres</label>
+        <input type="text" value={invAddress} onChange={e => { setInvAddress(e.target.value); setInvSaved(false); }} placeholder="Straatnaam 1" style={{ ...S.input, marginBottom: 14 }} />
+        <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+          <div style={{ flex: '0 0 40%' }}>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>Postcode</label>
+            <input type="text" value={invPostal} onChange={e => { setInvPostal(e.target.value); setInvSaved(false); }} placeholder="1234 AB" style={{ ...S.input, width: '100%' }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>Plaats</label>
+            <input type="text" value={invCity} onChange={e => { setInvCity(e.target.value); setInvSaved(false); }} placeholder="Plaatsnaam" style={{ ...S.input, width: '100%' }} />
+          </div>
+        </div>
         <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>BTW-nummer</label>
         <input type="text" value={invBtw} onChange={e => { setInvBtw(e.target.value); setInvSaved(false); }} placeholder="NL123456789B01" style={{ ...S.input, marginBottom: 14 }} />
         <button onClick={submitInvoiceDetails} disabled={invLoading} style={{ ...S.btnPrimary, padding: '10px', fontSize: 14, opacity: invLoading ? 0.7 : 1 }}>
@@ -1837,8 +1853,8 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
     {
       icon: <DocumentTextIcon className="w-6 h-6" />,
       label: 'Factuurgegevens',
-      sub: 'Bedrijfsnaam en BTW-nummer voor op de factuur',
-      onClick: () => { setError(''); setInvSaved(false); setInvCompany(res?.guest_company || ''); setInvBtw(res?.guest_btw_number || ''); setStep('invoice-details'); },
+      sub: 'Bedrijfsnaam, adres en BTW-nummer voor op de factuur',
+      onClick: () => { setError(''); setInvSaved(false); setInvCompany(res?.guest_company || ''); setInvBtw(res?.guest_btw_number || ''); setInvAddress(res?.guest_address || ''); setInvPostal(res?.guest_postal_code || ''); setInvCity(res?.guest_city || ''); setStep('invoice-details'); },
     },
     {
       icon: <ClipboardDocumentListIcon className="w-6 h-6" />,

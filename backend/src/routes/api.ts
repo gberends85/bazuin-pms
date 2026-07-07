@@ -3759,16 +3759,18 @@ router.post('/reservations/token/:token/modify-contact', async (req: Request, re
 });
 
 // ============================================================
-// CUSTOMER — FACTUURGEGEVENS (bedrijfsnaam + BTW-nummer voor op de factuur)
+// CUSTOMER — FACTUURGEGEVENS (bedrijfsnaam, BTW-nummer + adressering voor op de factuur)
 // ============================================================
 router.post('/reservations/token/:token/invoice-details', async (req: Request, res: Response) => {
-  const { company, btwNumber } = req.body || {};
+  const { company, btwNumber, address, postalCode, city } = req.body || {};
+  const clean = (v: any) => (v || '').toString().trim() || null;
   const upd = await query(
     `UPDATE reservations
-     SET guest_company = $1, guest_btw_number = $2, updated_at = NOW()
-     WHERE cancellation_token = $3
+     SET guest_company = $1, guest_btw_number = $2,
+         guest_address = $3, guest_postal_code = $4, guest_city = $5, updated_at = NOW()
+     WHERE cancellation_token = $6
      RETURNING id`,
-    [(company || '').trim() || null, (btwNumber || '').trim() || null, req.params.token]
+    [clean(company), clean(btwNumber), clean(address), clean(postalCode), clean(city), req.params.token]
   );
   if (upd.rows.length === 0) return res.status(404).json({ error: 'Reservering niet gevonden' });
   return res.json({ success: true });
@@ -6681,6 +6683,9 @@ router.post('/admin/umbraco/vehicle-repair-scan', requireAuth, async (req: Reque
     await query(`ALTER TABLE contract_invoices ADD COLUMN IF NOT EXISTS stripe_payment_link_id VARCHAR(60)`);
     await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS guest_company VARCHAR(160)`);
     await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS guest_btw_number VARCHAR(30)`);
+    await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS guest_address VARCHAR(200)`);
+    await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS guest_postal_code VARCHAR(20)`);
+    await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS guest_city VARCHAR(120)`);
     await query(`CREATE TABLE IF NOT EXISTS pending_contract_invoices (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       contract_customer_id UUID REFERENCES contract_customers(id) ON DELETE CASCADE,

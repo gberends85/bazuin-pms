@@ -1,63 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { api } from '@/lib/api';
-import { formatPlate } from '@/lib/plate';
-
-// ─── Dutch plate patterns (6 alphanumeric chars) ────────────────────────────
-const DUTCH_PATTERNS = [
-  /^[A-Z]{2}\d{2}[A-Z]{2}$/,   // XX-99-XX
-  /^[A-Z]{2}[A-Z]{2}\d{2}$/,   // XX-XX-99
-  /^\d{2}[A-Z]{2}[A-Z]{2}$/,   // 99-XX-XX
-  /^[A-Z]{2}\d{3}[A-Z]$/,      // XX-999-X
-  /^[A-Z]\d{3}[A-Z]{2}$/,      // X-999-XX
-  /^\d{2}[A-Z]{3}\d$/,         // 99-XXX-9
-  /^\d[A-Z]{3}\d{2}$/,         // 9-XXX-99
-  /^[A-Z][A-Z]{3}\d{2}$/,      // X-XXX-99
-  /^[A-Z]{3}\d{2}[A-Z]$/,      // XXX-99-X
-  /^[A-Z]\d{2}[A-Z]{3}$/,      // X-99-XXX
-  /^\d\d[A-Z]{2}\d{3}$/,       // 99-XX-999
-];
-
-type PlateStyle = {
-  bg: string;
-  border: string;
-  textColor: string;
-  euBg: string | null;
-  euCode: string;
-  isEu: boolean;
-};
-
-function detectPlateStyle(raw: string): PlateStyle {
-  const s = raw.replace(/[-\s]/g, '').toUpperCase();
-
-  // Dutch
-  if (DUTCH_PATTERNS.some(p => p.test(s))) {
-    return { bg: '#f5c518', border: '#c8a010', textColor: '#0a2240', euBg: '#003399', euCode: 'NL', isEu: true };
-  }
-
-  // German: 1-3 letter city code + 1-2 letters + 1-4 digits (total 4-8 chars, not 6-char Dutch pattern)
-  if (/^[A-Z]{1,3}[A-Z]{1,2}\d{1,4}$/.test(s) && s.length >= 4 && s.length <= 8 && s.length !== 6) {
-    return { bg: '#ffffff', border: '#333', textColor: '#000', euBg: '#003399', euCode: 'D', isEu: true };
-  }
-
-  // Belgian new format: 1 digit + 3 letters + 3 digits
-  if (/^\d[A-Z]{3}\d{3}$/.test(s)) {
-    return { bg: '#ffffff', border: '#c00', textColor: '#000', euBg: '#003399', euCode: 'B', isEu: true };
-  }
-
-  // French: 2 letters + 3 digits + 2 letters (7 chars)
-  if (/^[A-Z]{2}\d{3}[A-Z]{2}$/.test(s)) {
-    return { bg: '#ffffff', border: '#555', textColor: '#000', euBg: '#003399', euCode: 'F', isEu: true };
-  }
-
-  // UK: 2 letters + 2 digits + 3 letters
-  if (/^[A-Z]{2}\d{2}[A-Z]{3}$/.test(s)) {
-    return { bg: '#f0f0f0', border: '#003399', textColor: '#000', euBg: null, euCode: 'GB', isEu: false };
-  }
-
-  // Unknown / special
-  return { bg: '#ffffff', border: '#aaa', textColor: '#333', euBg: null, euCode: '', isEu: false };
-}
+import { formatPlate, detectPlateStyle } from '@/lib/plate';
 
 export default function PlateTooltip({ plate, small }: { plate: string; small?: boolean }) {
   const [info, setInfo] = useState<any>(null);

@@ -30,3 +30,37 @@ export function formatPlate(raw: string): string {
   }
   return s.replace(/([A-Z]+)(\d)/g, '$1-$2').replace(/(\d+)([A-Z])/g, '$1-$2');
 }
+
+// ── Land-detectie voor kentekens (zodat alleen NL de gele plaat krijgt) ──
+const DUTCH_PATTERNS = [
+  /^[A-Z]{2}\d{2}[A-Z]{2}$/, /^[A-Z]{2}[A-Z]{2}\d{2}$/, /^\d{2}[A-Z]{2}[A-Z]{2}$/,
+  /^[A-Z]{2}\d{3}[A-Z]$/, /^[A-Z]\d{3}[A-Z]{2}$/, /^\d{2}[A-Z]{3}\d$/, /^\d[A-Z]{3}\d{2}$/,
+  /^[A-Z][A-Z]{3}\d{2}$/, /^[A-Z]{3}\d{2}[A-Z]$/, /^[A-Z]\d{2}[A-Z]{3}$/, /^\d\d[A-Z]{2}\d{3}$/,
+];
+
+export type PlateStyle = {
+  bg: string; border: string; textColor: string; euBg: string | null; euCode: string; isEu: boolean;
+};
+
+const NL_STYLE: PlateStyle = { bg: '#f5c518', border: '#c8a010', textColor: '#0a2240', euBg: '#003399', euCode: 'NL', isEu: true };
+const UNIVERSAL_STYLE: PlateStyle = { bg: '#ffffff', border: '#aaaaaa', textColor: '#333333', euBg: null, euCode: '', isEu: false };
+
+// Buitenlands formaat op patroon herkennen (voor de landcode op een witte plaat).
+function foreignStyle(s: string): PlateStyle | null {
+  if (/^[A-Z]{1,3}[A-Z]{1,2}\d{1,4}$/.test(s) && s.length >= 4 && s.length <= 8 && s.length !== 6) return { bg: '#ffffff', border: '#333333', textColor: '#000000', euBg: '#003399', euCode: 'D', isEu: true };
+  if (/^\d[A-Z]{3}\d{3}$/.test(s)) return { bg: '#ffffff', border: '#cc0000', textColor: '#000000', euBg: '#003399', euCode: 'B', isEu: true };
+  if (/^[A-Z]{2}\d{3}[A-Z]{2}$/.test(s)) return { bg: '#ffffff', border: '#555555', textColor: '#000000', euBg: '#003399', euCode: 'F', isEu: true };
+  if (/^[A-Z]{2}\d{2}[A-Z]{3}$/.test(s)) return { bg: '#f0f0f0', border: '#003399', textColor: '#000000', euBg: null, euCode: 'GB', isEu: false };
+  return null;
+}
+
+// isDutch: true = door RDW als NL herkend (geel); false = niet als NL herkend
+// (universeel/land); undefined = onbekend → val terug op patroonherkenning.
+export function detectPlateStyle(raw: string, isDutch?: boolean): PlateStyle {
+  const s = String(raw || '').replace(/[-\s]/g, '').toUpperCase();
+  const foreign = foreignStyle(s);
+  if (isDutch === true) return NL_STYLE;
+  if (isDutch === false) return foreign || UNIVERSAL_STYLE;
+  if (DUTCH_PATTERNS.some(p => p.test(s))) return NL_STYLE;
+  return foreign || UNIVERSAL_STYLE;
+}

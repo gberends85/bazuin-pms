@@ -22,6 +22,66 @@ function formatPlate(raw: string): string {
   return s.replace(/([A-Z]+)(\d)/g, '$1-$2').replace(/(\d+)([A-Z])/g, '$1-$2');
 }
 
+// ── Land-detectie voor kentekens (zodat alleen NL de gele plaat krijgt) ──
+const DUTCH_PATTERNS = [
+  /^[A-Z]{2}\d{2}[A-Z]{2}$/, /^[A-Z]{2}[A-Z]{2}\d{2}$/, /^\d{2}[A-Z]{2}[A-Z]{2}$/,
+  /^[A-Z]{2}\d{3}[A-Z]$/, /^[A-Z]\d{3}[A-Z]{2}$/, /^\d{2}[A-Z]{3}\d$/, /^\d[A-Z]{3}\d{2}$/,
+  /^[A-Z][A-Z]{3}\d{2}$/, /^[A-Z]{3}\d{2}[A-Z]$/, /^[A-Z]\d{2}[A-Z]{3}$/, /^\d\d[A-Z]{2}\d{3}$/,
+];
+type PlateStyleEmail = { bg: string; border: string; text: string; euBg: string | null; code: string };
+const NL_STYLE_EMAIL: PlateStyleEmail = { bg: '#f5c518', border: '#c8a010', text: '#0a2240', euBg: '#003399', code: 'NL' };
+const UNIVERSAL_STYLE_EMAIL: PlateStyleEmail = { bg: '#ffffff', border: '#aaaaaa', text: '#333333', euBg: null, code: '' };
+
+// Herkent op patroon een buitenlands formaat (voor de landcode op een witte plaat).
+function foreignPlateStyle(s: string): PlateStyleEmail | null {
+  if (/^[A-Z]{1,3}[A-Z]{1,2}\d{1,4}$/.test(s) && s.length >= 4 && s.length <= 8 && s.length !== 6) return { bg: '#ffffff', border: '#333333', text: '#000000', euBg: '#003399', code: 'D' };
+  if (/^\d[A-Z]{3}\d{3}$/.test(s)) return { bg: '#ffffff', border: '#cc0000', text: '#000000', euBg: '#003399', code: 'B' };
+  if (/^[A-Z]{2}\d{3}[A-Z]{2}$/.test(s)) return { bg: '#ffffff', border: '#555555', text: '#000000', euBg: '#003399', code: 'F' };
+  if (/^[A-Z]{2}\d{2}[A-Z]{3}$/.test(s)) return { bg: '#f0f0f0', border: '#003399', text: '#000000', euBg: null, code: 'GB' };
+  return null;
+}
+
+// isDutch: true = door RDW als NL herkend (geel); false = niet als NL herkend (universeel/land);
+// undefined = onbekend → val terug op patroonherkenning.
+function detectPlateStyle(raw: string, isDutch?: boolean): PlateStyleEmail {
+  const s = String(raw || '').replace(/[-\s]/g, '').toUpperCase();
+  const foreign = foreignPlateStyle(s);
+  if (isDutch === true) return NL_STYLE_EMAIL;
+  if (isDutch === false) return foreign || UNIVERSAL_STYLE_EMAIL;
+  if (DUTCH_PATTERNS.some(p => p.test(s))) return NL_STYLE_EMAIL;
+  return foreign || UNIVERSAL_STYLE_EMAIL;
+}
+function escHtml(s: any): string { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+// Kentekenplaat-HTML voor e-mails: NL = gele plaat met NL-strip; buitenlands = witte
+// plaat met landcode; onbekend = neutrale witte plaat zonder strip.
+function renderPlateHtmlEmail(raw: string, isDutch?: boolean): string {
+  if (!raw) return '';
+  const st = detectPlateStyle(raw, isDutch);
+  const strip = st.euBg
+    ? `<td style="background:${st.euBg};padding:5px 4px;text-align:center;vertical-align:middle;line-height:1;">`
+      + `<div style="color:#ffd700;font-size:8px;line-height:1;font-family:Arial,sans-serif;">&#9733;</div>`
+      + `<div style="color:#ffffff;font-size:7px;font-weight:bold;font-family:Arial,sans-serif;line-height:1;margin-top:2px;letter-spacing:0.5px;">${escHtml(st.code)}</div></td>`
+    : st.code
+    ? `<td style="background:#003399;padding:5px 6px;text-align:center;vertical-align:middle;line-height:1;color:#ffffff;font-size:9px;font-weight:bold;font-family:Arial,sans-serif;letter-spacing:0.5px;">${escHtml(st.code)}</td>`
+    : '';
+  return `<table style="border-collapse:separate;border:2px solid ${st.border};border-radius:5px;background:${st.bg};display:inline-table;overflow:hidden;margin:0 4px 8px;" cellspacing="0" cellpadding="0"><tbody><tr>${strip}`
+    + `<td style="padding:5px 12px 6px;font-family:'Arial Narrow','Helvetica Neue Condensed Bold',Impact,'Arial Black',sans-serif;font-weight:bold;font-size:22px;color:${st.text};letter-spacing:1.5px;line-height:1;white-space:nowrap;">${escHtml(formatPlate(raw))}</td>`
+    + `</tr></tbody></table>`;
+}
+
+// Handlebars-helper: rendert een lijst kentekens als land-bewuste platen.
+// Items mogen strings zijn (patroonherkenning) of {raw, isDutch} (RDW-herkenning).
+// Templates gebruiken {{{kentekenplaatjes kentekens}}} i.p.v. een hardcoded gele plaat.
+Handlebars.registerHelper('kentekenplaatjes', (arr: any) =>
+  new Handlebars.SafeString(Array.isArray(arr)
+    ? arr.map((it: any) => typeof it === 'string'
+        ? renderPlateHtmlEmail(it)
+        : renderPlateHtmlEmail(it?.raw ?? it?.plate ?? '', it?.isDutch)
+      ).join('')
+    : '')
+);
+
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: parseInt(process.env.SMTP_PORT || '587'),
@@ -175,7 +235,7 @@ export async function buildConfirmationVars(
   const res = result.rows[0];
 
   const vehiclesResult = await query(
-    'SELECT license_plate, ev_kwh, ev_price FROM vehicles WHERE reservation_id = $1 ORDER BY sort_order',
+    'SELECT license_plate, ev_kwh, ev_price, rdw_make, rdw_fetched_at FROM vehicles WHERE reservation_id = $1 ORDER BY sort_order',
     [reservationId]
   );
 
@@ -200,6 +260,14 @@ export async function buildConfirmationVars(
     .map((v: { license_plate: string }) => formatPlate(v.license_plate))
     .filter(Boolean);
   const plates = platesArr.join(', ');
+  // Kentekens met RDW-herkenning: rdw_make gevuld → NL (geel); wél opgezocht maar
+  // geen make → buitenlands (universeel); nog niet opgezocht → patroonherkenning.
+  const kentekenObjs = vehiclesResult.rows
+    .filter((v: any) => v.license_plate)
+    .map((v: any) => ({
+      raw: v.license_plate,
+      isDutch: v.rdw_make ? true : (v.rdw_fetched_at ? false : undefined),
+    }));
   const baseUrl = settings['booking_url'] || 'https://parkeren-harlingen.nl';
 
   // Bouw prijsoverzicht op: eerst parkeerkosten, dan toeslag, dan extra diensten
@@ -340,7 +408,7 @@ export async function buildConfirmationVars(
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       }),
       kentekenlijst: plates,
-      kentekens: platesArr,
+      kentekens: kentekenObjs,
       veerboot_heen: res.ferry_out_name || '—',
       vertrektijd_heen: res.ferry_outbound_time
         ? res.ferry_outbound_time.slice(0, 5)

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { formatPlate } from '@/lib/plate';
+import { formatPlate, detectPlateStyle } from '@/lib/plate';
 import { PrinterIcon } from '@heroicons/react/24/outline';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -85,15 +85,25 @@ function C6Envelope({ res, mods }: { res: any; mods: any[] }) {
         {/* LINKER KOLOM */}
         <div className="col col-left">
           <div className="plates">
-            {vehicles.map((v: any, idx: number) => (
+            {vehicles.map((v: any, idx: number) => {
+              const st = v.license_plate ? detectPlateStyle(v.license_plate, v.rdw_make ? true : (v.rdw_fetched_at ? false : undefined)) : null;
+              return (
               <div key={v.license_plate || `empty-${idx}`}>
-                <div className="plate">
-                  <span className="plate-eu" />
+                <div className="plate" style={st ? { background: st.bg, borderColor: st.border, color: st.textColor } : undefined}>
+                  {st && st.euBg ? (
+                    <span className="plate-eu" style={{ background: st.euBg, width: '13pt', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif', lineHeight: 1 }}>
+                      <span style={{ fontSize: '5pt', color: '#ffd700' }}>★</span>
+                      <span style={{ fontSize: '5pt', fontWeight: 700, color: '#fff' }}>{st.euCode}</span>
+                    </span>
+                  ) : st && st.euCode ? (
+                    <span className="plate-eu" style={{ background: '#003399', width: '13pt', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif', fontSize: '6.5pt', fontWeight: 700, color: '#fff' }}>{st.euCode}</span>
+                  ) : null}
                   <span className="plate-text">{v.license_plate ? formatPlate(v.license_plate) : ''}</span>
                 </div>
                 {carInfoLine(v) && <div className="car-info">{carInfoLine(v)}</div>}
               </div>
-            ))}
+              );
+            })}
           </div>
           {res.ferry_outbound_time && (
             <div className="outbound-time">

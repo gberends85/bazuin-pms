@@ -428,9 +428,32 @@ interface SavedProfile {
   plates: string[]; // tot 5 meest recente kentekens
 }
 const PROFILE_KEY = 'bazuin_profile';
+const PROFILE_MAX_AGE = 60 * 60 * 24 * 365; // 1 jaar in seconden
+
+// Cookie-back-up (1 jaar), zodat de kentekens/gegevens ook bewaard blijven als
+// localStorage door de browser wordt gewist (bv. Safari/iOS privacybescherming).
+function readProfileCookie(): SavedProfile | null {
+  try {
+    if (typeof document === 'undefined') return null;
+    const m = document.cookie.match(new RegExp('(?:^|; )' + PROFILE_KEY + '=([^;]*)'));
+    return m ? JSON.parse(decodeURIComponent(m[1])) : null;
+  } catch { return null; }
+}
+function writeProfileCookie(profile: SavedProfile) {
+  try {
+    if (typeof document === 'undefined') return;
+    const secure = typeof location !== 'undefined' && location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = `${PROFILE_KEY}=${encodeURIComponent(JSON.stringify(profile))}; Max-Age=${PROFILE_MAX_AGE}; Path=/; SameSite=Lax${secure}`;
+  } catch {}
+}
+function clearProfileStorage() {
+  try { localStorage.removeItem(PROFILE_KEY); } catch {}
+  try { if (typeof document !== 'undefined') document.cookie = `${PROFILE_KEY}=; Max-Age=0; Path=/; SameSite=Lax`; } catch {}
+}
 function loadProfile(): SavedProfile | null {
-  try { const raw = localStorage.getItem(PROFILE_KEY); return raw ? JSON.parse(raw) : null; }
-  catch { return null; }
+  try { const raw = localStorage.getItem(PROFILE_KEY); if (raw) return JSON.parse(raw); }
+  catch {}
+  return readProfileCookie(); // terugval als localStorage leeg/gewist is
 }
 function persistProfile(s: BookingState) {
   try {
@@ -439,7 +462,8 @@ function persistProfile(s: BookingState) {
     const seen = new Set<string>();
     const merged = [...newPlates, ...(existing?.plates || [])].filter(p => { if (seen.has(p)) return false; seen.add(p); return true; }).slice(0, 5);
     const profile: SavedProfile = { firstName: s.firstName, lastName: s.lastName, email: s.email, phone: s.phone, plates: merged };
-    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+    try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); } catch {}
+    writeProfileCookie(profile); // 1 jaar bewaren, ook los van localStorage
   } catch {}
 }
 
@@ -1314,7 +1338,7 @@ export default function BookingPage() {
                   <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><CheckIcon className="w-4 h-4" />Ingevuld met uw opgeslagen gegevens</span>
                   <button type="button"
                     onClick={() => {
-                      try { localStorage.removeItem(PROFILE_KEY); } catch {}
+                      clearProfileStorage();
                       setSavedProfile(null);
                       setState(prev => ({ ...prev, firstName: '', lastName: '', email: '', phone: '' }));
                     }}

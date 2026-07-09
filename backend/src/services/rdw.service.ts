@@ -19,9 +19,13 @@ interface RdwFuelEntry {
   actie_radius_enkel_elektrisch_wltp?: string;
   elektrisch_verbruik_enkel_elektrisch_wltp?: string;
   actie_radius_enkel_elektrisch_stad_wltp?: string;
-  // PHEV
+  // PHEV (WLTP)
   actie_radius_extern_opladen_wltp?: string;
   elektrisch_verbruik_extern_opladen_wltp?: string;
+  // Oudere velden (voertuigen van vóór WLTP, bv. bouwjaar < ~2018)
+  actieradius_extern_oplaadbaar?: string;              // EV-bereik extern opladen (km)
+  elektriciteitsverbruik_gewogen_gecombineerd?: string; // Wh/km (gewogen gecombineerd)
+  klasse_hybride_elektrisch_voertuig?: string;          // "OVC-HEV" = plug-in (extern oplaadbaar)
 }
 
 export interface EvInfo {
@@ -87,36 +91,53 @@ export async function lookupRdw(rawPlate: string): Promise<VehicleInfo | null> {
         { params: { kenteken: plate }, timeout: 3000 }
       );
       if (fuelResponse.data && fuelResponse.data.length > 0) {
-        // Find primary fuel type (first entry, or electric if available)
         const entries = fuelResponse.data;
-        const electricEntry = entries.find(e =>
-          e.brandstof_omschrijving?.toLowerCase().includes('elektriciteit') ||
-          e.brandstof_omschrijving?.toLowerCase().includes('electric')
-        );
-        fuelType = entries[0].brandstof_omschrijving || 'Onbekend';
+        const num = (v?: string) => { const n = v != null ? parseFloat(v) : NaN; return Number.isFinite(n) ? n : 0; };
+        const combustionRe = /benzine|diesel|lpg|cng|gas|waterstof|alcohol/i;
+
+        const electricEntry = entries.find(e => /elektr|electric/i.test(e.brandstof_omschrijving || ''));
+        const hasCombustion = entries.some(e => combustionRe.test(e.brandstof_omschrijving || ''));
+
+        // Weergegeven brandstof: bij hybride alle brandstoffen tonen (bv. "Benzine / Elektriciteit")
+        fuelType = entries.length > 1
+          ? entries.map(e => e.brandstof_omschrijving).filter(Boolean).join(' / ')
+          : (entries[0].brandstof_omschrijving || 'Onbekend');
+
+        // Kan de auto extern opladen? Plug-in (OVC-HEV) of een extern-oplaadbaar-bereik > 0.
+        // Zo blijven gewone/mild-hybrides (niet oplaadbaar) terecht uitgesloten.
+        // OVC-HEV = plug-in (extern oplaadbaar). Let op: NOVC-HEV = NIET oplaadbaar,
+        // dus een woordgrens gebruiken zodat "NOVC-HEV" niet meetelt.
+        const isOvcHev = entries.some(e => /\bOVC-HEV\b/i.test(e.klasse_hybride_elektrisch_voertuig || ''));
+        const externalRange = Math.max(0, ...entries.map(e => num(e.actieradius_extern_oplaadbaar)));
+        const combinedElecConsumption = Math.max(0, ...entries.map(e => num(e.elektriciteitsverbruik_gewogen_gecombineerd)));
 
         if (electricEntry) {
-          // BEV: enkel elektrisch / PHEV: extern opladen
-          const rangeStr = electricEntry.actie_radius_enkel_elektrisch_wltp
-            || electricEntry.actie_radius_extern_opladen_wltp;
-          const consumptionStr = electricEntry.elektrisch_verbruik_enkel_elektrisch_wltp
-            || electricEntry.elektrisch_verbruik_extern_opladen_wltp;
+          // Bereik: WLTP indien beschikbaar, anders het oudere extern-oplaadbaar-bereik.
+          const wltpRange = num(electricEntry.actie_radius_enkel_elektrisch_wltp)
+            || num(electricEntry.actie_radius_extern_opladen_wltp);
+          const range = wltpRange > 0 ? wltpRange : externalRange;
 
-          const wltpRange = rangeStr ? parseFloat(rangeStr) : 0;
-          const wltpConsumption = consumptionStr ? parseFloat(consumptionStr) : 0;
+          // Verbruik: WLTP indien beschikbaar, anders gewogen gecombineerd, anders ~200 Wh/km.
+          const wltpConsumption = num(electricEntry.elektrisch_verbruik_enkel_elektrisch_wltp)
+            || num(electricEntry.elektrisch_verbruik_extern_opladen_wltp);
+          const consumption = wltpConsumption > 0 ? wltpConsumption : (combinedElecConsumption > 0 ? combinedElecConsumption : 200);
 
-          if (wltpRange > 0 && wltpConsumption > 0) {
-            const batteryCapacity = Math.round((wltpRange * wltpConsumption / 1000) * 10) / 10;
-            const realisticKmPerKwh = Math.round((1000 / wltpConsumption) * 0.85 * 10) / 10;
-            // BEV = heeft enkel-elektrisch WLTP veld; PHEV = heeft extern-opladen veld
-            const isBev = !!electricEntry.actie_radius_enkel_elektrisch_wltp;
+          // Alleen laden aanbieden als de auto ook echt extern oplaadbaar is.
+          const chargeable = range > 0 || isOvcHev || externalRange > 0;
+
+          if (chargeable) {
+            const batteryCapacity = range > 0
+              ? Math.round((range * consumption / 1000) * 10) / 10
+              : 8; // extern oplaadbaar maar geen bereik bekend → veilige standaard
+            const realisticKmPerKwh = Math.round((1000 / consumption) * 0.85 * 10) / 10;
+            const isBev = !hasCombustion; // BEV = geen verbrandingsmotor; anders PHEV
             // BEV: adviseer ~50% (rijdt nooit leeg); PHEV: adviseer volledige lading
             const suggestedKwh = isBev
               ? Math.round(batteryCapacity * 0.5 * 10) / 10
               : batteryCapacity;
             evInfo = {
-              wltpRangeKm: wltpRange,
-              wltpConsumptionWhPerKm: wltpConsumption,
+              wltpRangeKm: range,
+              wltpConsumptionWhPerKm: consumption,
               batteryCapacityKwh: batteryCapacity,
               realisticKmPerKwh,
               suggestedKwh,

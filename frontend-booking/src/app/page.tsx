@@ -1171,7 +1171,10 @@ export default function BookingPage() {
                   .filter(s => s.kwh && !s.admin_only)
                   .filter((s, idx, arr) => arr.findIndex(x => x.kwh === s.kwh) === idx);
                 const fuelType = v.rdw?.fuelType?.toLowerCase() || '';
-                const isCombustion = fuelType.includes('benzine') || fuelType.includes('diesel') || fuelType.includes('lpg');
+                // Blokkeer laden alleen als de auto verbrandingsmotor heeft én niet extern
+                // oplaadbaar is. Plug-in hybrides (fuelType bevat "benzine" maar hebben ev)
+                // krijgen wél laden; onbekende/buitenlandse kentekens (geen brandstof) ook.
+                const isCombustion = (fuelType.includes('benzine') || fuelType.includes('diesel') || fuelType.includes('lpg')) && !v.rdw?.ev;
                 return (
                   <div key={i} style={{ marginBottom: 20, paddingBottom: 20, borderBottom: i < state.vehicles.length - 1 ? '0.5px solid rgba(10,34,64,0.08)' : 'none' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>

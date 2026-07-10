@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthGuard } from '@/lib/auth';
@@ -25,6 +25,43 @@ function fmtShort(d: any): string {
   if (!d) return '';
   return new Date(d).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
 }
+function timeShort(t: any): string { return t ? String(t).slice(0, 5) : ''; }
+
+// Korte samenvatting van de wijziging voor in de popup (vooral boottijden).
+function modSummary(m: any): string | null {
+  let d: any = {};
+  try { d = m.change_details ? (typeof m.change_details === 'string' ? JSON.parse(m.change_details) : m.change_details) : {}; }
+  catch { d = {}; }
+  const prefix = m.plates ? `${m.plates} · ` : '';
+
+  if (m.modification_type === 'ferry') {
+    const legs: string[] = [];
+    if (d.newReturnTime) {
+      const arr = d.newReturnArrivalHarlingen ? ` = ${d.newReturnArrivalHarlingen} aankomst` : '';
+      legs.push(`Was ${timeShort(d.currentReturnTime) || '—'} halen → NU ${timeShort(d.newReturnTime)} veerboot${arr}`);
+    }
+    if (d.newOutboundTime) {
+      const arr = d.newOutboundArrivalTime ? ` = ${d.newOutboundArrivalTime} op eiland` : '';
+      legs.push(`Was ${timeShort(d.currentOutboundTime) || '—'} heen → NU ${timeShort(d.newOutboundTime)} veerboot${arr}`);
+    }
+    return legs.length ? prefix + legs.join('   |   ') : null;
+  }
+
+  if (m.modification_type === 'plate') {
+    const vs: any[] = Array.isArray(d.vehicles) ? d.vehicles : [];
+    const parts = vs.filter(v => v.oldPlate || v.newPlate).map(v => `${v.oldPlate || '—'} → ${v.newPlate || '—'}`);
+    return parts.length ? parts.join(', ') : null;
+  }
+
+  if (m.modification_type === 'contact') {
+    const parts: string[] = [];
+    if (d.newEmail && d.newEmail !== d.oldEmail) parts.push(`e-mail → ${d.newEmail}`);
+    if (d.newPhone && d.newPhone !== d.oldPhone) parts.push(`tel → ${d.newPhone}`);
+    return parts.length ? prefix + parts.join(', ') : null;
+  }
+
+  return null;
+}
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const ready = useAuthGuard();
@@ -49,17 +86,33 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     } catch { /* negeer */ }
   }, []);
 
+  const loadPending = useCallback(() =>
+    api.modifications.pending()
+      .then((list: any) => setPendingMods(Array.isArray(list) ? list : []))
+      .catch(() => { /* stil */ }),
+  []);
+
   // Pollen van openstaande verzoeken (alleen als ingelogd)
   useEffect(() => {
     if (!ready) return;
-    let active = true;
-    const load = () => api.modifications.pending()
-      .then(list => { if (active) setPendingMods(Array.isArray(list) ? list : []); })
-      .catch(() => { /* stil */ });
-    load();
-    const iv = setInterval(load, 30000); // elke 30s verversen
-    return () => { active = false; clearInterval(iv); };
-  }, [ready]);
+    loadPending();
+    const iv = setInterval(loadPending, 30000); // elke 30s verversen
+    return () => clearInterval(iv);
+  }, [ready, loadPending]);
+
+  // Direct akkoord gaan vanuit de popup (met bevestigingsmail naar de klant).
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  async function approveMod(id: string) {
+    setApprovingId(id);
+    try {
+      await api.modifications.accept(id, '', true);
+      await loadPending();
+    } catch (e: any) {
+      alert('Kon de wijziging niet bevestigen: ' + (e?.message || 'onbekende fout'));
+    } finally {
+      setApprovingId(null);
+    }
+  }
 
   // Op desktop onthouden we de in-/uitklap-voorkeur; op mobiel niet (overlay).
   function openSidebar() {
@@ -160,8 +213,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </span>
           </div>
           <div style={{ maxHeight: 260, overflowY: 'auto', padding: '8px 0' }}>
-            {visibleMods.slice(0, 6).map(m => (
-              <div key={m.id} style={{ padding: '8px 16px', borderBottom: '0.5px solid rgba(10,34,64,0.07)' }}>
+            {visibleMods.slice(0, 6).map(m => {
+              const summary = modSummary(m);
+              return (
+              <div key={m.id} style={{ padding: '10px 16px', borderBottom: '0.5px solid rgba(10,34,64,0.07)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontWeight: 700, fontSize: 13, color: '#0a2240' }}>{m.first_name} {m.last_name}</span>
                   <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#7090b0' }}>{m.reference}</span>
@@ -172,8 +227,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     <> · {fmtShort(m.new_arrival_date)} – {fmtShort(m.new_departure_date)}</>
                   )}
                 </div>
+                {summary && (
+                  <div style={{ fontSize: 12, color: '#0a2240', fontWeight: 600, marginTop: 5, lineHeight: 1.45, background: '#f4f8fd', borderRadius: 6, padding: '6px 9px' }}>
+                    {summary}
+                  </div>
+                )}
+                <button
+                  onClick={() => approveMod(m.id)}
+                  disabled={approvingId === m.id}
+                  style={{ marginTop: 8, padding: '7px 12px', borderRadius: 7, background: approvingId === m.id ? '#9fc7bd' : '#0a7c6e', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12, cursor: approvingId === m.id ? 'not-allowed' : 'pointer' }}
+                >{approvingId === m.id ? 'Bezig…' : '✓ Akkoord + mail naar klant'}</button>
               </div>
-            ))}
+              );
+            })}
             {visibleMods.length > 6 && (
               <div style={{ padding: '6px 16px', fontSize: 12, color: '#7090b0' }}>+ {visibleMods.length - 6} meer…</div>
             )}

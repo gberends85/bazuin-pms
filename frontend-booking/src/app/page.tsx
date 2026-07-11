@@ -1124,10 +1124,20 @@ export default function BookingPage() {
             </div>
             ) : null} {/* end else (non-anders) */}
 
+            {state.destination && (!state.ferryOutTime || !(state.ferryRetTime || state.ferryRetCustomTime)) && (
+              <div style={{ fontSize: 12, color: '#e24b4a', fontWeight: 600, marginBottom: 8, textAlign: 'right' }}>
+                <ExclamationTriangleIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
+                {state.destination === 'anders'
+                  ? 'Vul zowel de aankomst- als de ophaaltijd in om verder te gaan.'
+                  : !state.ferryOutTime
+                    ? 'Kies een heentijd om verder te gaan.'
+                    : 'Kies ook een terug-/ophaaltijd om verder te gaan.'}
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <button style={S.btnGhost} onClick={() => setStep(1)}><ArrowLeftIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />Terug</button>
               <button style={S.btnPrimary}
-                disabled={!state.destination || !state.ferryOutTime}
+                disabled={!state.destination || !state.ferryOutTime || !(state.ferryRetTime || state.ferryRetCustomTime)}
                 onClick={() => setStep(3)}>Verder: Voertuigen <ArrowRightIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle' }} /></button>
             </div>
           </>

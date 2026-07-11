@@ -130,6 +130,9 @@ export const bookingApi = {
   getAllForEmail: (token: string) =>
     get<{ reservations: any[] }>(`/reservations/token/${token}/all-for-email`),
 
+  openReservation: (token: string, reservationId: string) =>
+    get<{ token: string }>(`/reservations/token/${token}/open/${reservationId}`),
+
   modifyFerry: (token: string, newOutboundTime: string, newReturnTime: string, notes: string, outboundDestination?: string, returnDestination?: string) =>
     post<{ success: boolean; autoApplied: boolean }>(`/reservations/token/${token}/modify-ferry`, { newOutboundTime, newReturnTime, notes, outboundDestination, returnDestination }),
 

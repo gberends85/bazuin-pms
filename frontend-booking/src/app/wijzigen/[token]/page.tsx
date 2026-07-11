@@ -683,6 +683,18 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
     finally { setAllResLoading(false); }
   }
 
+  // Open een andere (eigen) reservering vanuit de lijst: haal het wijzig-token op en ga ernaartoe.
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  async function openReservation(r: any) {
+    if (r.cancellation_token === params.token) return; // dit is de huidige
+    if (r.cancellation_token) { window.location.href = `/boeken/wijzigen/${r.cancellation_token}`; return; }
+    setOpeningId(r.id); setError('');
+    try {
+      const { token } = await bookingApi.openReservation(params.token, r.id);
+      window.location.href = `/boeken/wijzigen/${token}`;
+    } catch (e: any) { setError(e.message || 'Kon deze reservering niet openen.'); setOpeningId(null); }
+  }
+
   // ── Ferry sync handler ────────────────────────────────────────
   async function syncFerryDates() {
     if (!res) return;
@@ -1492,7 +1504,14 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-                <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 13, color: '#142440' }}>{r.reference}</span>
+                {(!isCurrentRes && r.status !== 'cancelled') ? (
+                  <button onClick={() => openReservation(r)} disabled={openingId === r.id}
+                    style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 13, color: '#19499e', background: 'none', border: 'none', padding: 0, cursor: openingId === r.id ? 'wait' : 'pointer', textDecoration: 'underline' }}>
+                    {r.reference}
+                  </button>
+                ) : (
+                  <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 13, color: '#142440' }}>{r.reference}</span>
+                )}
                 <span style={{ fontSize: 11, fontWeight: 700, color: statusColor[r.status] || '#7090b0', background: '#f4f6f9', padding: '2px 8px', borderRadius: 20 }}>
                   {statusLabel[r.status] || r.status}
                 </span>
@@ -1514,11 +1533,11 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
                   {isCurrentRes ? (
                     <span style={{ fontSize: 11, color: '#19499e', fontWeight: 700 }}>← huidig</span>
                   ) : (
-                    r.cancellation_token && !['cancelled', 'completed'].includes(r.status) && (
-                      <a href={`/boeken/wijzigen/${r.cancellation_token}`}
-                        style={{ fontSize: 12, color: '#19499e', fontWeight: 700, textDecoration: 'none' }}>
-                        Wijzigen <ArrowRightIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle' }} />
-                      </a>
+                    !['cancelled', 'completed'].includes(r.status) && (
+                      <button onClick={() => openReservation(r)} disabled={openingId === r.id}
+                        style={{ fontSize: 12, color: '#19499e', fontWeight: 700, background: 'none', border: 'none', padding: 0, cursor: openingId === r.id ? 'wait' : 'pointer' }}>
+                        {openingId === r.id ? 'Openen…' : <>Wijzigen <ArrowRightIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle' }} /></>}
+                      </button>
                     )
                   )}
                   {r.cancellation_token && r.status === 'cancelled' && parseFloat(r.refund_amount || 0) > 0 && (

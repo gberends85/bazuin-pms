@@ -4162,6 +4162,28 @@ router.get('/reservations/token/:token/all-for-email', async (req: Request, res:
 });
 
 // ============================================================
+// CUSTOMER — OPEN ANDERE EIGEN RESERVERING (vanuit "Mijn reserveringen")
+// Geeft het wijzig-token van een andere reservering van DEZELFDE klant terug,
+// mits die (nog) niet geannuleerd is. Zo kan de klant al zijn eigen boekingen
+// beheren, zonder dat alle tokens ineens in de lijst worden meegestuurd.
+// ============================================================
+router.get('/reservations/token/:token/open/:reservationId', async (req: Request, res: Response) => {
+  const { token, reservationId } = req.params;
+  const result = await query(
+    `SELECT r.cancellation_token, r.status
+     FROM reservations r
+     WHERE r.id = $2
+       AND r.customer_id = (SELECT customer_id FROM reservations WHERE cancellation_token = $1)`,
+    [token, reservationId]
+  );
+  if (result.rows.length === 0) return res.status(404).json({ error: 'Reservering niet gevonden' });
+  const row = result.rows[0];
+  if (row.status === 'cancelled') return res.status(400).json({ error: 'Deze reservering is geannuleerd' });
+  if (!row.cancellation_token) return res.status(404).json({ error: 'Geen wijzig-link beschikbaar' });
+  return res.json({ token: row.cancellation_token });
+});
+
+// ============================================================
 // ADMIN — MODIFICATION PREVIEW
 // ============================================================
 router.get('/admin/reservations/:id/modification-preview', requireAuth, async (req: Request, res: Response) => {

@@ -376,10 +376,11 @@ export async function buildConfirmationVars(
   // Regel 3: Overige diensten (EV-laden, etc.)
   extraDiensten.push(...serviceLines);
 
-  const vertrektijd_terug = res.ferry_return_time
-    ? res.ferry_return_time.slice(0, 5)
-    : (res.ferry_return_custom_time ? res.ferry_return_custom_time.slice(0, 5) : '—');
-  const aankomsttijd_harlingen = res.ferry_return_arrival_harlingen || '';
+  // Eigen (custom) terugtijd = de aankomst-/ophaaltijd in Harlingen zelf (geen boot).
+  const hasCustomReturn = !res.ferry_return_time && !!res.ferry_return_custom_time;
+  const vertrektijd_terug = res.ferry_return_time ? res.ferry_return_time.slice(0, 5) : '';
+  const aankomsttijd_harlingen = res.ferry_return_arrival_harlingen
+    || (hasCustomReturn ? res.ferry_return_custom_time.slice(0, 5) : '');
   // "Afhalen tot" = aankomst veerboot in Harlingen + 15 min marge
   const afhaal_tot = aankomsttijd_harlingen ? addMinutesToTime(aankomsttijd_harlingen, 15) : '';
 
@@ -413,7 +414,7 @@ export async function buildConfirmationVars(
       vertrektijd_heen: res.ferry_outbound_time
         ? res.ferry_outbound_time.slice(0, 5)
         : '—',
-      veerboot_terug: res.ferry_ret_name || (res.ferry_return_custom ? 'Eigen tijd' : '—'),
+      veerboot_terug: res.ferry_ret_name || (hasCustomReturn ? 'Eigen tijd' : '—'),
       vertrektijd_terug,
       aankomsttijd_harlingen,
       afhaal_tot,

@@ -1072,15 +1072,15 @@ export default function BookingPage() {
                 </div>
 
                 {state.ferryRetCustom ? (
-                  <CustomTimeEntry
-                    label="Vertrektijd vanaf het eiland"
-                    time={state.ferryRetCustomTime}
-                    boatType={state.ferryRetBoatType}
-                    destination={state.ferryRetDest || state.destination}
-                    arrivalLabel="Aankomst in Harlingen"
-                    onTimeChange={t => upd('ferryRetCustomTime', t)}
-                    onBoatTypeChange={bt => upd('ferryRetBoatType', bt as any)}
-                  />
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={{ ...S.label, marginBottom: 6 }}>Afhaaltijd — aankomst in Harlingen</label>
+                    <input type="time" value={state.ferryRetCustomTime}
+                      onChange={e => upd('ferryRetCustomTime', e.target.value)}
+                      style={{ border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 8, padding: '9px 14px', fontSize: 22, fontWeight: 800, color: '#142440', outline: 'none', width: 150, background: 'white' }} />
+                    <div style={{ fontSize: 11, color: '#7090b0', marginTop: 8 }}>
+                      Dit is het tijdstip waarop u uw auto in Harlingen ophaalt — geen veer- of snelboot nodig. Wij zetten uw auto 30 minuten van tevoren klaar.
+                    </div>
+                  </div>
                 ) : ferriesRet.length > 0 ? (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 6 }}>
                     {ferriesRet

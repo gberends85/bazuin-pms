@@ -142,11 +142,13 @@ function BevestigingContent() {
               <div style={{ background: '#f0faf8', borderRadius: 8, padding: '10px 14px' }}>
                 <div style={{ fontSize: 11, color: '#7090b0', fontWeight: 600, marginBottom: 3 }}>VERTREK</div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#142440' }}>{fmtDate(reservation.departure_date)}</div>
-                {(fmtTime(reservation.ferry_return_arrival_harlingen) || fmtTime(reservation.ferry_return_time)) && (
+                {(fmtTime(reservation.ferry_return_arrival_harlingen) || fmtTime(reservation.ferry_return_time) || fmtTime(reservation.ferry_return_custom_time)) && (
                   <div style={{ fontSize: 12, color: '#0a6050', fontWeight: 700, marginTop: 4 }}>
                     {fmtTime(reservation.ferry_return_arrival_harlingen)
                       ? `Aankomst Harlingen ${fmtTime(reservation.ferry_return_arrival_harlingen)}`
-                      : `Boot vertrekt ${fmtTime(reservation.ferry_return_time)}`}
+                      : reservation.ferry_return_time
+                        ? `Boot vertrekt ${fmtTime(reservation.ferry_return_time)}`
+                        : `Aankomst Harlingen ${fmtTime(reservation.ferry_return_custom_time)}`}
                   </div>
                 )}
               </div>

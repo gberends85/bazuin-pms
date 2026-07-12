@@ -1,5 +1,5 @@
 import { query } from '../db/pool';
-import { addDays, differenceInDays } from 'date-fns';
+import { addDays, differenceInDays, differenceInCalendarDays } from 'date-fns';
 
 export interface PriceSegment {
   rateId: string;
@@ -260,6 +260,54 @@ export async function calculateRefund(
   const refundAmount = Math.round(totalPaid * (refundPct / 100) * 100) / 100;
 
   return { refundPct, refundAmount, policyDescription: policy.description };
+}
+
+/**
+ * Per-dag restitutie: elke dag van de reservering krijgt zijn eigen restitutie-%,
+ * op basis van hoe ver die dag weg is t.o.v. de OORSPRONKELIJKE aankomstdatum (anchor,
+ * = policy_anchor_date). De tarief-zones komen uit dezelfde cancellation_policies-tabel.
+ * Reeds verstreken dagen (afstand < 0) geven 0%.
+ */
+export async function calculatePerDayRefund(
+  anchorDate: Date,   // oorspronkelijke aankomstdatum
+  nights: number,     // nachten van de reservering
+  totalPaid: number,
+  adminOverridePct?: number
+): Promise<{ refundPct: number; refundAmount: number; effectiveRatio: number; policyDescription: string }> {
+  if (adminOverridePct !== undefined) {
+    const amt = Math.round(totalPaid * (adminOverridePct / 100) * 100) / 100;
+    return { refundPct: adminOverridePct, refundAmount: amt, effectiveRatio: adminOverridePct / 100, policyDescription: `Admin override: ${adminOverridePct}%` };
+  }
+
+  const policyResult = await query(
+    `SELECT days_before_min, days_before_max, refund_percentage
+     FROM cancellation_policies WHERE is_active = true ORDER BY days_before_min`
+  );
+  const tiers = policyResult.rows.map((row: any) => ({
+    min: Number(row.days_before_min),
+    max: row.days_before_max === null || row.days_before_max === undefined ? null : Number(row.days_before_max),
+    pct: Number(row.refund_percentage),
+  }));
+  const rateFor = (daysAway: number): number => {
+    if (daysAway < 0) return 0; // dag al verstreken → niets terug
+    const t = tiers.find(x => daysAway >= x.min && (x.max === null || daysAway <= x.max));
+    return t ? t.pct / 100 : 0;
+  };
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const anchor0 = new Date(anchorDate); anchor0.setHours(0, 0, 0, 0);
+  const daysUntilAnchor = differenceInCalendarDays(anchor0, today);
+
+  const days = Math.max(1, Math.round(nights) + 1); // kalenderdagen: aankomst t/m vertrek
+  const perDay = totalPaid / days;
+  let refund = 0;
+  for (let i = 0; i < days; i++) {
+    refund += perDay * rateFor(daysUntilAnchor + i);
+  }
+  const refundAmount = Math.round(refund * 100) / 100;
+  const effectiveRatio = totalPaid > 0 ? refundAmount / totalPaid : 0;
+  const refundPct = Math.round(effectiveRatio * 100);
+  return { refundPct, refundAmount, effectiveRatio, policyDescription: `Per dag berekend (effectief ${refundPct}%)` };
 }
 
 /**

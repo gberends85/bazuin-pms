@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import { query, getClient } from '../db/pool';
 import {
-  calculatePrice, calculateRefund, generateReference,
+  calculatePrice, calculatePerDayRefund, generateReference,
 } from '../services/pricing.service';
 import { lookupRdw, normalizePlate } from '../services/rdw.service';
 import {
@@ -30,6 +30,15 @@ import { importUmbracoRecord } from '../services/umbraco-import.service';
 import { keysafeRouter } from './keysafe.routes';
 
 export const router = Router();
+
+// Aantal nachten van een reservering (robuust uit arrival/departure), voor het
+// per-dag annuleringsbeleid (kalenderdagen = nachten + 1).
+function resNights(r: any): number {
+  const iso = (d: any) => d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+  const a = new Date(iso(r.arrival_date) + 'T12:00:00').getTime();
+  const d = new Date(iso(r.departure_date) + 'T12:00:00').getTime();
+  return (Number.isFinite(a) && Number.isFinite(d)) ? Math.max(0, Math.round((d - a) / 86400000)) : 0;
+}
 
 // Keysafe-koppeling (kluis bij de parkeerlocatie) — zie keysafe.routes.ts
 router.use(keysafeRouter);
@@ -1254,8 +1263,9 @@ router.get('/reservations/token/:token', async (req: Request, res: Response) => 
   // Geen restitutie als er nog niet betaald is (on_site / pending)
   const isPaid = res2.payment_status === 'paid';
   const refundInfo = isPaid
-    ? await calculateRefund(
+    ? await calculatePerDayRefund(
         new Date(isoDate2(res2.policy_anchor_date || res2.arrival_date) + 'T12:00:00'),
+        resNights(res2),
         parseFloat(res2.total_price)
       )
     : { refundAmount: 0, refundPct: 0, policyDescription: 'Niet van toepassing — nog niet betaald' };
@@ -1298,7 +1308,7 @@ router.post('/reservations/token/:token/cancel', async (req: Request, res: Respo
   // Geen restitutie als er nog niet betaald is
   const wasPaid = res2.payment_status === 'paid';
   const refundInfo = wasPaid
-    ? await calculateRefund(new Date(res2.policy_anchor_date || res2.arrival_date), parseFloat(res2.total_price))
+    ? await calculatePerDayRefund(new Date(res2.policy_anchor_date || res2.arrival_date), resNights(res2), parseFloat(res2.total_price))
     : { refundAmount: 0, refundPct: 0, policyDescription: 'Niet van toepassing — nog niet betaald' };
 
   // Verwerk Stripe restitutie (alleen als echt betaald)
@@ -2030,7 +2040,7 @@ router.post('/admin/reservations/:id/checkout', requireAuth, async (req: Request
 // ============================================================
 router.get('/admin/reservations/:id/refund-preview', requireAuth, async (req: Request, res: Response) => {
   const result = await query(
-    'SELECT total_price, policy_anchor_date, arrival_date, payment_status FROM reservations WHERE id = $1',
+    'SELECT total_price, policy_anchor_date, arrival_date, departure_date, payment_status FROM reservations WHERE id = $1',
     [req.params.id]
   );
   if (result.rows.length === 0) return res.status(404).json({ error: 'Niet gevonden' });
@@ -2039,7 +2049,7 @@ router.get('/admin/reservations/:id/refund-preview', requireAuth, async (req: Re
   const anchorStr = isoDate(r.policy_anchor_date || r.arrival_date);
   const arrivalStr = isoDate(r.arrival_date);
   const anchor = new Date(anchorStr + 'T12:00:00');
-  const info = await calculateRefund(anchor, parseFloat(r.total_price));
+  const info = await calculatePerDayRefund(anchor, resNights(r), parseFloat(r.total_price));
   const { differenceInDays } = await import('date-fns');
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const daysUntilAnchor = differenceInDays(anchor, today);
@@ -2064,8 +2074,9 @@ router.post('/admin/reservations/:id/cancel', requireAuth, async (req: Request, 
 
   const res2 = result.rows[0];
 
-  const refundInfo = await calculateRefund(
+  const refundInfo = await calculatePerDayRefund(
     new Date(res2.policy_anchor_date || res2.arrival_date),
+    resNights(res2),
     parseFloat(res2.total_price),
     refundPct !== undefined ? parseInt(refundPct) : undefined
   );
@@ -3514,18 +3525,19 @@ router.get('/reservations/token/:token/modification-preview', async (req: Reques
   const newPrice = Math.round((newPriceInfo.totalPrice + servicesTotal) * 100) / 100;
   const priceDiff = Math.round((newPrice - currentPrice) * 100) / 100;
 
-  // Annuleringsbeleid toepassen op restitutie — gebaseerd op huidige aankomstdatum
-  // (policy_anchor_date is alleen relevant bij volledige annulering, niet bij datumwijziging)
-  const policyAnchor = new Date(isoDate(r.arrival_date) + 'T12:00:00');
+  // Annuleringsbeleid (per-dag) op de restitutie — anker = OORSPRONKELIJKE aankomstdatum
+  // (policy_anchor_date). Het effectieve per-dag-percentage van de huidige reservering
+  // wordt toegepast op het prijsverschil van de ingekorte/goedkopere dagen.
+  const policyAnchor = new Date(isoDate(r.policy_anchor_date || r.arrival_date) + 'T12:00:00');
   let cancellationRefundPct = 100;
   let policyDescription = 'Volledige restitutie';
   let netRefund = 0;
   if (priceDiff < 0) {
-    const refundInfo = await calculateRefund(policyAnchor, Math.abs(priceDiff));
-    cancellationRefundPct = refundInfo.refundPct;
-    policyDescription = refundInfo.policyDescription;
+    const full = await calculatePerDayRefund(policyAnchor, resNights(r), currentPrice);
+    cancellationRefundPct = full.refundPct;
+    policyDescription = full.policyDescription;
     // Bij restitutie geen wijzigingskosten in mindering brengen
-    netRefund = Math.max(0, Math.round(refundInfo.refundAmount * 100) / 100);
+    netRefund = Math.max(0, Math.round(Math.abs(priceDiff) * full.effectiveRatio * 100) / 100);
   }
   const netDue = priceDiff > 0 ? Math.round((priceDiff + modFee) * 100) / 100 : 0;
 
@@ -3672,14 +3684,14 @@ router.post('/reservations/token/:token/modify', async (req: Request, res: Respo
   let netRefund = 0;
   let cancellationRefundPct = 100;
 
-  // Annuleringsbeleid gebaseerd op huidige aankomstdatum (datumwijziging, geen annulering)
-  const policyAnchor = new Date(isoDate(r.arrival_date) + 'T12:00:00');
+  // Annuleringsbeleid (per-dag) — anker = OORSPRONKELIJKE aankomstdatum (policy_anchor_date).
+  const policyAnchor = new Date(isoDate(r.policy_anchor_date || r.arrival_date) + 'T12:00:00');
 
   if (priceDiff < 0) {
-    const refundInfo = await calculateRefund(policyAnchor, Math.abs(priceDiff));
-    cancellationRefundPct = refundInfo.refundPct;
+    const full = await calculatePerDayRefund(policyAnchor, resNights(r), currentPrice);
+    cancellationRefundPct = full.refundPct;
     // Bij restitutie geen wijzigingskosten in mindering brengen
-    netRefund = Math.max(0, Math.round(refundInfo.refundAmount * 100) / 100);
+    netRefund = Math.max(0, Math.round(Math.abs(priceDiff) * full.effectiveRatio * 100) / 100);
 
     if (netRefund > 0 && r.stripe_payment_intent_id && r.payment_status === 'paid') {
       const alreadyRefunded = parseFloat(r.refund_amount || '0');

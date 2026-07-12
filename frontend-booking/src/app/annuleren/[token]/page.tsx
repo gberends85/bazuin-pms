@@ -55,17 +55,11 @@ export default function CancellationPage({ params }: { params: { token: string }
   // Geïmporteerde Umbraco-boeking — annuleren via nieuw systeem niet toegestaan
   const isImported = /^DB-\d{4}-U\d+$/.test(res?.reference || '');
 
-  // Check if already checked in or completed — cancellation not allowed
+  // Annuleren mag zolang de reservering niet daadwerkelijk is ingecheckt —
+  // ook op of ná de aankomstdatum. Alleen ingecheckte of voltooide
+  // reserveringen zijn vergrendeld.
   const isCheckedIn = res?.status === 'checked_in' || res?.status === 'completed';
-
-  // During-stay detection
-  const arrStr = res?.arrival_date?.slice(0, 10);
-  const depStr = res?.departure_date?.slice(0, 10);
-  const todayStr = new Date().toISOString().split('T')[0];
-  const isDuringStay = arrStr && depStr && todayStr >= arrStr && todayStr < depStr;
-
-  // Block when during stay OR already checked in
-  const isLocked = isDuringStay || isCheckedIn;
+  const isLocked = isCheckedIn;
 
   return (
     <div style={S.page}>
@@ -163,9 +157,7 @@ export default function CancellationPage({ params }: { params: { token: string }
             <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center', color: '#142440' }}><LockClosedIcon className="w-7 h-7" /></div>
             <div style={{ fontSize: 14, fontWeight: 700, color: '#142440', marginBottom: 6 }}>Annuleren niet meer mogelijk</div>
             <div style={{ fontSize: 13, color: '#7090b0' }}>
-              {isDuringStay
-                ? 'Annuleren is niet mogelijk tijdens uw verblijf.'
-                : 'Annuleren is niet meer mogelijk omdat uw voertuig reeds is ingecheckt bij Autostalling De Bazuin.'}
+              Annuleren is niet meer mogelijk omdat uw voertuig reeds is ingecheckt bij Autostalling De Bazuin.
             </div>
             <div style={{ marginTop: 14, fontSize: 12, color: '#7090b0' }}>
               Heeft u een vraag? WhatsApp ons via de bevestigingsmail.

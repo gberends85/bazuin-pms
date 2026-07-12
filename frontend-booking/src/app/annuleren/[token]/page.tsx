@@ -65,9 +65,9 @@ export default function CancellationPage({ params }: { params: { token: string }
     <div style={S.page}>
       <div style={S.card}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <div style={{ width: 44, height: 44, background: '#19499e', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, color: '#ffffff', margin: '0 auto 12px' }}>AB</div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="Autostalling De Bazuin" style={{ height: 56, width: 'auto', maxWidth: '78%', display: 'block', margin: '0 auto 16px' }} />
           <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 800, color: '#142440' }}>Reservering annuleren</h2>
-          <p style={{ margin: 0, color: '#7090b0', fontSize: 13 }}>Autostalling De Bazuin</p>
         </div>
 
         <div style={{ background: '#f4f6f9', borderRadius: 10, padding: '16px 18px', marginBottom: 20 }}>

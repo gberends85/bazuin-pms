@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import { query, getClient } from '../db/pool';
 import {
-  calculatePrice, calculatePerDayRefund, generateReference,
+  calculatePrice, calculatePerDayRefund, calculateModificationRefund, generateReference,
 } from '../services/pricing.service';
 import { lookupRdw, normalizePlate } from '../services/rdw.service';
 import {
@@ -3532,12 +3532,24 @@ router.get('/reservations/token/:token/modification-preview', async (req: Reques
   let cancellationRefundPct = 100;
   let policyDescription = 'Volledige restitutie';
   let netRefund = 0;
+  let refundBreakdown: any[] = [];
+  let refundPerDay = 0;
+  let refundRemovedDays = 0;
   if (priceDiff < 0) {
-    const full = await calculatePerDayRefund(policyAnchor, resNights(r), currentPrice);
-    cancellationRefundPct = full.refundPct;
-    policyDescription = full.policyDescription;
+    const mod = await calculateModificationRefund(
+      policyAnchor,
+      resNights(r),
+      resNights({ arrival_date: newArrival, departure_date: newDeparture }),
+      currentPrice,
+      priceDiff,
+    );
+    cancellationRefundPct = mod.refundPct;
+    policyDescription = mod.policyDescription;
     // Bij restitutie geen wijzigingskosten in mindering brengen
-    netRefund = Math.max(0, Math.round(Math.abs(priceDiff) * full.effectiveRatio * 100) / 100);
+    netRefund = Math.max(0, mod.refundAmount);
+    refundBreakdown = mod.breakdown;
+    refundPerDay = mod.perDay;
+    refundRemovedDays = mod.removedDays;
   }
   const netDue = priceDiff > 0 ? Math.round((priceDiff + modFee) * 100) / 100 : 0;
 
@@ -3580,6 +3592,7 @@ router.get('/reservations/token/:token/modification-preview', async (req: Reques
     priceDifference: priceDiff, modificationFee: modFee,
     netAmountDue: netDue, netRefundAmount: originalUnpaid ? 0 : netRefund,
     cancellationRefundPct, policyDescription,
+    refundBreakdown: originalUnpaid ? [] : refundBreakdown, refundPerDay, refundRemovedDays,
     duringStay: false, available: isAvailable, availableSpots: available,
     policyAnchorDate: null,
     overbookingOption: !isAvailable,
@@ -3688,10 +3701,16 @@ router.post('/reservations/token/:token/modify', async (req: Request, res: Respo
   const policyAnchor = new Date(isoDate(r.policy_anchor_date || r.arrival_date) + 'T12:00:00');
 
   if (priceDiff < 0) {
-    const full = await calculatePerDayRefund(policyAnchor, resNights(r), currentPrice);
-    cancellationRefundPct = full.refundPct;
+    const mod = await calculateModificationRefund(
+      policyAnchor,
+      resNights(r),
+      resNights({ arrival_date: newArrivalDate, departure_date: newDepartureDate }),
+      currentPrice,
+      priceDiff,
+    );
+    cancellationRefundPct = mod.refundPct;
     // Bij restitutie geen wijzigingskosten in mindering brengen
-    netRefund = Math.max(0, Math.round(Math.abs(priceDiff) * full.effectiveRatio * 100) / 100);
+    netRefund = Math.max(0, mod.refundAmount);
 
     if (netRefund > 0 && r.stripe_payment_intent_id && r.payment_status === 'paid') {
       const alreadyRefunded = parseFloat(r.refund_amount || '0');

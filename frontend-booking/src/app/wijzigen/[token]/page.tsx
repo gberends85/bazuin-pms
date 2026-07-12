@@ -1085,7 +1085,25 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
 
       {!preview.duringStay && !checkedInEarlier && !preview.originalUnpaid && preview.priceDifference < 0 && preview.cancellationRefundPct < 100 && (
         <div style={{ background: '#f4f6f9', border: '0.5px solid rgba(10,34,64,0.15)', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#556070', marginBottom: 12 }}>
-          Op basis van het annuleringsbeleid ontvangt u gemiddeld <strong>{preview.cancellationRefundPct}%</strong> restitutie over het verschil — per dag berekend, hoe dichter bij aankomst hoe minder ({preview.policyDescription}).
+          {Array.isArray(preview.refundBreakdown) && preview.refundBreakdown.length > 0 ? (
+            <>
+              <div style={{ marginBottom: 6 }}>
+                U kort <strong>{preview.refundRemovedDays} dag{preview.refundRemovedDays !== 1 ? 'en' : ''}</strong> in. Deze liggen het verst van uw aankomst en worden per dag terugbetaald{typeof preview.refundPerDay === 'number' && preview.refundPerDay > 0 ? ` (€ ${preview.refundPerDay.toFixed(2)} per dag)` : ''}:
+              </div>
+              {preview.refundBreakdown.filter((b: any) => b.amount > 0).map((b: any) => (
+                <div key={b.pct} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#3a4a5e' }}>
+                  <span>{b.days} {b.days === 1 ? 'dag' : 'dagen'} × {b.pct}% terug</span>
+                  <span style={{ fontWeight: 600 }}>€ {b.amount.toFixed(2)}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0 0', marginTop: 4, borderTop: '0.5px solid rgba(10,34,64,0.15)', fontWeight: 700, color: '#19499e' }}>
+                <span>Totaal restitutie</span>
+                <span>€ {preview.netRefundAmount.toFixed(2)}</span>
+              </div>
+            </>
+          ) : (
+            <>Op basis van het annuleringsbeleid ontvangt u gemiddeld <strong>{preview.cancellationRefundPct}%</strong> restitutie over het verschil — per dag berekend, hoe dichter bij aankomst hoe minder ({preview.policyDescription}).</>
+          )}
         </div>
       )}
 

@@ -335,6 +335,87 @@ export async function calculatePerDayRefund(
 }
 
 /**
+ * Restitutie bij het INKORTEN van een verblijf (goedkopere wijziging).
+ * De geschrapte dagen zijn de LAATSTE dagen van het verblijf — het verst van de
+ * (oorspronkelijke) aankomst — en worden elk terugbetaald naar hun eigen
+ * tarief-zone. Zo krijgt de klant het per-dag-tarief terug dat bij die dag hoort
+ * (verste dagen = hoogste %), en telt de per-periode-uitsplitsing exact op tot
+ * het restitutiebedrag.
+ *
+ * Val je alleen goedkoper uit zónder nachten te schrappen (bv. andere periode),
+ * dan is er geen geschrapte staart en gebruiken we het gemiddelde per-dag-% van
+ * de hele reservering over het prijsverschil.
+ */
+export async function calculateModificationRefund(
+  anchorDate: Date,        // oorspronkelijke aankomstdatum (policy_anchor_date)
+  originalNights: number,
+  newNights: number,
+  currentPrice: number,    // huidig totaalbedrag
+  priceDiff: number,       // newPrice - currentPrice (negatief bij goedkoper)
+): Promise<{ refundPct: number; refundAmount: number; effectiveRatio: number; perDay: number; removedDays: number; breakdown: RefundBreakdownRow[]; policyDescription: string }> {
+  const diff = Math.round(Math.abs(priceDiff) * 100) / 100;
+  const removed = Math.max(0, Math.round(originalNights) - Math.round(newNights));
+
+  // Geen nachten geschrapt (alleen goedkoper): gemiddeld per-dag-% over het verschil.
+  if (removed <= 0 || diff <= 0) {
+    const full = await calculatePerDayRefund(anchorDate, originalNights, currentPrice);
+    const amt = Math.round(diff * full.effectiveRatio * 100) / 100;
+    return {
+      refundPct: full.refundPct, refundAmount: amt, effectiveRatio: full.effectiveRatio,
+      perDay: 0, removedDays: 0, breakdown: [],
+      policyDescription: `Gemiddeld ${full.refundPct}% over het verschil`,
+    };
+  }
+
+  const policyResult = await query(
+    `SELECT days_before_min, days_before_max, refund_percentage
+     FROM cancellation_policies WHERE is_active = true ORDER BY days_before_min`
+  );
+  const tiers = policyResult.rows.map((row: any) => ({
+    min: Number(row.days_before_min),
+    max: row.days_before_max === null || row.days_before_max === undefined ? null : Number(row.days_before_max),
+    pct: Number(row.refund_percentage),
+  }));
+  const rateFor = (daysAway: number): number => {
+    if (daysAway < 0) return 0;
+    const t = tiers.find(x => daysAway >= x.min && (x.max === null || daysAway <= x.max));
+    return t ? t.pct / 100 : 0;
+  };
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const anchor0 = new Date(anchorDate); anchor0.setHours(0, 0, 0, 0);
+  const daysUntilAnchor = differenceInCalendarDays(anchor0, today);
+
+  // Dag-index 0 = aankomstdag. Het nieuwe (kortere) verblijf houdt de eerste
+  // (newNights + 1) dagen; de geschrapte dagen beginnen bij index newNights + 1.
+  const perDay = diff / removed;
+  const firstRemovedIdx = Math.round(newNights) + 1;
+  const groups = new Map<number, { pct: number; days: number; amount: number }>();
+  for (let i = 0; i < removed; i++) {
+    const daysAway = daysUntilAnchor + firstRemovedIdx + i;
+    const rt = rateFor(daysAway);
+    const pct = Math.round(rt * 100);
+    const g = groups.get(pct) || { pct, days: 0, amount: 0 };
+    g.days += 1;
+    g.amount += perDay * rt;
+    groups.set(pct, g);
+  }
+  const breakdown: RefundBreakdownRow[] = [...groups.values()]
+    .map(g => ({ pct: g.pct, days: g.days, amount: Math.round(g.amount * 100) / 100 }))
+    .sort((a, b) => a.pct - b.pct);
+  const refundAmount = Math.round(breakdown.reduce((s, g) => s + g.amount, 0) * 100) / 100;
+  const effectiveRatio = diff > 0 ? refundAmount / diff : 0;
+  const refundPct = Math.round(effectiveRatio * 100);
+  return {
+    refundPct, refundAmount, effectiveRatio,
+    perDay: Math.round(perDay * 100) / 100,
+    removedDays: removed,
+    breakdown,
+    policyDescription: `Per verwijderde dag berekend (effectief ${refundPct}%)`,
+  };
+}
+
+/**
  * Generate a unique booking reference like PP-2026-8471
  */
 export async function generateReference(): Promise<string> {

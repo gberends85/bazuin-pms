@@ -1083,7 +1083,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         </div>
       )}
 
-      {!preview.duringStay && !checkedInEarlier && !preview.originalUnpaid && preview.priceDifference < 0 && preview.cancellationRefundPct < 100 && (
+      {!preview.duringStay && !checkedInEarlier && !preview.originalUnpaid && preview.priceDifference < 0 && preview.netRefundAmount > 0 && (
         <div style={{ background: '#f4f6f9', border: '0.5px solid rgba(10,34,64,0.15)', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#556070', marginBottom: 12 }}>
           {Array.isArray(preview.refundBreakdown) && preview.refundBreakdown.length > 0 ? (
             <>

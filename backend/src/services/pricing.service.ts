@@ -386,9 +386,14 @@ export async function calculateModificationRefund(
   const anchor0 = new Date(anchorDate); anchor0.setHours(0, 0, 0, 0);
   const daysUntilAnchor = differenceInCalendarDays(anchor0, today);
 
+  // Gemiddeld dagtarief van de HELE reservering = totale parkeerkosten /
+  // parkeerdagen (parkeerdagen = nachten + 1, dezelfde telling als bij de
+  // annuleringsberekening). Dat is het tarief dat per geschrapte dag geldt.
+  const origDays = Math.max(1, Math.round(originalNights) + 1);
+  const perDay = currentPrice / origDays;
+
   // Dag-index 0 = aankomstdag. Het nieuwe (kortere) verblijf houdt de eerste
   // (newNights + 1) dagen; de geschrapte dagen beginnen bij index newNights + 1.
-  const perDay = diff / removed;
   const firstRemovedIdx = Math.round(newNights) + 1;
   const groups = new Map<number, { pct: number; days: number; amount: number }>();
   for (let i = 0; i < removed; i++) {
@@ -400,18 +405,24 @@ export async function calculateModificationRefund(
     g.amount += perDay * rt;
     groups.set(pct, g);
   }
-  const breakdown: RefundBreakdownRow[] = [...groups.values()]
-    .map(g => ({ pct: g.pct, days: g.days, amount: Math.round(g.amount * 100) / 100 }))
+  let breakdown: RefundBreakdownRow[] = [...groups.values()]
+    .map(g => ({ pct: g.pct, days: g.days, amount: g.amount }))
     .sort((a, b) => a.pct - b.pct);
+  const rawRefund = breakdown.reduce((s, g) => s + g.amount, 0);
+  // Nooit méér terugbetalen dan het prijsverschil zelf (een kortere boeking kan
+  // een hoger dagtarief hebben). Bij overschrijding: evenredig terugschalen.
+  const scale = rawRefund > diff && rawRefund > 0 ? diff / rawRefund : 1;
+  breakdown = breakdown.map(g => ({ pct: g.pct, days: g.days, amount: Math.round(g.amount * scale * 100) / 100 }));
   const refundAmount = Math.round(breakdown.reduce((s, g) => s + g.amount, 0) * 100) / 100;
+  const perDayRounded = Math.round(perDay * 100) / 100;
   const effectiveRatio = diff > 0 ? refundAmount / diff : 0;
   const refundPct = Math.round(effectiveRatio * 100);
   return {
     refundPct, refundAmount, effectiveRatio,
-    perDay: Math.round(perDay * 100) / 100,
+    perDay: perDayRounded,
     removedDays: removed,
     breakdown,
-    policyDescription: `Per verwijderde dag berekend (effectief ${refundPct}%)`,
+    policyDescription: `Per verwijderde dag berekend (€ ${perDayRounded.toFixed(2)}/dag)`,
   };
 }
 

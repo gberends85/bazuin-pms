@@ -117,9 +117,27 @@ export default function CancellationPage({ params }: { params: { token: string }
             ) : (
               <>
                 <div style={{ fontWeight: 700, marginBottom: 4, color: res.refundInfo.refundPct > 0 ? '#19499e' : '#8a2020' }}>
-                  {res.refundInfo.refundPct > 0 ? `Restitutie: € ${res.refundInfo.refundAmount.toFixed(2)} (${res.refundInfo.refundPct}%)` : 'Geen restitutie van toepassing'}
+                  {res.refundInfo.refundPct > 0 ? `Restitutie: € ${res.refundInfo.refundAmount.toFixed(2)} (gemiddeld ${res.refundInfo.refundPct}%)` : 'Geen restitutie van toepassing'}
                 </div>
-                <div style={{ color: '#7090b0', fontSize: 12 }}>{res.refundInfo.policyDescription}</div>
+                {res.refundInfo.refundPct > 0 && Array.isArray(res.refundInfo.breakdown) && res.refundInfo.breakdown.length > 0 ? (
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '0.5px solid rgba(10,34,64,0.12)' }}>
+                    <div style={{ color: '#556070', fontSize: 12, marginBottom: 6 }}>
+                      Elke dag telt mee. Hoe dichter een dag bij aankomst ligt, hoe minder u terugkrijgt{typeof res.refundInfo.perDay === 'number' ? ` (€ ${res.refundInfo.perDay.toFixed(2)} per dag)` : ''}:
+                    </div>
+                    {res.refundInfo.breakdown.filter((b: any) => b.amount > 0).map((b: any) => (
+                      <div key={b.pct} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, padding: '2px 0', color: '#3a4a5e' }}>
+                        <span>{b.days} {b.days === 1 ? 'dag' : 'dagen'} × {b.pct}% terug</span>
+                        <span style={{ fontWeight: 600 }}>€ {b.amount.toFixed(2)}</span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0 0', marginTop: 4, borderTop: '0.5px solid rgba(10,34,64,0.12)', fontWeight: 700, color: '#19499e' }}>
+                      <span>Totaal restitutie</span>
+                      <span>€ {res.refundInfo.refundAmount.toFixed(2)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ color: '#7090b0', fontSize: 12 }}>{res.refundInfo.policyDescription}</div>
+                )}
               </>
             )}
           </div>

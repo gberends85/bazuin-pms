@@ -268,15 +268,22 @@ export async function calculateRefund(
  * = policy_anchor_date). De tarief-zones komen uit dezelfde cancellation_policies-tabel.
  * Reeds verstreken dagen (afstand < 0) geven 0%.
  */
+export interface RefundBreakdownRow { pct: number; days: number; amount: number }
 export async function calculatePerDayRefund(
   anchorDate: Date,   // oorspronkelijke aankomstdatum
   nights: number,     // nachten van de reservering
   totalPaid: number,
   adminOverridePct?: number
-): Promise<{ refundPct: number; refundAmount: number; effectiveRatio: number; policyDescription: string }> {
+): Promise<{ refundPct: number; refundAmount: number; effectiveRatio: number; perDay: number; days: number; breakdown: RefundBreakdownRow[]; policyDescription: string }> {
   if (adminOverridePct !== undefined) {
+    const d = Math.max(1, Math.round(nights) + 1);
     const amt = Math.round(totalPaid * (adminOverridePct / 100) * 100) / 100;
-    return { refundPct: adminOverridePct, refundAmount: amt, effectiveRatio: adminOverridePct / 100, policyDescription: `Admin override: ${adminOverridePct}%` };
+    return {
+      refundPct: adminOverridePct, refundAmount: amt, effectiveRatio: adminOverridePct / 100,
+      perDay: Math.round((totalPaid / d) * 100) / 100, days: d,
+      breakdown: [{ pct: adminOverridePct, days: d, amount: amt }],
+      policyDescription: `Admin override: ${adminOverridePct}%`,
+    };
   }
 
   const policyResult = await query(
@@ -300,14 +307,31 @@ export async function calculatePerDayRefund(
 
   const days = Math.max(1, Math.round(nights) + 1); // kalenderdagen: aankomst t/m vertrek
   const perDay = totalPaid / days;
-  let refund = 0;
+  // Groepeer de dagen per tarief-zone (per periode) zodat we kunnen tonen
+  // hoeveel er per zone wordt terugbetaald. Bedragen per zone afgerond; het
+  // totaal is de som daarvan zodat de uitsplitsing altijd optelt tot het totaal.
+  const groups = new Map<number, { pct: number; days: number; amount: number }>();
   for (let i = 0; i < days; i++) {
-    refund += perDay * rateFor(daysUntilAnchor + i);
+    const rt = rateFor(daysUntilAnchor + i);
+    const pct = Math.round(rt * 100);
+    const g = groups.get(pct) || { pct, days: 0, amount: 0 };
+    g.days += 1;
+    g.amount += perDay * rt;
+    groups.set(pct, g);
   }
-  const refundAmount = Math.round(refund * 100) / 100;
+  const breakdown: RefundBreakdownRow[] = [...groups.values()]
+    .map(g => ({ pct: g.pct, days: g.days, amount: Math.round(g.amount * 100) / 100 }))
+    .sort((a, b) => a.pct - b.pct);
+  const refundAmount = Math.round(breakdown.reduce((s, g) => s + g.amount, 0) * 100) / 100;
   const effectiveRatio = totalPaid > 0 ? refundAmount / totalPaid : 0;
   const refundPct = Math.round(effectiveRatio * 100);
-  return { refundPct, refundAmount, effectiveRatio, policyDescription: `Per dag berekend (effectief ${refundPct}%)` };
+  return {
+    refundPct, refundAmount, effectiveRatio,
+    perDay: Math.round(perDay * 100) / 100,
+    days,
+    breakdown,
+    policyDescription: `Per dag berekend (effectief ${refundPct}%)`,
+  };
 }
 
 /**

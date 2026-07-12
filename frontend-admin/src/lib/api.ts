@@ -87,7 +87,7 @@ export const api = {
     sendLockerEmail: (id: string) => req<any>(`/admin/reservations/${id}/keysafe/send-email`, { method: 'POST' }),
     checkout: (id: string) => req<any>(`/admin/reservations/${id}/checkout`, { method: 'POST' }),
     cancel: (id: string, pct: number, reason?: string) => req<any>(`/admin/reservations/${id}/cancel`, { method: 'POST', body: JSON.stringify({ refundPct: pct, reason }) }),
-    refundPreview: (id: string) => req<{ refundPct: number; refundAmount: number; policyDescription: string; paid: boolean; anchorDate: string; arrivalDate: string; wasModified: boolean; daysUntilArrival: number }>(`/admin/reservations/${id}/refund-preview`),
+    refundPreview: (id: string) => req<{ refundPct: number; refundAmount: number; policyDescription: string; perDay: number; days: number; breakdown: { pct: number; days: number; amount: number }[]; paid: boolean; anchorDate: string; arrivalDate: string; wasModified: boolean; daysUntilArrival: number }>(`/admin/reservations/${id}/refund-preview`),
     whatsapp: (id: string, msg: string) => req<any>(`/admin/reservations/${id}/whatsapp?message=${encodeURIComponent(msg)}`),
     update: (id: string, data: any) => req<any>(`/admin/reservations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     setVehicleCount: (id: string, count: number, override?: boolean) => req<{ vehicleCount: number; total_price: number; previousCount: number }>(`/admin/reservations/${id}/set-vehicle-count`, { method: 'POST', body: JSON.stringify({ count, override }) }),

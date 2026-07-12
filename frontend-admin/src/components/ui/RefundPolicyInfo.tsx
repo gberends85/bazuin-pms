@@ -14,6 +14,20 @@ export default function RefundPolicyInfo({ info }: { info: any }) {
         Annuleringsbeleid: {info.refundPct}% restitutie
       </div>
       <div>{info.policyDescription}</div>
+      {Array.isArray(info.breakdown) && info.breakdown.length > 1 && info.refundPct > 0 && (
+        <div style={{ marginTop: 6, paddingTop: 6, borderTop: '0.5px solid rgba(10,34,64,0.1)' }}>
+          <div style={{ color: '#7090b0', marginBottom: 3 }}>Per periode{typeof info.perDay === 'number' ? ` (€ ${info.perDay.toFixed(2)}/dag)` : ''}:</div>
+          {info.breakdown.filter((b: any) => b.amount > 0).map((b: any) => (
+            <div key={b.pct} style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>{b.days} {b.days === 1 ? 'dag' : 'dagen'} × {b.pct}%</span>
+              <span style={{ fontWeight: 600 }}>€ {b.amount.toFixed(2)}</span>
+            </div>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#0a2240', borderTop: '0.5px solid rgba(10,34,64,0.12)', marginTop: 3, paddingTop: 3 }}>
+            <span>Totaal volgens beleid</span><span>€ {info.refundAmount.toFixed(2)}</span>
+          </div>
+        </div>
+      )}
       <div style={{ marginTop: 3, color: '#7090b0' }}>
         {info.daysUntilArrival >= 0
           ? `Nog ${info.daysUntilArrival} dag${info.daysUntilArrival === 1 ? '' : 'en'} tot aankomst`

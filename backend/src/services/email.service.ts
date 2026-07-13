@@ -185,7 +185,9 @@ export async function sendTemplatedEmail(
 function paymentStatusText(method: string | null, status: string | null): string {
   const m = (method || '').toLowerCase();
   const s = (status || '').toLowerCase();
-  if (s === 'paid' || s === 'refunded') {
+  // 'partial_refund' = wél (online) betaald, maar na een wijziging is een deel
+  // gerestitueerd. Dat is dus voldaan, niet "moet nog betaald worden".
+  if (s === 'paid' || s === 'refunded' || s === 'partial_refund') {
     if (m === 'contant') return 'Reeds voldaan — contant bij afgeven.';
     if (m === 'pin') return 'Reeds voldaan — gepind bij afgeven.';
     return 'Reeds online voldaan.';

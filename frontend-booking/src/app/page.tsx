@@ -899,6 +899,18 @@ export default function BookingPage() {
         {/* ── STEP 2: Ferry ── */}
         {step === 2 && (
           <>
+            {/* Belangrijk: dit is alleen een tijd-indicatie, geen veerbootverkoop */}
+            {state.destination !== 'anders' && (
+              <div style={{ ...S.card, background: '#fff8e6', border: '1.5px solid #e8a020' }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <ExclamationTriangleIcon className="w-5 h-5" style={{ color: '#a06010', flexShrink: 0, marginTop: 1 }} />
+                  <div style={{ fontSize: 13, color: '#7a5010', lineHeight: 1.55 }}>
+                    <strong>Let op: u koopt hier geen veerbootkaartjes.</strong> U geeft alleen door met welke boot u reist, zodat wij uw auto op tijd voor u klaarzetten. Uw boottickets regelt en betaalt u zelf bij de rederij (Rederij Doeksen).
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Bestemmingskeuze bovenaan stap 2 */}
             <div style={S.card}>
               <h2 style={{ margin: '0 0 14px', fontSize: 18, fontWeight: 800, color: '#142440' }}>Waarheen?</h2>

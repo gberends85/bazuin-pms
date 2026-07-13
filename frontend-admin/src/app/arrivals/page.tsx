@@ -903,11 +903,9 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
       } else if (pendingAmt > 0 && pendingModId) {
         await api.modifications.applyOnSitePayment(pendingModId);
       }
-      // Ook direct inchecken als de boeking nog niet is ingecheckt
-      if (res.status === 'booked') {
-        await api.reservations.checkin(res.id);
-      }
-      toast(`Betaling ontvangen (${method}) + ingecheckt ✓`);
+      // Niet automatisch inchecken na betaling — de reservering blijft in
+      // "Te inchecken" staan zodat de incheckmail nog verstuurd kan worden.
+      toast(`Betaling ontvangen (${method}) ✓`);
       onUpdate();
     } catch (e: any) { toastError(e?.message || 'Er is een fout opgetreden'); } finally { setLoading(false); }
   }

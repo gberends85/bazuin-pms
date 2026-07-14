@@ -793,12 +793,41 @@ export default function ReservationDetailPage({ params }: { params: { id: string
                   <span>Totaal incl. BTW (21%)</span>
                   <span>€ {Number(res.total_price).toFixed(2)}</span>
                 </div>
-                {res.refund_amount && Number(res.refund_amount) > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', color: '#2a7a3a', fontWeight: 600 }}>
-                    <span>Restitutie ({res.refund_percentage}%)</span>
-                    <span>− € {Number(res.refund_amount).toFixed(2)}</span>
-                  </div>
-                )}
+                {res.refund_amount && Number(res.refund_amount) > 0 && (() => {
+                  // Betaald bedrag = werkelijk via Stripe voldaan (kan hoger zijn dan
+                  // de huidige prijs als er na betaling is ingekort). Terugbetaald en
+                  // netto voldaan maken de balans expliciet.
+                  const refunded = Number(res.refund_amount);
+                  const paid = stripeData?.amountReceived ?? stripeData?.amount ?? null;
+                  return (
+                    <div style={{ marginTop: 8, paddingTop: 10, borderTop: '0.5px solid rgba(10,34,64,0.12)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {paid != null && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#7090b0' }}>Betaald</span>
+                          <span>€ {Number(paid).toFixed(2)}</span>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2a7a3a' }}>
+                        <span>Terugbetaald</span>
+                        <span>− € {refunded.toFixed(2)}</span>
+                      </div>
+                      {paid != null && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, borderTop: '0.5px solid rgba(10,34,64,0.12)', paddingTop: 6 }}>
+                          <span>Netto voldaan</span>
+                          <span>€ {(Number(paid) - refunded).toFixed(2)}</span>
+                        </div>
+                      )}
+                      {paid != null && (
+                        <div style={{ fontSize: 11, color: '#7090b0' }}>
+                          Reeds voldaan — huidige prijs € {Number(res.total_price).toFixed(2)}
+                          {Number(paid) - refunded - Number(res.total_price) !== 0 && (
+                            <> · ingehouden € {(Number(paid) - refunded - Number(res.total_price)).toFixed(2)}</>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 

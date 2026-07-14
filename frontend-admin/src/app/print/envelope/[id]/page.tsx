@@ -145,6 +145,9 @@ function C6Envelope({ res, mods }: { res: any; mods: any[] }) {
                  res.payment_status === 'pending'       ? 'Nog te betalen' :
                  res.payment_status === 'refunded'      ? 'Terugbetaald' :
                  res.payment_status || '—'}
+                {res.payment_status === 'partial_refund' && (
+                  <span className="payment-amount"> · deels terug</span>
+                )}
                 {!paidLike && res.payment_status !== 'invoiced' && res.total_price != null && (
                   <span className="payment-amount"> · {eur(Number(res.total_price))}</span>
                 )}
@@ -183,7 +186,7 @@ function C6Envelope({ res, mods }: { res: any; mods: any[] }) {
                res.payment_status === 'on_site'       ? 'ter plekke' :
                res.payment_status === 'invoiced'      ? 'factuur' :
                res.payment_status === 'refunded'      ? 'terugbetaald' :
-               res.payment_status === 'partial_refund'? 'deels terug' :
+               res.payment_status === 'partial_refund'? 'betaald' :
                'open'}
             </span>
           </div>

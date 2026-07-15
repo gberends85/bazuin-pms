@@ -1565,7 +1565,7 @@ export default function BookingPage() {
                       style={{ ...S.btnGold, width: 'auto', marginTop: 0, ...(isDisabled ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
                       disabled={isDisabled}
                       onClick={submit}>
-                      {loading ? 'Verwerken...' : <span style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>Bevestigen & Betalen — € {grandTotal.toFixed(2)} <ArrowRightIcon className="w-4 h-4" /></span>}
+                      {loading ? 'Verwerken...' : <span style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>{state.payMethod === 'on_site' ? <>Reserveren — € {grandTotal.toFixed(2)} ter plekke</> : <>Bevestigen &amp; Betalen — € {grandTotal.toFixed(2)}</>} <ArrowRightIcon className="w-4 h-4" /></span>}
                     </button>
                   </div>
                 </div>

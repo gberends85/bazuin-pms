@@ -3521,8 +3521,10 @@ router.get('/reservations/token/:token/modification-preview', async (req: Reques
     return res.status(400).json({ error: e.message });
   }
 
-  // Include services (e.g. EV charging) from original booking — these don't change with dates
-  const newPrice = Math.round((newPriceInfo.totalPrice + servicesTotal) * 100) / 100;
+  // Include services (e.g. EV charging) from original booking — these don't change with dates.
+  // Behoud ook de bestaande ter-plekke-toeslag: die blijft gelden bij een datumwijziging.
+  const onSiteSurcharge = parseFloat(r.on_site_surcharge || '0');
+  const newPrice = Math.round((newPriceInfo.totalPrice + servicesTotal + onSiteSurcharge) * 100) / 100;
   const priceDiff = Math.round((newPrice - currentPrice) * 100) / 100;
 
   // Annuleringsbeleid (per-dag) op de restitutie — anker = OORSPRONKELIJKE aankomstdatum
@@ -3689,8 +3691,10 @@ router.post('/reservations/token/:token/modify', async (req: Request, res: Respo
 
   const currentPrice = parseFloat(r.total_price);
   const servicesTotal = parseFloat(r.services_total || '0');
-  // Preserve services (EV charging etc.) from original booking — these don't change with dates
-  const newPrice = Math.round((newPriceInfo.totalPrice + servicesTotal) * 100) / 100;
+  // Preserve services (EV charging etc.) from original booking — these don't change with dates.
+  // Behoud ook de bestaande ter-plekke-toeslag: die blijft gelden bij een datumwijziging.
+  const onSiteSurcharge = parseFloat(r.on_site_surcharge || '0');
+  const newPrice = Math.round((newPriceInfo.totalPrice + servicesTotal + onSiteSurcharge) * 100) / 100;
   const priceDiff = Math.round((newPrice - currentPrice) * 100) / 100;
 
   let stripeRefundId: string | null = null;

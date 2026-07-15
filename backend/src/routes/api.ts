@@ -1500,8 +1500,13 @@ router.get('/admin/reservations', requireAuth, async (req: Request, res: Respons
   if (date_from) { where += ` AND r.${filter === 'departure' ? 'departure' : 'arrival'}_date >= $${i++}`; params.push(date_from); }
   if (date_to) { where += ` AND r.${filter === 'departure' ? 'departure' : 'arrival'}_date <= $${i++}`; params.push(date_to); }
   if (search) {
-    where += ` AND (c.first_name ILIKE $${i} OR c.last_name ILIKE $${i} OR (c.first_name || ' ' || c.last_name) ILIKE $${i} OR r.guest_first_name ILIKE $${i} OR r.guest_last_name ILIKE $${i} OR (COALESCE(r.guest_first_name, c.first_name) || ' ' || COALESCE(r.guest_last_name, c.last_name)) ILIKE $${i} OR r.reference ILIKE $${i} OR EXISTS (SELECT 1 FROM vehicles v WHERE v.reservation_id = r.id AND v.license_plate ILIKE $${i}))`;
-    params.push(`%${search}%`); i++;
+    // Kenteken-match: negeer streepjes en spaties aan beide kanten, zodat
+    // "26-bz-fh" ook een als "26BZFH" opgeslagen kenteken vindt (en andersom).
+    const plateSearch = String(search).replace(/[-\s]/g, '');
+    where += ` AND (c.first_name ILIKE $${i} OR c.last_name ILIKE $${i} OR (c.first_name || ' ' || c.last_name) ILIKE $${i} OR r.guest_first_name ILIKE $${i} OR r.guest_last_name ILIKE $${i} OR (COALESCE(r.guest_first_name, c.first_name) || ' ' || COALESCE(r.guest_last_name, c.last_name)) ILIKE $${i} OR r.reference ILIKE $${i} OR EXISTS (SELECT 1 FROM vehicles v WHERE v.reservation_id = r.id AND REPLACE(REPLACE(v.license_plate, '-', ''), ' ', '') ILIKE $${i + 1}))`;
+    params.push(`%${search}%`);
+    params.push(`%${plateSearch}%`);
+    i += 2;
   }
 
   const offset = (parseInt(page) - 1) * parseInt(limit);

@@ -82,6 +82,15 @@ function waLink(phone: string, belgian = false) {
 function isPaidStatus(s?: string): boolean {
   return s === 'paid' || s === 'partial_refund';
 }
+// Reeds online ontvangen deelbetalingen (bv. een verlenging tijdens het verblijf
+// die via Stripe is betaald) gaan af van wat er ter plekke nog voldaan moet worden.
+function prepaidOf(res: any): number {
+  return Math.round(parseFloat(res?.prepaid_amount || 0) * 100) / 100;
+}
+function amountDue(res: any): number {
+  const total = parseFloat(res?.total_price || 0);
+  return Math.max(0, Math.round((total - prepaidOf(res)) * 100) / 100);
+}
 
 // ─── Detail Panel ────────────────────────────────────────────────────────────
 
@@ -955,8 +964,13 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
       <div>
         <div style={{ fontSize: 9, fontWeight: 700, color: '#a06010', textTransform: 'uppercase', letterSpacing: '0.5px', lineHeight: 1.2 }}>Nog te betalen</div>
         <div style={{ fontSize: 17, fontWeight: 900, color: '#c05000', lineHeight: 1.1 }}>
-          € {(needsPayment ? parseFloat(res.total_price || 0) : pendingAmt).toFixed(2)}
+          € {(needsPayment ? amountDue(res) : pendingAmt).toFixed(2)}
         </div>
+        {needsPayment && prepaidOf(res) > 0 && (
+          <div style={{ fontSize: 9, color: '#7a5010', lineHeight: 1.2 }}>
+            € {parseFloat(res.total_price || 0).toFixed(2)} totaal − € {prepaidOf(res).toFixed(2)} al online betaald
+          </div>
+        )}
       </div>
       <div style={{ display: 'flex', gap: 5 }}>
         <button onClick={(e) => { e.stopPropagation(); doPayOnSite('contant'); }} disabled={loading}
@@ -1360,8 +1374,13 @@ function DepartureCard({ res, onUpdate, occupiedLockers = [] }: { res: any; onUp
       <div>
         <div style={{ fontSize: 9, fontWeight: 700, color: '#a06010', textTransform: 'uppercase', letterSpacing: '0.5px', lineHeight: 1.2 }}>Nog te betalen</div>
         <div style={{ fontSize: 17, fontWeight: 900, color: '#c05000', lineHeight: 1.1 }}>
-          € {(needsPaymentDep ? parseFloat(res.total_price || 0) : pendingAmtDep).toFixed(2)}
+          € {(needsPaymentDep ? amountDue(res) : pendingAmtDep).toFixed(2)}
         </div>
+        {needsPaymentDep && prepaidOf(res) > 0 && (
+          <div style={{ fontSize: 9, color: '#7a5010', lineHeight: 1.2 }}>
+            € {parseFloat(res.total_price || 0).toFixed(2)} totaal − € {prepaidOf(res).toFixed(2)} al online betaald
+          </div>
+        )}
       </div>
       <div style={{ display: 'flex', gap: 5 }}>
         <button onClick={() => doPayDeparture('contant')} disabled={payLoading}

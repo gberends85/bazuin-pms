@@ -4753,10 +4753,13 @@ router.post('/reservations/token/:token/modify-during-stay-complete', async (req
     return res.status(400).json({ error: 'Betaald bedrag komt niet overeen met de gekozen verlenging' });
   }
 
-  // Update reservation
+  // Update reservation. De verlenging is zojuist ONLINE betaald, dus leg dat vast
+  // als reeds ontvangen bedrag — anders krijgt een ter-plekke-boeking bij afhalen
+  // alsnog het volledige (verhoogde) totaal gepresenteerd en betaalt de klant dubbel.
   await query(
-    `UPDATE reservations SET departure_date=$1, total_price=$2, updated_at=NOW() WHERE id=$3`,
-    [newDepStr, newPrice, r.id]
+    `UPDATE reservations SET departure_date=$1, total_price=$2,
+     prepaid_amount = COALESCE(prepaid_amount, 0) + $4, updated_at=NOW() WHERE id=$3`,
+    [newDepStr, newPrice, r.id, extraCharge]
   );
 
   // Get plates for details
@@ -5275,6 +5278,13 @@ router.post('/reservations/token/:token/modify-charging-stripe-complete', async 
   if (claim.rows.length === 0) return res.status(409).json({ error: 'Deze wijziging is al verwerkt' });
   const cd = typeof claim.rows[0].change_details === 'string' ? JSON.parse(claim.rows[0].change_details || '{}') : (claim.rows[0].change_details || {});
   await applyCharging(r.id, cd.vehicles || []);
+
+  // Online betaald laden vastleggen als reeds ontvangen bedrag, zodat een
+  // ter-plekke-boeking dit niet nogmaals bij afhalen krijgt gerekend.
+  await query(
+    `UPDATE reservations SET prepaid_amount = COALESCE(prepaid_amount, 0) + $1, updated_at=NOW() WHERE id=$2`,
+    [intent.amount / 100, r.id]
+  );
 
   sendModificationConfirmation(r.id).catch(err => console.error('Laden (Stripe) bevestigingsmail mislukt:', err));
   return res.json({ success: true });
@@ -6748,6 +6758,10 @@ router.post('/admin/umbraco/vehicle-repair-scan', requireAuth, async (req: Reque
     await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS guest_address VARCHAR(200)`);
     await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS guest_postal_code VARCHAR(20)`);
     await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS guest_city VARCHAR(120)`);
+    // Reeds online ontvangen deelbetalingen (bv. verblijfverlenging of laden dat
+    // tijdens het verblijf via Stripe is betaald). Bij een ter-plekke-boeking is
+    // "nog te betalen" = total_price - prepaid_amount.
+    await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS prepaid_amount NUMERIC(10,2) DEFAULT 0`);
     await query(`CREATE TABLE IF NOT EXISTS pending_contract_invoices (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       contract_customer_id UUID REFERENCES contract_customers(id) ON DELETE CASCADE,

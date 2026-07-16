@@ -122,14 +122,23 @@ function C6Envelope({ res, mods }: { res: any; mods: any[] }) {
           </div>
 
           {/* Betaalstatus / balans */}
-          {(res.payment_status === 'on_site' || res.payment_status === 'pending') ? (
-            // Nog niet betaald (ter plekke of open): toon volledig openstaand bedrag prominent
-            <div className="balance-block">
-              <div className="balance-label">nog te betalen</div>
-              <div className="balance-amount">{eur(Number(res.total_price))}</div>
-              {surchargeNote && <div className="balance-note">{surchargeNote}</div>}
-            </div>
-          ) : pendingMod && pendingAmt > 0 ? (
+          {(res.payment_status === 'on_site' || res.payment_status === 'pending') ? (() => {
+            // Nog niet betaald (ter plekke of open): toon openstaand bedrag prominent.
+            // Al online betaalde deelbedragen (bv. een verlenging tijdens het verblijf)
+            // gaan eraf — anders wordt er bij afhalen dubbel geïncasseerd.
+            const prepaid = Math.round(parseFloat(res.prepaid_amount || 0) * 100) / 100;
+            const due = Math.max(0, Math.round((Number(res.total_price) - prepaid) * 100) / 100);
+            return (
+              <div className="balance-block">
+                <div className="balance-label">nog te betalen</div>
+                <div className="balance-amount">{eur(due)}</div>
+                {prepaid > 0 && (
+                  <div className="balance-note">{eur(Number(res.total_price))} totaal − {eur(prepaid)} al online betaald</div>
+                )}
+                {surchargeNote && <div className="balance-note">{surchargeNote}</div>}
+              </div>
+            );
+          })() : pendingMod && pendingAmt > 0 ? (
             <div className="balance-block">
               <div className="balance-label">⚠ bijbetalen</div>
               <div className="balance-amount">{eur(pendingAmt)}</div>

@@ -97,12 +97,21 @@ function C6Envelope({ res, mods }: { res: any; mods: any[] }) {
              res.ferry_outbound_destination === 'anders'       ? 'Anders' :
              res.ferry_outbound_destination || '—'}
           </div>
-          {(res.payment_status === 'on_site' || res.payment_status === 'pending') ? (
-            <div className="balance-block">
-              <div className="balance-label">nog te betalen</div>
-              <div className="balance-amount">{eur(Number(res.total_price))}</div>
-            </div>
-          ) : pendingMod && pendingAmt > 0 ? (
+          {(res.payment_status === 'on_site' || res.payment_status === 'pending') ? (() => {
+            // Al online betaalde deelbedragen (bv. verlenging tijdens verblijf) gaan
+            // van het openstaande bedrag af — anders wordt dubbel geïncasseerd.
+            const prepaid = Math.round(parseFloat(res.prepaid_amount || 0) * 100) / 100;
+            const due = Math.max(0, Math.round((Number(res.total_price) - prepaid) * 100) / 100);
+            return (
+              <div className="balance-block">
+                <div className="balance-label">nog te betalen</div>
+                <div className="balance-amount">{eur(due)}</div>
+                {prepaid > 0 && (
+                  <div className="balance-note">{eur(Number(res.total_price))} totaal − {eur(prepaid)} al online betaald</div>
+                )}
+              </div>
+            );
+          })() : pendingMod && pendingAmt > 0 ? (
             <div className="balance-block">
               <div className="balance-label">⚠ bijbetalen</div>
               <div className="balance-amount">{eur(pendingAmt)}</div>

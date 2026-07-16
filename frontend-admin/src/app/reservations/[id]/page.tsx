@@ -793,6 +793,26 @@ export default function ReservationDetailPage({ params }: { params: { id: string
                   <span>Totaal incl. BTW (21%)</span>
                   <span>€ {Number(res.total_price).toFixed(2)}</span>
                 </div>
+                {Number(res.prepaid_amount || 0) > 0 && (() => {
+                  // Tijdens het verblijf online betaalde deelbedragen (verlenging/laden).
+                  // Die lopen via een eigen Stripe-betaling en staan dus niet op de
+                  // reservering zelf — hier expliciet tonen zodat de balans klopt.
+                  const prepaid = Number(res.prepaid_amount);
+                  const due = Math.max(0, Math.round((Number(res.total_price) - prepaid) * 100) / 100);
+                  const settled = res.payment_status === 'paid' || res.payment_status === 'partial_refund';
+                  return (
+                    <div style={{ marginTop: 8, paddingTop: 10, borderTop: '0.5px solid rgba(10,34,64,0.12)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2a7a3a' }}>
+                        <span>Al online betaald (tijdens verblijf)</span>
+                        <span>− € {prepaid.toFixed(2)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, borderTop: '0.5px solid rgba(10,34,64,0.12)', paddingTop: 6 }}>
+                        <span>{settled ? 'Restant (voldaan)' : 'Nog te voldoen'}</span>
+                        <span>€ {due.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {res.refund_amount && Number(res.refund_amount) > 0 && (() => {
                   // Betaald bedrag = werkelijk via Stripe voldaan (kan hoger zijn dan
                   // de huidige prijs als er na betaling is ingekort). Terugbetaald en

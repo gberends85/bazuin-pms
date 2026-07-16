@@ -1241,17 +1241,15 @@ export default function BookingPage() {
                         ? (evSvcs.filter(o => o.kwh >= suggestedKwh).sort((a, b) => a.kwh - b.kwh)[0]
                            ?? evSvcs[evSvcs.length - 1])
                         : null;
-                      // "Zeker vol" = de hoogste tier die past bij de accucapaciteit
+                      // Hoogste tier die past bij de accucapaciteit.
                       // BEV: toon t/m het tier dat de accu vult (max 105% van capaciteit)
-                      // PHEV / onbekend: toon één tier boven aanbevolen
+                      // PHEV / onbekend: niet verder dan de aanbevolen tier — dat is al de
+                      // eerste stap boven de accucapaciteit, meer past er simpelweg niet in.
                       const fullChargeTier = isBev && ev
                         ? (evSvcs.filter(s => s.kwh <= ev.batteryCapacityKwh * 1.05)
                             .sort((a, b) => b.kwh - a.kwh)[0]
                            ?? evSvcs[evSvcs.length - 1])
-                        : (() => {
-                            const sugIdx = suggestedTier ? evSvcs.findIndex(s => s.kwh === suggestedTier.kwh) : -1;
-                            return sugIdx >= 0 ? (evSvcs[sugIdx + 1] ?? suggestedTier) : suggestedTier;
-                          })();
+                        : suggestedTier;
                       const availableSvcs = ev && fullChargeTier
                         ? evSvcs.filter(s => s.kwh <= fullChargeTier.kwh)
                         : evSvcs;

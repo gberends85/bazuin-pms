@@ -239,7 +239,7 @@ export default function BevestigingPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', paddingTop: 40 }}>
       <div style={{ textAlign: 'center', marginBottom: 28 }}>
-        <img src="/logo.png" alt="Autostalling De Bazuin" style={{ height: 48, objectFit: 'contain' }}
+        <img src="/boeken/logo.png" alt="Autostalling De Bazuin" style={{ height: 48, objectFit: 'contain' }}
           onError={e => (e.currentTarget.style.display = 'none')} />
       </div>
       <Suspense fallback={<div style={{ textAlign: 'center', color: '#7090b0' }}>Laden...</div>}>

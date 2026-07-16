@@ -28,7 +28,7 @@ export default function SiteHeader() {
         {/* Logo */}
         <a href={`${SITE}/`} style={{ display: 'flex', alignItems: 'center' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="De Bazuin – Autostalling Harlingen" width={170} height={49} style={{ objectFit: 'contain', display: 'block' }} />
+          <img src="/boeken/logo.png" alt="De Bazuin – Autostalling Harlingen" width={170} height={49} style={{ objectFit: 'contain', display: 'block' }} />
         </a>
 
         {/* Desktop nav */}

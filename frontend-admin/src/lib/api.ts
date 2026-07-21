@@ -215,6 +215,8 @@ export const api = {
     finalizeInvoice: (id: string, from: string, to: string, evLines?: { description: string; kwh: number; ratePerKwh: number }[], invoiceDate?: string, paymentTermDays?: number) => req<any>(`/admin/contract-customers/${id}/invoice`, { method: 'POST', body: JSON.stringify({ from, to, evLines: evLines ?? [], invoiceDate, paymentTermDays }) }),
     invoicedPeriods: (id: string) => req<{ invoice_number: string; period_from: string; period_to: string }[]>(`/admin/contract-customers/${id}/invoiced-periods`),
     setAutoInvoice: (id: string, d: { enabled: boolean; intervalMonths: number; startDate: string | null }) => req<{ ok: boolean }>(`/admin/contract-customers/${id}/auto-invoice`, { method: 'PUT', body: JSON.stringify(d) }),
+    keyDrop: (id: string, d: { licensePlate: string; phone?: string; lockerNumber?: number | null; departureDate?: string }) =>
+      req<{ id: string; reference: string }>(`/admin/contract-customers/${id}/key-drop`, { method: 'POST', body: JSON.stringify(d) }),
   },
   contractVehicleStays: {
     update: (id: string, d: any) => req<any>(`/admin/contract-vehicle-stays/${id}`, { method: 'PUT', body: JSON.stringify(d) }),

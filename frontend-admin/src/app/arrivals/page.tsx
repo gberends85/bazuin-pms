@@ -92,6 +92,104 @@ function amountDue(res: any): number {
   return Math.max(0, Math.round((total - prepaidOf(res)) * 100) / 100);
 }
 
+// Kluiscode voor een contractklant (bv. Sixt): maakt een kale mini-reservering
+// die een kluis blokkeert met het kenteken, en genereert meteen een afhaalcode.
+// Versturen (WhatsApp/e-mail) gaat daarna via de afhaal-kaart.
+function KeyDropModal({ open, onClose, onDone, departures }: { open: boolean; onClose: () => void; onDone: () => void; departures: any[] }) {
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [custId, setCustId] = useState('');
+  const [plate, setPlate] = useState('');
+  const [phone, setPhone] = useState('');
+  const [locker, setLocker] = useState('');
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setPlate(''); setLocker(''); setBusy(false);
+    setDate(new Date().toISOString().slice(0, 10));
+    api.contractCustomers.list().then((list: any[]) => {
+      const active = (list || []).filter(c => c.is_active !== false);
+      setCustomers(active);
+      const sixt = active.find(c => /sixt/i.test(c.name || '')) || active[0];
+      if (sixt) { setCustId(sixt.id); setPhone(sixt.phone || ''); }
+    }).catch(() => {});
+  }, [open]);
+
+  const occupied = new Set((departures || []).filter(d => d.parking_spot && !d.locker_collected_at).map(d => String(d.parking_spot)));
+
+  function pickCustomer(id: string) {
+    setCustId(id);
+    const c = customers.find(x => x.id === id);
+    setPhone(c?.phone || '');
+  }
+
+  async function submit() {
+    if (!custId) { toastError('Kies een contractklant'); return; }
+    if (!plate.trim()) { toastError('Vul een kenteken in'); return; }
+    if (!locker) { toastError('Kies een kluis'); return; }
+    setBusy(true);
+    try {
+      const created = await api.contractCustomers.keyDrop(custId, {
+        licensePlate: plate.trim(), phone: phone.trim() || undefined,
+        lockerNumber: Number(locker), departureDate: date,
+      });
+      let code = '';
+      try { const r = await api.reservations.assignLockerCode(created.id); code = r.code; }
+      catch (e: any) { toastError('Blok gemaakt, maar code aanmaken mislukte: ' + (e?.message || '')); }
+      toast(code ? `Kluis ${locker} · code ${code} — verstuur via de afhaal-kaart` : `Kluis ${locker} geblokkeerd (${created.reference})`);
+      onDone();
+      onClose();
+    } catch (e: any) { toastError(e?.message || 'Aanmaken mislukt'); }
+    finally { setBusy(false); }
+  }
+
+  const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 5 };
+  const inp: React.CSSProperties = { width: '100%', padding: '9px 11px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 7, fontSize: 14, color: '#0a2240', boxSizing: 'border-box' };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Kluiscode contractklant (bv. Sixt)">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div>
+          <label style={lbl}>Contractklant</label>
+          <select value={custId} onChange={e => pickCustomer(e.target.value)} style={inp}>
+            {customers.length === 0 && <option value="">Geen contractklanten gevonden</option>}
+            {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lbl}>Kenteken</label>
+          <input value={plate} onChange={e => setPlate(e.target.value.toUpperCase())} placeholder="bv. 01-SG-JR" style={inp} />
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <label style={lbl}>Kluis</label>
+            <select value={locker} onChange={e => setLocker(e.target.value)} style={inp}>
+              <option value="">— kies —</option>
+              {[1, 2, 3, 4, 5, 6, 7].map(n => <option key={n} value={n} disabled={occupied.has(String(n))}>{n}{occupied.has(String(n)) ? ' — bezet' : ''}</option>)}
+            </select>
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={lbl}>Afhaaldatum</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inp} />
+          </div>
+        </div>
+        <div>
+          <label style={lbl}>Telefoon (code via WhatsApp)</label>
+          <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="0612345678" style={inp} />
+        </div>
+        <div style={{ fontSize: 12, color: '#7090b0', lineHeight: 1.5 }}>
+          Er wordt een kluisblokkade met dit kenteken aangemaakt en meteen een code gegenereerd. Verstuur de code daarna via de afhaal-kaart (WhatsApp/e-mail). Zodra de code wordt ingetoetst geldt dat als uitchecktijd.
+        </div>
+        <button onClick={submit} disabled={busy}
+          style={{ width: '100%', padding: '11px', borderRadius: 8, background: busy ? '#9bb0c8' : '#0a2240', color: 'white', border: 'none', fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer' }}>
+          {busy ? 'Bezig…' : 'Kluis blokkeren + code aanmaken'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Detail Panel ────────────────────────────────────────────────────────────
 
 function DetailPanel({ res, onClose, onUpdate }: { res: any; onClose: () => void; onUpdate: () => void }) {
@@ -1629,6 +1727,7 @@ export default function ArrivalsPage() {
   const [rdwRefreshing, setRdwRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const searchTimer = useRef<NodeJS.Timeout | null>(null);
+  const [kdOpen, setKdOpen] = useState(false);
 
   // Sla staat op bij elke relevante wijziging
   useEffect(() => {
@@ -1768,6 +1867,7 @@ export default function ArrivalsPage() {
   return (
     <AdminLayout>
       <Toaster />
+      <KeyDropModal open={kdOpen} onClose={() => setKdOpen(false)} onDone={handleUpdate} departures={data?.departures || []} />
       <div style={{ padding: '22px 24px' }}>
 
         {/* Header */}
@@ -1782,6 +1882,11 @@ export default function ArrivalsPage() {
           <button onClick={refreshRdw} disabled={rdwRefreshing}
             style={{ fontSize: 11, fontWeight: 600, color: rdwRefreshing ? '#aaa' : '#7090b0', background: 'none', border: '0.5px solid #c8d8e8', borderRadius: 6, padding: '4px 10px', cursor: rdwRefreshing ? 'default' : 'pointer' }}>
             {rdwRefreshing ? <><ArrowPathIcon className="w-3 h-3" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />RDW...</> : <><MagnifyingGlassIcon className="w-3 h-3" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />RDW vernieuwen</>}
+          </button>
+          <button onClick={() => setKdOpen(true)}
+            title="Blokkeer een kluis voor een contractklant (bv. Sixt) en stuur een afhaalcode"
+            style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: '#19499e', border: 'none', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <KeyIcon className="w-3 h-3" />Kluiscode contract
           </button>
         </div>
 

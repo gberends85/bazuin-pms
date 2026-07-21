@@ -6762,6 +6762,13 @@ router.post('/admin/umbraco/vehicle-repair-scan', requireAuth, async (req: Reque
     // tijdens het verblijf via Stripe is betaald). Bij een ter-plekke-boeking is
     // "nog te betalen" = total_price - prepaid_amount.
     await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS prepaid_amount NUMERIC(10,2) DEFAULT 0`);
+    // Contract-kluiscode (bv. Sixt): een mini-reservering die een kluis blokkeert
+    // t.b.v. een contractklant. Koppeling zodat we 'm herkennen/filteren.
+    await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS contract_customer_id UUID`);
+    // Kluis-/afhaalcode-kolommen (in productie al aanwezig; hier idempotent voor verse DB's).
+    await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS locker_code VARCHAR(20)`);
+    await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS locker_code_sent_at TIMESTAMPTZ`);
+    await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS locker_collected_at TIMESTAMPTZ`);
     await query(`CREATE TABLE IF NOT EXISTS pending_contract_invoices (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       contract_customer_id UUID REFERENCES contract_customers(id) ON DELETE CASCADE,
@@ -6807,6 +6814,85 @@ router.post('/admin/contract-customers', requireAuth, async (req: Request, res: 
      b.next_year_low_season_rate ?? 0, b.next_year_high_season_rate ?? 0, b.season_start_date || null]
   );
   return res.json(r.rows[0]);
+});
+
+// ============================================================
+// ADMIN — CONTRACT KLUISCODE (bv. Sixt)
+// Maakt een kale mini-reservering die een kluis blokkeert t.b.v. een
+// contractklant. De reservering staat direct 'checked_in' (sleutel ligt in de
+// kluis) met het kenteken, zodat de kluis systeembreed bezet is en het kenteken
+// in het kluis-overzicht/afhalen zichtbaar is. Code genereren + versturen loopt
+// daarna via de bestaande afhaal-kaart. De uitchecktijd volgt automatisch zodra
+// de code wordt ingetoetst (key_collected -> locker_collected_at + completed).
+// ============================================================
+router.post('/admin/contract-customers/:id/key-drop', requireAuth, async (req: Request, res: Response) => {
+  const { licensePlate, phone, lockerNumber, departureDate } = req.body || {};
+  if (!licensePlate || !String(licensePlate).trim()) {
+    return res.status(400).json({ error: 'Kenteken is verplicht' });
+  }
+
+  const ccRes = await query('SELECT id, name, email, phone FROM contract_customers WHERE id = $1', [req.params.id]);
+  if (ccRes.rows.length === 0) return res.status(404).json({ error: 'Contractklant niet gevonden' });
+  const cc = ccRes.rows[0];
+
+  const lotId = 'b0000000-0000-0000-0000-000000000001';
+  const isoToday = new Date().toISOString().slice(0, 10);
+  const depDate = departureDate ? String(departureDate).slice(0, 10) : isoToday;
+  const recipientPhone = (phone && String(phone).trim()) || cc.phone || null;
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    // Eén gedeelde 'klant' per contractklant, zodat customer_id (NOT NULL) klopt.
+    const email = cc.email || `contract-${cc.id}@bazuin.local`;
+    const custRes = await client.query(
+      `INSERT INTO customers (first_name, last_name, email, phone)
+       VALUES ($1, '', $2, $3)
+       ON CONFLICT (email) DO UPDATE SET first_name = EXCLUDED.first_name, updated_at = NOW()
+       RETURNING id`,
+      [cc.name, email, recipientPhone]
+    );
+    const customerId = custRes.rows[0].id;
+    const reference = await generateReference();
+
+    const insert = await client.query(
+      `INSERT INTO reservations (
+        reference, customer_id, parking_lot_id,
+        status, checkin_at, payment_status, payment_method,
+        arrival_date, departure_date,
+        base_price, total_price, vat_amount,
+        parking_spot, contract_customer_id,
+        guest_first_name, guest_last_name, guest_phone, admin_notes
+      ) VALUES (
+        $1,$2,$3,
+        'checked_in', NOW(), 'invoiced', 'invoice',
+        $4,$5,
+        0,0,0,
+        $6,$7,
+        $8,'',$9,$10
+      ) RETURNING id, reference`,
+      [
+        reference, customerId, lotId, isoToday, depDate,
+        lockerNumber ? String(lockerNumber) : null, cc.id,
+        cc.name, recipientPhone, `Contract kluiscode — ${cc.name}`,
+      ]
+    );
+    const reservation = insert.rows[0];
+
+    await client.query(
+      `INSERT INTO vehicles (reservation_id, license_plate, sort_order) VALUES ($1, $2, 0)`,
+      [reservation.id, normalizePlate(licensePlate)]
+    );
+
+    await client.query('COMMIT');
+    return res.json({ id: reservation.id, reference: reservation.reference });
+  } catch (e: any) {
+    await client.query('ROLLBACK');
+    return res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
 });
 
 router.put('/admin/contract-customers/:id', requireAuth, async (req: Request, res: Response) => {

@@ -955,9 +955,11 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
       {!isCheckedIn && res.status === 'booked' && (
         confirming ? (
           <>
-            <button title="Bevestig inchecken + bevestigingsmail sturen" onClick={doCheckinMail} disabled={loading}
+            {/* 'Met mail' staat op DEZELFDE plek als de V-knop: 2x klikken = inchecken + mail.
+                Muis naar 'Zonder mail' bewegen = inchecken zonder mail. */}
+            <button title="Inchecken + bevestigingsmail sturen" onClick={doCheckinMail} disabled={loading}
               style={{ background: '#0a7c6e', border: 'none', color: 'white', borderRadius: 6, padding: '6px 11px', cursor: loading ? 'default' : 'pointer', fontWeight: 700, fontSize: 12, opacity: loading ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-              <CheckIcon className="w-4 h-4" />Bevestig
+              <CheckIcon className="w-4 h-4" />Met mail
             </button>
             <button title="Inchecken zonder bevestigingsmail" onClick={doCheckin} disabled={loading}
               style={{ background: 'white', border: '1px solid rgba(10,34,64,0.3)', color: '#0a2240', borderRadius: 6, padding: '6px 11px', cursor: loading ? 'default' : 'pointer', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center' }}>
@@ -969,12 +971,8 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
             </button>
           </>
         ) : (
-          <>
-            <button title="Inchecken" onClick={() => setConfirming(true)} disabled={loading}
-              style={{ background: '#0a2240', border: 'none', color: 'white', borderRadius: 6, padding: '6px 10px', cursor: loading ? 'default' : 'pointer', fontWeight: 700, opacity: loading ? 0.6 : 1, display: 'flex', alignItems: 'center' }}><CheckIcon className="w-4 h-4" /></button>
-            <button title="Direct inchecken + bevestigingsmail sturen" onClick={doCheckinMail} disabled={loading}
-              style={{ background: '#0a2240', border: 'none', color: 'white', borderRadius: 6, padding: '6px 10px', cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.6 : 1, display: 'flex', alignItems: 'center' }}><EnvelopeIcon className="w-4 h-4" /></button>
-          </>
+          <button title="Inchecken" onClick={() => setConfirming(true)} disabled={loading}
+            style={{ background: '#0a2240', border: 'none', color: 'white', borderRadius: 6, padding: '6px 10px', cursor: loading ? 'default' : 'pointer', fontWeight: 700, opacity: loading ? 0.6 : 1, display: 'flex', alignItems: 'center' }}><CheckIcon className="w-4 h-4" /></button>
         )
       )}
       {res.phone && (

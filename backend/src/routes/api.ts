@@ -6763,8 +6763,10 @@ router.post('/admin/umbraco/vehicle-repair-scan', requireAuth, async (req: Reque
     // "nog te betalen" = total_price - prepaid_amount.
     await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS prepaid_amount NUMERIC(10,2) DEFAULT 0`);
     // Contract-kluiscode (bv. Sixt): een mini-reservering die een kluis blokkeert
-    // t.b.v. een contractklant. Koppeling zodat we 'm herkennen/filteren.
+    // t.b.v. een contractklant. Koppelingen zodat we 'm herkennen/filteren en de
+    // afhaaltijd (code gebruikt) kunnen terugschrijven naar het contract-verblijf.
     await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS contract_customer_id UUID`);
+    await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS contract_stay_id INTEGER`);
     // Kluis-/afhaalcode-kolommen (in productie al aanwezig; hier idempotent voor verse DB's).
     await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS locker_code VARCHAR(20)`);
     await query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS locker_code_sent_at TIMESTAMPTZ`);
@@ -6826,10 +6828,11 @@ router.post('/admin/contract-customers', requireAuth, async (req: Request, res: 
 // de code wordt ingetoetst (key_collected -> locker_collected_at + completed).
 // ============================================================
 router.post('/admin/contract-customers/:id/key-drop', requireAuth, async (req: Request, res: Response) => {
-  const { licensePlate, phone, lockerNumber, departureDate } = req.body || {};
+  const { licensePlate, phone, lockerNumber, departureDate, stayId } = req.body || {};
   if (!licensePlate || !String(licensePlate).trim()) {
     return res.status(400).json({ error: 'Kenteken is verplicht' });
   }
+  const stayIdNum = stayId != null && String(stayId).trim() !== '' ? parseInt(String(stayId), 10) : null;
 
   const ccRes = await query('SELECT id, name, email, phone FROM contract_customers WHERE id = $1', [req.params.id]);
   if (ccRes.rows.length === 0) return res.status(404).json({ error: 'Contractklant niet gevonden' });
@@ -6862,20 +6865,21 @@ router.post('/admin/contract-customers/:id/key-drop', requireAuth, async (req: R
         status, checkin_at, payment_status, payment_method,
         arrival_date, departure_date,
         base_price, total_price, vat_amount,
-        parking_spot, contract_customer_id,
+        parking_spot, contract_customer_id, contract_stay_id,
         guest_first_name, guest_last_name, guest_phone, admin_notes
       ) VALUES (
         $1,$2,$3,
         'checked_in', NOW(), 'invoiced', 'invoice',
         $4,$5,
         0,0,0,
-        $6,$7,
+        $6,$7,$11,
         $8,'',$9,$10
       ) RETURNING id, reference`,
       [
         reference, customerId, lotId, isoToday, depDate,
         lockerNumber ? String(lockerNumber) : null, cc.id,
         cc.name, recipientPhone, `Contract kluiscode — ${cc.name}`,
+        stayIdNum,
       ]
     );
     const reservation = insert.rows[0];

@@ -3,7 +3,8 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import AdminLayout from '@/components/layout/AdminLayout';
 import Toaster, { toast, toastError } from '@/components/ui/Toast';
 import { api, fetchContractInvoicePreview, fetchContractInvoicePdf } from '@/lib/api';
-import { Zap, CalendarDays, Flag, Trash2, X, Check, Pencil, Eye, FileText, Minus, Plus, PackageCheck } from 'lucide-react';
+import { Zap, CalendarDays, Flag, Trash2, X, Check, Pencil, Eye, FileText, Minus, Plus, PackageCheck, KeyRound } from 'lucide-react';
+import KeyDropModal from '@/components/KeyDropModal';
 
 const DAY_LABELS = ['Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag', 'Zondag'];
 const MONTHS_NL = ['Januari','Februari','Maart','April','Mei','Juni','Juli','Augustus','September','Oktober','November','December'];
@@ -402,6 +403,7 @@ export default function ContractInvoicesPage() {
   const [invoiceDate, setInvoiceDate] = useState<string>('');
   const [paymentTermDays, setPaymentTermDays] = useState<string>('30');
   const [generating, setGenerating] = useState(false);
+  const [kdStay, setKdStay] = useState<any | null>(null);
 
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loadingInvoices, setLoadingInvoices] = useState(false);
@@ -748,6 +750,19 @@ export default function ContractInvoicesPage() {
   return (
     <AdminLayout>
       <Toaster />
+      {kdStay && selectedCustomer && (
+        <KeyDropModal
+          open={!!kdStay}
+          onClose={() => setKdStay(null)}
+          onDone={() => loadStays()}
+          customerId={customerId}
+          customerName={selectedCustomer.name}
+          plate={kdStay.license_plate}
+          stayId={kdStay.id}
+          defaultPhone={selectedCustomer.phone || ''}
+          departureDate={kdStay.departure_date ? String(kdStay.departure_date).slice(0, 10) : undefined}
+        />
+      )}
       <div style={{ padding: '24px 28px', maxWidth: 1100 }}>
         <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 800, color: '#0a2240' }}>Contractfacturatie</h1>
         <p style={{ margin: '0 0 22px', fontSize: 13, color: '#7090b0' }}>
@@ -925,7 +940,15 @@ export default function ContractInvoicesPage() {
                           {isEditing
                             ? <input value={editStayData.license_plate} onChange={e => setEditStayData((p:any) => ({...p, license_plate: e.target.value.toUpperCase()}))}
                                 style={{ padding: '4px 7px', border: '1px solid #aac8e8', borderRadius: 5, fontSize: 13, fontWeight: 700, width: 110, letterSpacing: '1px' }} />
-                            : <strong style={{ fontFamily: 'monospace', letterSpacing: '1px' }}>{s.license_plate}</strong>
+                            : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+                                <strong style={{ fontFamily: 'monospace', letterSpacing: '1px' }}>{s.license_plate}</strong>
+                                {!s.picked_up_at && (
+                                  <button onClick={() => setKdStay(s)} title="Sleutel in kluis doen + afhaalcode sturen"
+                                    style={{ padding: '3px 8px', background: '#eaf1fb', border: '1px solid #19499e', color: '#19499e', borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                    <KeyRound size={11} />in kluis doen
+                                  </button>
+                                )}
+                              </div>
                           }
                         </td>
                         {/* Aankomst met ±1 dag knoppen */}

@@ -208,11 +208,30 @@ keysafeRouter.post('/keysafe/events', async (req: Request, res: Response) => {
            AND locker_code IS NOT NULL
            AND locker_collected_at IS NULL
            AND ($2::text IS NULL OR locker_code = $2)
-         RETURNING reference, status`,
+         RETURNING reference, status, contract_stay_id, locker_collected_at`,
         [String(ev.locker_number), ev.code != null ? String(ev.code) : null]
       );
       const ref = upd.rows[0]?.reference ?? '—';
       console.log(`[keysafe] key_collected → ${upd.rowCount ?? 0} reservering(en) bijgewerkt + uitgecheckt (vak ${ev.locker_number}, code ${ev.code ?? '—'}, ref ${ref})`);
+
+      // Contract-kluiscode (bv. Sixt): de code is gebruikt → dit is de exacte
+      // afhaaltijd/-datum van die auto. Schrijf 'm terug naar het contract-verblijf
+      // (picked_up_at + vertrekdatum), zodat het op de factuur klopt.
+      for (const row of upd.rows) {
+        if (row.contract_stay_id != null) {
+          try {
+            await query(
+              `UPDATE contract_vehicle_stays
+               SET picked_up_at = $1, departure_date = $1::date
+               WHERE id = $2`,
+              [row.locker_collected_at, row.contract_stay_id]
+            );
+            console.log(`[keysafe] contract-verblijf ${row.contract_stay_id} bijgewerkt met afhaaltijd`);
+          } catch (e) {
+            console.error('[keysafe] contract-verblijf bijwerken mislukt:', e);
+          }
+        }
+      }
     } catch (e) {
       console.error('[keysafe] locker bijwerken mislukt:', e);
     }

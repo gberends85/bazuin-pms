@@ -17,7 +17,6 @@ import {
   XMarkIcon,
   EnvelopeIcon,
   PrinterIcon,
-  ArrowUturnLeftIcon,
   MagnifyingGlassIcon,
   CalendarDaysIcon,
   PencilIcon,
@@ -837,12 +836,9 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
     }
   }, [cancelOpen]);
 
-  // Undo check-in state
-  const [pendingCheckin, setPendingCheckin] = useState(false);
-  const [countdown, setCountdown] = useState(5);
-  const [fadingOut, setFadingOut] = useState(false);
-  const checkinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Inchecken met bevestigingsstap (i.p.v. de 5-seconden-undo). 'confirming' toont
+  // op dezelfde plek de twee knoppen: bevestigen (mét mail) of inchecken zonder mail.
+  const [confirming, setConfirming] = useState(false);
 
   const carInfo = [
     res.rdw_make && res.rdw_model ? `${res.rdw_make} ${res.rdw_model}` : res.rdw_make || res.rdw_model,
@@ -852,37 +848,6 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
 
   const pendingAmt = parseFloat(res.pending_payment_amount || 0);
   const pendingModId = res.pending_modification_id || null;
-
-  function startCheckin(e: React.MouseEvent) {
-    e.stopPropagation();
-    if (pendingCheckin) return;
-    setPendingCheckin(true);
-    setCountdown(5);
-    let count = 5;
-    countdownRef.current = setInterval(() => {
-      count--;
-      setCountdown(count);
-      if (count <= 0 && countdownRef.current) clearInterval(countdownRef.current);
-    }, 1000);
-    checkinTimerRef.current = setTimeout(async () => {
-      if (countdownRef.current) clearInterval(countdownRef.current);
-      setFadingOut(true);
-      await new Promise(r => setTimeout(r, 350));
-      setLoading(true);
-      try { await api.reservations.checkin(res.id); onUpdate(); }
-      catch (e: any) { toastError(e?.message || 'Er is een fout opgetreden'); setFadingOut(false); setPendingCheckin(false); }
-      finally { setLoading(false); }
-    }, 5000);
-  }
-
-  function cancelCheckin(e: React.MouseEvent) {
-    e.stopPropagation();
-    if (checkinTimerRef.current) clearTimeout(checkinTimerRef.current);
-    if (countdownRef.current) clearInterval(countdownRef.current);
-    setPendingCheckin(false);
-    setCountdown(5);
-    setFadingOut(false);
-  }
 
   async function doCheckin() {
     setLoading(true);
@@ -987,28 +952,30 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
 
   const actionBtns = (
     <div style={{ display: 'flex', gap: 4 }} onClick={stopProp}>
-      {pendingCheckin && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {/* Voortgangsbalk + countdown */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#0a7c6e', whiteSpace: 'nowrap' }}>✓ {countdown}s…</span>
-            <div style={{ width: 52, height: 3, background: 'rgba(10,124,110,0.2)', borderRadius: 2, overflow: 'hidden' }}>
-              <div style={{ height: '100%', background: '#0a7c6e', borderRadius: 2, width: `${(countdown / 5) * 100}%`, transition: 'width 1s linear' }} />
-            </div>
-          </div>
-          <button onClick={cancelCheckin} title="Inchecken annuleren"
-            style={{ background: 'white', border: '1.5px solid #0a7c6e', color: '#0a5a50', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center' }}>
-            <ArrowUturnLeftIcon className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-      {!pendingCheckin && !isCheckedIn && res.status === 'booked' && (
-        <>
-          <button title="Inchecken" onClick={startCheckin} disabled={loading}
-            style={{ background: '#0a7c6e', border: 'none', color: 'white', borderRadius: 6, padding: '6px 10px', cursor: loading ? 'default' : 'pointer', fontWeight: 700, opacity: loading ? 0.6 : 1, display: 'flex', alignItems: 'center' }}><CheckIcon className="w-4 h-4" /></button>
-          <button title="Inchecken + mail sturen" onClick={() => setCheckinMailOpen(true)}
-            style={{ background: '#0a2240', border: 'none', color: 'white', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><EnvelopeIcon className="w-4 h-4" /></button>
-        </>
+      {!isCheckedIn && res.status === 'booked' && (
+        confirming ? (
+          <>
+            <button title="Bevestig inchecken + bevestigingsmail sturen" onClick={doCheckinMail} disabled={loading}
+              style={{ background: '#0a7c6e', border: 'none', color: 'white', borderRadius: 6, padding: '6px 11px', cursor: loading ? 'default' : 'pointer', fontWeight: 700, fontSize: 12, opacity: loading ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+              <CheckIcon className="w-4 h-4" />Bevestig
+            </button>
+            <button title="Inchecken zonder bevestigingsmail" onClick={doCheckin} disabled={loading}
+              style={{ background: 'white', border: '1px solid rgba(10,34,64,0.3)', color: '#0a2240', borderRadius: 6, padding: '6px 11px', cursor: loading ? 'default' : 'pointer', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center' }}>
+              Zonder mail
+            </button>
+            <button title="Annuleren" onClick={() => setConfirming(false)}
+              style={{ background: 'none', border: '0.5px solid rgba(10,34,64,0.2)', color: '#7090b0', borderRadius: 6, padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+              <XMarkIcon className="w-4 h-4" />
+            </button>
+          </>
+        ) : (
+          <>
+            <button title="Inchecken" onClick={() => setConfirming(true)} disabled={loading}
+              style={{ background: '#0a2240', border: 'none', color: 'white', borderRadius: 6, padding: '6px 10px', cursor: loading ? 'default' : 'pointer', fontWeight: 700, opacity: loading ? 0.6 : 1, display: 'flex', alignItems: 'center' }}><CheckIcon className="w-4 h-4" /></button>
+            <button title="Direct inchecken + bevestigingsmail sturen" onClick={doCheckinMail} disabled={loading}
+              style={{ background: '#0a2240', border: 'none', color: 'white', borderRadius: 6, padding: '6px 10px', cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.6 : 1, display: 'flex', alignItems: 'center' }}><EnvelopeIcon className="w-4 h-4" /></button>
+          </>
+        )
       )}
       {res.phone && (
         <a href={waLink(res.phone, plateIsBelgian(res.plates))} onClick={e => e.stopPropagation()}
@@ -1033,7 +1000,7 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
         className="arrival-card"
         style={{
           background: isCancelled ? '#faf3f3' : 'white', borderRadius: 8, marginBottom: 5,
-          border: pendingCheckin
+          border: confirming
             ? '2px solid #0a7c6e'
             : isCheckedIn
                 ? '1.5px solid #0a7c6e'
@@ -1041,9 +1008,8 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
                     ? '1.5px solid rgba(200,0,0,0.3)'
                     : '0.5px solid rgba(10,34,64,0.1)',
           cursor: 'pointer', overflow: 'hidden',
-          opacity: fadingOut ? 0 : (isCancelled ? 0.72 : 1),
-          transform: fadingOut ? 'translateX(30px)' : 'none',
-          transition: 'opacity 0.35s ease, transform 0.35s ease, border-color 0.2s ease',
+          opacity: isCancelled ? 0.72 : 1,
+          transition: 'border-color 0.2s ease',
         }}
       >
         {/* ── Desktop layout ─────────────────────────────────── */}

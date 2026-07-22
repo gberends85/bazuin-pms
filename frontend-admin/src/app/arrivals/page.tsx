@@ -955,19 +955,20 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
       {!isCheckedIn && res.status === 'booked' && (
         confirming ? (
           <>
-            {/* 'Met mail' staat op DEZELFDE plek als de V-knop: 2x klikken = inchecken + mail.
-                Muis naar 'Zonder mail' bewegen = inchecken zonder mail. */}
-            <button title="Inchecken + bevestigingsmail sturen" onClick={doCheckinMail} disabled={loading}
-              style={{ background: '#0a7c6e', border: 'none', color: 'white', borderRadius: 6, padding: '6px 11px', cursor: loading ? 'default' : 'pointer', fontWeight: 700, fontSize: 12, opacity: loading ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-              <CheckIcon className="w-4 h-4" />Met mail
+            {/* De rij is rechts uitgelijnd, dus 'Met mail' staat als LAATSTE (naast
+                WhatsApp) exact op de plek van de V-knop: 2x klikken = inchecken + mail.
+                De muis naar links, naar 'Zonder mail', bewegen = inchecken zonder mail. */}
+            <button title="Annuleren" onClick={() => setConfirming(false)}
+              style={{ background: 'none', border: '0.5px solid rgba(10,34,64,0.2)', color: '#7090b0', borderRadius: 6, padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+              <XMarkIcon className="w-4 h-4" />
             </button>
             <button title="Inchecken zonder bevestigingsmail" onClick={doCheckin} disabled={loading}
               style={{ background: 'white', border: '1px solid rgba(10,34,64,0.3)', color: '#0a2240', borderRadius: 6, padding: '6px 11px', cursor: loading ? 'default' : 'pointer', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center' }}>
               Zonder mail
             </button>
-            <button title="Annuleren" onClick={() => setConfirming(false)}
-              style={{ background: 'none', border: '0.5px solid rgba(10,34,64,0.2)', color: '#7090b0', borderRadius: 6, padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-              <XMarkIcon className="w-4 h-4" />
+            <button title="Inchecken + bevestigingsmail sturen" onClick={doCheckinMail} disabled={loading}
+              style={{ background: '#0a7c6e', border: 'none', color: 'white', borderRadius: 6, padding: '6px 11px', cursor: loading ? 'default' : 'pointer', fontWeight: 700, fontSize: 12, opacity: loading ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+              <CheckIcon className="w-4 h-4" />Met mail
             </button>
           </>
         ) : (

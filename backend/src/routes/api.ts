@@ -4686,7 +4686,6 @@ router.post('/reservations/token/:token/modify-during-stay-pay', async (req: Req
       newDepartureDate: newDepStr,
       type: 'during_stay_extension',
     },
-    receipt_email: r.email,
   });
 
   return res.json({
@@ -4932,7 +4931,6 @@ router.post('/reservations/token/:token/modify-dates-stripe-pay', async (req: Re
       overbooked: overbooked ? 'true' : 'false',
       originalUnpaid: originalUnpaid ? 'true' : 'false',
     },
-    receipt_email: r.email,
   });
 
   const modResult = await query(
@@ -5239,7 +5237,6 @@ router.post('/reservations/token/:token/modify-charging-stripe-pay', async (req:
     amount: Math.round(delta * 100),
     currency: 'eur',
     metadata: { reservationId: r.id, type: 'charging_modification' },
-    receipt_email: r.email,
   });
 
   const newTotal = Math.round((parseFloat(r.total_price) + delta) * 100) / 100;

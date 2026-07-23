@@ -78,7 +78,8 @@ export async function createPaymentIntent(
     currency: 'eur',
     customer: stripeCustomerId,
     payment_method_types: methods,
-    receipt_email: customerEmail,
+    // Geen receipt_email: Stripe stuurt dan geen eigen betaalbewijs/receipt naar
+    // de klant. Wij versturen zelf de bevestigingsmail.
     metadata: {
       reservation_id: reservationId,
       system: 'bazuin_pms',

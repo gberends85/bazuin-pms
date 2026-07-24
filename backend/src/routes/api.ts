@@ -3400,10 +3400,26 @@ router.post('/invoice-group-modify/:token/reservation/:resId/details', async (re
         [v.vehicleId, r.id]
       );
       if (vCheck.rows.length === 0) continue;
+      // RDW-gegevens van de vorige auto wissen én opnieuw ophalen
+      const plate = normalizePlate(v.newPlate) || '';
       await query(
-        'UPDATE vehicles SET license_plate = $1 WHERE id = $2',
-        [v.newPlate.trim().toUpperCase(), v.vehicleId]
+        `UPDATE vehicles SET license_plate = $1,
+          rdw_make = NULL, rdw_model = NULL, rdw_color = NULL,
+          rdw_fuel_type = NULL, rdw_year = NULL, rdw_fetched_at = NULL
+         WHERE id = $2`,
+        [plate, v.vehicleId]
       );
+      if (plate) {
+        const vid = v.vehicleId;
+        lookupRdw(plate).then(info => {
+          if (info) {
+            query(
+              `UPDATE vehicles SET rdw_make=$1, rdw_model=$2, rdw_color=$3, rdw_fuel_type=$4, rdw_year=$5, rdw_fetched_at=NOW() WHERE id=$6`,
+              [info.make, info.model, info.color, info.fuelType, info.year, vid]
+            ).catch(console.error);
+          }
+        }).catch(console.error);
+      }
     }
   }
 
@@ -3861,12 +3877,30 @@ router.post('/reservations/token/:token/modify-plate', async (req: Request, res:
     return res.status(400).json({ error: 'Een of meer voertuigen behoren niet tot deze reservering' });
   }
 
-  // Auto-apply: directly update license plates
+  // Auto-apply: kenteken bijwerken. De RDW-gegevens van de vórige auto moeten
+  // gewist én opnieuw opgehaald worden, anders blijft het oude merk/type in de
+  // admin staan (rdw_fetched_at blijft gevuld, dus de bulk-refresh slaat 'm over).
   for (const v of vehicles) {
+    const plate = normalizePlate(v.newPlate) || '';
     await query(
-      `UPDATE vehicles SET license_plate = $1 WHERE id = $2 AND reservation_id = $3`,
-      [v.newPlate, v.vehicleId, r.id]
+      `UPDATE vehicles SET license_plate = $1,
+        rdw_make = NULL, rdw_model = NULL, rdw_color = NULL,
+        rdw_fuel_type = NULL, rdw_year = NULL, rdw_fetched_at = NULL
+       WHERE id = $2 AND reservation_id = $3`,
+      [plate, v.vehicleId, r.id]
     );
+    // Async RDW-ophaal voor het nieuwe kenteken
+    if (plate) {
+      const vid = v.vehicleId;
+      lookupRdw(plate).then(info => {
+        if (info) {
+          query(
+            `UPDATE vehicles SET rdw_make=$1, rdw_model=$2, rdw_color=$3, rdw_fuel_type=$4, rdw_year=$5, rdw_fetched_at=NOW() WHERE id=$6`,
+            [info.make, info.model, info.color, info.fuelType, info.year, vid]
+          ).catch(console.error);
+        }
+      }).catch(console.error);
+    }
   }
 
   const changeDetails = JSON.stringify({ vehicles });
@@ -4507,10 +4541,26 @@ router.post('/admin/modifications/:id/accept', requireAuth, async (req: Request,
     // Update each vehicle's license plate
     if (details.vehicles && Array.isArray(details.vehicles)) {
       for (const v of details.vehicles) {
+        // RDW-gegevens van de vorige auto wissen én opnieuw ophalen
+        const plate = normalizePlate(v.newPlate) || '';
         await query(
-          `UPDATE vehicles SET license_plate=$1 WHERE id=$2 AND reservation_id=$3`,
-          [v.newPlate, v.vehicleId, mod.reservation_id]
+          `UPDATE vehicles SET license_plate=$1,
+            rdw_make = NULL, rdw_model = NULL, rdw_color = NULL,
+            rdw_fuel_type = NULL, rdw_year = NULL, rdw_fetched_at = NULL
+           WHERE id=$2 AND reservation_id=$3`,
+          [plate, v.vehicleId, mod.reservation_id]
         );
+        if (plate) {
+          const vid = v.vehicleId;
+          lookupRdw(plate).then(info => {
+            if (info) {
+              query(
+                `UPDATE vehicles SET rdw_make=$1, rdw_model=$2, rdw_color=$3, rdw_fuel_type=$4, rdw_year=$5, rdw_fetched_at=NOW() WHERE id=$6`,
+                [info.make, info.model, info.color, info.fuelType, info.year, vid]
+              ).catch(console.error);
+            }
+          }).catch(console.error);
+        }
       }
     }
   } else if (modType === 'ferry') {

@@ -1115,30 +1115,89 @@ export default function ReservationDetailPage({ params }: { params: { id: string
             {modHistory.length > 0 && (
               <div className="card" style={{ padding: '18px 22px' }}>
                 <div style={{ fontWeight: 700, fontSize: 14, color: '#0a2240', marginBottom: 12, display:'flex', alignItems:'center', gap:6 }}><PencilSquareIcon className="w-4 h-4" />Wijzigingshistorie</div>
-                {modHistory.map((m: any) => (
-                  <div key={m.id} style={{ padding: '10px 0', borderBottom: '0.5px solid rgba(10,34,64,0.06)', fontSize: 12 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontWeight: 700, color: '#0a2240' }}>
-                        {m.modified_by === 'admin' ? `Admin${m.admin_email ? ` (${m.admin_email})` : ''}` : 'Klant'}
-                      </span>
-                      <span style={{ color: '#7090b0' }}>{new Date(m.created_at).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                    <div style={{ color: '#7090b0' }}>
-                      {new Date(m.old_arrival_date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} – {new Date(m.old_departure_date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
-                      {' → '}
-                      <strong style={{ color: '#0a2240' }}>
-                        {new Date(m.new_arrival_date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} – {new Date(m.new_departure_date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
-                      </strong>
-                    </div>
-                    <div style={{ marginTop: 2, color: parseFloat(m.price_difference) > 0 ? '#8a2020' : parseFloat(m.price_difference) < 0 ? '#0a7c6e' : '#7090b0' }}>
-                      € {parseFloat(m.old_total_price).toFixed(2)} → € {parseFloat(m.new_total_price).toFixed(2)}
-                      {parseFloat(m.price_difference) !== 0 && (
-                        <span> ({parseFloat(m.price_difference) > 0 ? '+' : ''}€ {parseFloat(m.price_difference).toFixed(2)})</span>
+                {modHistory.map((m: any) => {
+                  // Toon per wijziging wát er veranderde. Zonder dit lijkt elke regel
+                  // een datumwijziging, ook bij boottijden/kenteken/contactgegevens.
+                  let d: any = {};
+                  try {
+                    d = m.change_details
+                      ? (typeof m.change_details === 'string' ? JSON.parse(m.change_details) : m.change_details)
+                      : {};
+                  } catch { d = {}; }
+                  const type = m.modification_type || 'dates';
+                  const TYPE_LABELS: Record<string, string> = {
+                    dates: 'Datums', checkedin_departure: 'Vertrekdatum', ferry: 'Boottijden',
+                    plate: 'Kenteken', charging: 'Laden', contact: 'Contactgegevens', email: 'E-mailadres',
+                  };
+                  const STATUS_LABELS: Record<string, string> = {
+                    pending_payment: 'wacht op betaling', pending_review: 'ter beoordeling',
+                    pending_email_verify: 'e-mail bevestigen', rejected: 'afgewezen', abandoned: 'afgebroken',
+                  };
+                  const fmtD = (v: any) => v ? new Date(v).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' }) : '';
+                  const fmtT = (v: any) => v ? String(v).slice(0, 5) : '';
+                  const priceChanged = parseFloat(m.price_difference || 0) !== 0;
+
+                  let detail: any;
+                  if (type === 'ferry') {
+                    const rows: string[] = [];
+                    const o1 = fmtT(d.currentOutboundTime), o2 = fmtT(d.newOutboundTime);
+                    const r1 = fmtT(d.currentReturnTime), r2 = fmtT(d.newReturnTime);
+                    const h1 = fmtT(d.currentReturnArrivalHarlingen), h2 = fmtT(d.newReturnArrivalHarlingen);
+                    if (o2 && o2 !== o1) rows.push(`Heenreis ${o1 || '—'} → ${o2}`);
+                    if (r2 && r2 !== r1) rows.push(`Terugreis ${r1 || '—'} → ${r2}`);
+                    if (h2 && h2 !== h1) rows.push(`Aankomst Harlingen ${h1 || '—'} → ${h2}`);
+                    detail = rows.length ? rows.join(' · ') : 'Boottijden bijgewerkt';
+                  } else if (type === 'plate') {
+                    const vs = Array.isArray(d.vehicles) ? d.vehicles : [];
+                    detail = vs.length
+                      ? vs.map((v: any) => `${String(v.oldPlate || '—').toUpperCase()} → ${String(v.newPlate || '').toUpperCase()}`).join(' · ')
+                      : 'Kenteken bijgewerkt';
+                  } else if (type === 'contact' || type === 'email') {
+                    const rows: string[] = [];
+                    if (d.newEmail) rows.push(`${d.oldEmail || '—'} → ${d.newEmail}`);
+                    if (d.newPhone) rows.push(`${d.oldPhone || '—'} → ${d.newPhone}`);
+                    detail = rows.length ? rows.join(' · ') : 'Contactgegevens bijgewerkt';
+                  } else if (type === 'charging') {
+                    const vs = Array.isArray(d.vehicles) ? d.vehicles : [];
+                    const kwh = vs.map((v: any) => v.evKwh).filter(Boolean);
+                    detail = kwh.length ? `Laden: ${kwh.join(', ')} kWh` : 'Laadpakket gewijzigd';
+                  } else {
+                    detail = (
+                      <>
+                        {fmtD(m.old_arrival_date)} – {fmtD(m.old_departure_date)}
+                        {' → '}
+                        <strong style={{ color: '#0a2240' }}>{fmtD(m.new_arrival_date)} – {fmtD(m.new_departure_date)}</strong>
+                      </>
+                    );
+                  }
+
+                  return (
+                    <div key={m.id} style={{ padding: '10px 0', borderBottom: '0.5px solid rgba(10,34,64,0.06)', fontSize: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, gap: 8 }}>
+                        <span style={{ fontWeight: 700, color: '#0a2240', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          {m.modified_by === 'admin' ? `Admin${m.admin_email ? ` (${m.admin_email})` : ''}` : 'Klant'}
+                          <span style={{ background: '#eef3ff', color: '#19499e', fontWeight: 700, fontSize: 10, padding: '1px 6px', borderRadius: 4 }}>
+                            {TYPE_LABELS[type] || type}
+                          </span>
+                          {STATUS_LABELS[m.status] && (
+                            <span style={{ background: '#fff4e5', color: '#a06010', fontWeight: 700, fontSize: 10, padding: '1px 6px', borderRadius: 4 }}>
+                              {STATUS_LABELS[m.status]}
+                            </span>
+                          )}
+                        </span>
+                        <span style={{ color: '#7090b0', whiteSpace: 'nowrap' }}>{new Date(m.created_at).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      <div style={{ color: '#7090b0' }}>{detail}</div>
+                      {priceChanged && (
+                        <div style={{ marginTop: 2, color: parseFloat(m.price_difference) > 0 ? '#8a2020' : '#0a7c6e' }}>
+                          € {parseFloat(m.old_total_price).toFixed(2)} → € {parseFloat(m.new_total_price).toFixed(2)}
+                          <span> ({parseFloat(m.price_difference) > 0 ? '+' : ''}€ {parseFloat(m.price_difference).toFixed(2)})</span>
+                        </div>
                       )}
+                      {m.admin_notes && <div style={{ marginTop: 4, fontStyle: 'italic', color: '#7090b0' }}>{m.admin_notes}</div>}
                     </div>
-                    {m.admin_notes && <div style={{ marginTop: 4, fontStyle: 'italic', color: '#7090b0' }}>{m.admin_notes}</div>}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

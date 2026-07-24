@@ -4983,6 +4983,18 @@ router.post('/reservations/token/:token/modify-dates-stripe-pay', async (req: Re
     },
   });
 
+  // De klant start hier een NIEUWE betaalpoging. Een eerdere, niet-afgeronde
+  // online poging blijft anders als 'pending_payment' staan en telt overal mee
+  // als "nog te betalen" — met dubbel incasseren tot gevolg zodra de klant het
+  // opnieuw (wél succesvol) probeert.
+  await query(
+    `UPDATE reservation_modifications
+     SET status = 'abandoned'
+     WHERE reservation_id = $1 AND status = 'pending_payment'
+       AND modification_type = 'dates' AND stripe_payment_intent_id IS NOT NULL`,
+    [r.id]
+  );
+
   const modResult = await query(
     `INSERT INTO reservation_modifications
      (reservation_id, modified_by, old_arrival_date, old_departure_date, new_arrival_date, new_departure_date,
@@ -5288,6 +5300,16 @@ router.post('/reservations/token/:token/modify-charging-stripe-pay', async (req:
     currency: 'eur',
     metadata: { reservationId: r.id, type: 'charging_modification' },
   });
+
+  // Nieuwe betaalpoging: eerdere niet-afgeronde online poging niet laten
+  // meetellen als "nog te betalen" (voorkomt dubbel incasseren).
+  await query(
+    `UPDATE reservation_modifications
+     SET status = 'abandoned'
+     WHERE reservation_id = $1 AND status = 'pending_payment'
+       AND modification_type = 'charging' AND stripe_payment_intent_id IS NOT NULL`,
+    [r.id]
+  );
 
   const newTotal = Math.round((parseFloat(r.total_price) + delta) * 100) / 100;
   await query(

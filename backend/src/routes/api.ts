@@ -2762,18 +2762,53 @@ router.put('/admin/reservations/:id', requireAuth, async (req: Request, res: Res
   // Naam wordt NIET op de klant bijgewerkt: die is al opgeslagen als guest_first/last_name
   // op de boeking zelf (via COALESCE), zodat andere boekingen van dezelfde klant onaangetast blijven.
   if (email !== undefined || phone !== undefined) {
-    const res2 = await query(`SELECT customer_id FROM reservations WHERE id = $1`, [req.params.id]);
+    const res2 = await query(`SELECT customer_id, guest_first_name, guest_last_name FROM reservations WHERE id = $1`, [req.params.id]);
     if (res2.rows.length > 0) {
       const custId = res2.rows[0].customer_id;
-      const custUpdates: string[] = [];
-      const custParams: unknown[] = [];
-      let ci = 1;
-      if (email !== undefined) { custUpdates.push(`email = $${ci++}`); custParams.push(email); }
-      if (phone !== undefined) { custUpdates.push(`phone = $${ci++}`); custParams.push(phone || null); }
-      if (custUpdates.length > 0) {
-        custUpdates.push(`updated_at = NOW()`);
-        custParams.push(custId);
-        await query(`UPDATE customers SET ${custUpdates.join(', ')} WHERE id = $${ci}`, custParams);
+      const emailTrim = email !== undefined ? String(email).trim() : undefined;
+
+      // E-mail wijzigen naar een adres dat al bij een ANDERE klant hoort: customers.email
+      // is uniek, dus hernoemen geeft een constraint-fout. In plaats daarvan koppelen we
+      // deze reservering aan dat bestaande klantaccount (de admin bevestigt handmatig dat
+      // het om dezelfde klant gaat). De weergavenaam blijft behouden via de guest-velden.
+      let repointed = false;
+      if (emailTrim) {
+        const other = await query(
+          `SELECT id FROM customers WHERE LOWER(email) = LOWER($1) AND id <> $2 LIMIT 1`,
+          [emailTrim, custId]
+        );
+        if (other.rows.length > 0) {
+          const targetId = other.rows[0].id;
+          const cur = await query(`SELECT first_name, last_name FROM customers WHERE id = $1`, [custId]);
+          const gFirst = res2.rows[0].guest_first_name || cur.rows[0]?.first_name || null;
+          const gLast = res2.rows[0].guest_last_name || cur.rows[0]?.last_name || null;
+          await query(
+            `UPDATE reservations
+               SET customer_id = $1,
+                   guest_first_name = COALESCE(guest_first_name, $2),
+                   guest_last_name  = COALESCE(guest_last_name, $3),
+                   updated_at = NOW()
+             WHERE id = $4`,
+            [targetId, gFirst, gLast, req.params.id]
+          );
+          if (phone !== undefined) {
+            await query(`UPDATE customers SET phone = $1, updated_at = NOW() WHERE id = $2`, [phone || null, targetId]);
+          }
+          repointed = true;
+        }
+      }
+
+      if (!repointed) {
+        const custUpdates: string[] = [];
+        const custParams: unknown[] = [];
+        let ci = 1;
+        if (email !== undefined) { custUpdates.push(`email = $${ci++}`); custParams.push(emailTrim); }
+        if (phone !== undefined) { custUpdates.push(`phone = $${ci++}`); custParams.push(phone || null); }
+        if (custUpdates.length > 0) {
+          custUpdates.push(`updated_at = NOW()`);
+          custParams.push(custId);
+          await query(`UPDATE customers SET ${custUpdates.join(', ')} WHERE id = $${ci}`, custParams);
+        }
       }
     }
   }

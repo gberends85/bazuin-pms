@@ -159,13 +159,13 @@ export const bookingApi = {
     post<{ success: boolean; amount: number }>(`/reservations/token/${token}/modify-dates-on-site`, { newArrivalDate, newDepartureDate, overbooked: !!overbooked }),
 
   // ── Laden toevoegen/aanpassen (via token) ─────────────────────
-  modifyChargingStripePay: (token: string, vehicles: { vehicleId: string; evServiceId: string | null; evKwh: number | null }[]) =>
+  modifyChargingStripePay: (token: string, vehicles: { vehicleId: string; evServiceId: string | null; evKwh: number | null; newPlate?: string }[]) =>
     post<{ clientSecret: string; amount: number }>(`/reservations/token/${token}/modify-charging-stripe-pay`, { vehicles }),
 
-  modifyChargingStripeComplete: (token: string, paymentIntentId: string, vehicles: { vehicleId: string; evServiceId: string | null; evKwh: number | null }[]) =>
+  modifyChargingStripeComplete: (token: string, paymentIntentId: string, vehicles: { vehicleId: string; evServiceId: string | null; evKwh: number | null; newPlate?: string }[]) =>
     post<{ success: boolean }>(`/reservations/token/${token}/modify-charging-stripe-complete`, { paymentIntentId, vehicles }),
 
-  modifyChargingOnSite: (token: string, vehicles: { vehicleId: string; evServiceId: string | null; evKwh: number | null }[]) =>
+  modifyChargingOnSite: (token: string, vehicles: { vehicleId: string; evServiceId: string | null; evKwh: number | null; newPlate?: string }[]) =>
     post<{ success: boolean; amount: number }>(`/reservations/token/${token}/modify-charging-on-site`, { vehicles }),
 
   // ── Invoice group modification (public token-based) ───────────

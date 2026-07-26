@@ -544,7 +544,15 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   function chargingPayloadNow() {
     return plateValues.map((v, i) => {
       const svc = serviceForKwh(evSel[i]);
-      return { vehicleId: v.vehicleId, evServiceId: svc?.id || null, evKwh: evSel[i] || null };
+      // Als de klant hier ook een nieuw kenteken invulde (andere auto), stuur dat
+      // mee zodat het laden aan de juiste auto hangt en het kenteken wordt bijgewerkt.
+      const plateChanged = !!v.newPlate.trim() && v.newPlate.trim().toUpperCase() !== v.oldPlate.toUpperCase();
+      return {
+        vehicleId: v.vehicleId,
+        evServiceId: svc?.id || null,
+        evKwh: evSel[i] || null,
+        newPlate: plateChanged ? v.newPlate.trim().toUpperCase() : undefined,
+      };
     });
   }
   // Bij te betalen bedrag = som van (nieuw EV-tarief − huidig EV-tarief) per voertuig.

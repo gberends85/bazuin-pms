@@ -5261,6 +5261,28 @@ async function chargingDelta(reservationId: string, items: any[]): Promise<numbe
 
 async function applyCharging(reservationId: string, items: any[]): Promise<void> {
   for (const it of items) {
+    // Wisselt de klant bij het laden ook van auto (nieuw kenteken meegegeven),
+    // werk dat kenteken dan bij + RDW opnieuw ophalen. Anders raakt het nieuwe
+    // kenteken verloren en hangt het laden aan de oude auto.
+    if (it.newPlate && String(it.newPlate).trim()) {
+      const plate = normalizePlate(it.newPlate);
+      const cur = await query('SELECT license_plate FROM vehicles WHERE id=$1 AND reservation_id=$2', [it.vehicleId, reservationId]);
+      const oldPlate = cur.rows[0]?.license_plate ? normalizePlate(cur.rows[0].license_plate) : '';
+      if (plate && plate !== oldPlate) {
+        await query(
+          `UPDATE vehicles SET license_plate=$1,
+             rdw_make=NULL, rdw_model=NULL, rdw_color=NULL, rdw_fuel_type=NULL, rdw_year=NULL, rdw_fetched_at=NULL
+           WHERE id=$2 AND reservation_id=$3`,
+          [plate, it.vehicleId, reservationId]);
+        const vid = it.vehicleId;
+        lookupRdw(plate).then(info => {
+          if (info) {
+            query(`UPDATE vehicles SET rdw_make=$1, rdw_model=$2, rdw_color=$3, rdw_fuel_type=$4, rdw_year=$5, rdw_fetched_at=NOW() WHERE id=$6`,
+              [info.make, info.model, info.color, info.fuelType, info.year, vid]).catch(console.error);
+          }
+        }).catch(console.error);
+      }
+    }
     if (it.evServiceId) {
       const price = await evPriceFor(it.evServiceId);
       await query('UPDATE vehicles SET ev_service_id=$1, ev_kwh=$2, ev_price=$3 WHERE id=$4 AND reservation_id=$5',

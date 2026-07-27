@@ -26,6 +26,9 @@ interface RdwFuelEntry {
   actieradius_extern_oplaadbaar?: string;              // EV-bereik extern opladen (km)
   elektriciteitsverbruik_gewogen_gecombineerd?: string; // Wh/km (gewogen gecombineerd)
   klasse_hybride_elektrisch_voertuig?: string;          // "OVC-HEV" = plug-in (extern oplaadbaar)
+  // Oudere PURE BEV-velden (bv. Tesla 2014): algemeen bereik + vol-elektrisch verbruik
+  actieradius?: string;                                 // bereik (km)
+  elektriciteitsverbruik_volledig_elektrisch?: string;  // Wh/km (volledig elektrisch)
 }
 
 export interface EvInfo {
@@ -111,18 +114,33 @@ export async function lookupRdw(rawPlate: string): Promise<VehicleInfo | null> {
         const externalRange = Math.max(0, ...entries.map(e => num(e.actieradius_extern_oplaadbaar)));
         const combinedElecConsumption = Math.max(0, ...entries.map(e => num(e.elektriciteitsverbruik_gewogen_gecombineerd)));
 
+        // Oudere PURE BEV's (bv. Tesla 2014) hebben geen WLTP-velden, maar wel
+        // 'actieradius' + 'elektriciteitsverbruik_volledig_elektrisch'. Alleen
+        // gebruiken als er GEEN verbrandingsmotor is: bij een hybride kan
+        // 'actieradius' het totale bereik (incl. benzine) zijn.
+        const bevRange = !hasCombustion ? Math.max(0, ...entries.map(e => num(e.actieradius))) : 0;
+        const bevConsumption = !hasCombustion
+          ? Math.max(0, ...entries.map(e => num(e.elektriciteitsverbruik_volledig_elektrisch)))
+          : 0;
+
         if (electricEntry) {
-          // Bereik: WLTP indien beschikbaar, anders het oudere extern-oplaadbaar-bereik.
+          // Bereik: WLTP indien beschikbaar, anders extern-oplaadbaar, anders het
+          // oudere pure-BEV bereik.
           const wltpRange = num(electricEntry.actie_radius_enkel_elektrisch_wltp)
             || num(electricEntry.actie_radius_extern_opladen_wltp);
-          const range = wltpRange > 0 ? wltpRange : externalRange;
+          const range = wltpRange > 0 ? wltpRange : (externalRange > 0 ? externalRange : bevRange);
 
-          // Verbruik: WLTP indien beschikbaar, anders gewogen gecombineerd, anders ~200 Wh/km.
+          // Verbruik: WLTP indien beschikbaar, anders gewogen gecombineerd, anders
+          // het oudere pure-BEV verbruik, anders ~200 Wh/km.
           const wltpConsumption = num(electricEntry.elektrisch_verbruik_enkel_elektrisch_wltp)
             || num(electricEntry.elektrisch_verbruik_extern_opladen_wltp);
-          const consumption = wltpConsumption > 0 ? wltpConsumption : (combinedElecConsumption > 0 ? combinedElecConsumption : 200);
+          const consumption = wltpConsumption > 0
+            ? wltpConsumption
+            : (combinedElecConsumption > 0 ? combinedElecConsumption : (bevConsumption > 0 ? bevConsumption : 200));
 
           // Alleen laden aanbieden als de auto ook echt extern oplaadbaar is.
+          // Zonder bekend bereik geen accu-schatting verzinnen: dan valt de
+          // frontend terug op "geen accugegevens" en toont alle laadpakketten.
           const chargeable = range > 0 || isOvcHev || externalRange > 0;
 
           if (chargeable) {

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 import { query, getClient } from '../db/pool';
 import {
@@ -775,9 +776,27 @@ router.get('/services', async (_req, res) => {
 // ============================================================
 // PUBLIC — CREATE RESERVATION
 // ============================================================
+// ── Overboek-token (admin-link) ───────────────────────────────────────────────
+// Ondertekend token waarmee de admin een klant een boekingslink kan sturen die
+// volle dagen mag omzeilen. Gebonden aan datums + aantal auto's, 48u geldig.
+function signOverbookToken(arrivalDate: string, departureDate: string, vehicles: number): string {
+  return jwt.sign(
+    { t: 'overbook', a: arrivalDate, d: departureDate, n: vehicles },
+    process.env.JWT_SECRET!,
+    { expiresIn: '48h' }
+  );
+}
+function verifyOverbookToken(token: string, arrivalDate: string, departureDate: string, vehicles: number): boolean {
+  try {
+    const p = jwt.verify(token, process.env.JWT_SECRET!) as any;
+    return p.t === 'overbook' && p.a === arrivalDate && p.d === departureDate && Number(p.n) >= Number(vehicles);
+  } catch { return false; }
+}
+
 const CreateReservationSchema = z.object({
   arrivalDate: z.string(),
   departureDate: z.string(),
+  overbookToken: z.string().optional(),
   parkingLotId: z.string().optional(),
   ferryOutboundId: z.string().uuid().optional(),
   ferryOutboundTime: z.string().optional(),
@@ -879,7 +898,11 @@ router.post('/reservations', async (req: Request, res: Response) => {
     );
 
     const available = parseInt(nightCheckResult.rows[0].min_available) || 0;
-    if (available < data.vehicles.length) {
+    // Admin-overboeklink: geldig token voor déze datums/aantal → vol-check overslaan.
+    const overbookOk = data.overbookToken
+      ? verifyOverbookToken(data.overbookToken, data.arrivalDate, data.departureDate, data.vehicles.length)
+      : false;
+    if (available < data.vehicles.length && !overbookOk) {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: `Onvoldoende beschikbare plaatsen. Nog ${available} vrij.` });
     }
@@ -969,6 +992,12 @@ router.post('/reservations', async (req: Request, res: Response) => {
     // Bedrijfsnaam (factuur op bedrijfsnaam) per reservering vastleggen
     if (data.customer.company && data.customer.company.trim()) {
       await client.query(`UPDATE reservations SET guest_company = $1 WHERE id = $2`, [data.customer.company.trim(), reservation.id]);
+    }
+
+    // Markeer overboekingen (via admin-link) in de admin-notitie
+    if (overbookOk) {
+      const note = (data.customerNote ? data.customerNote.trim() + '\n' : '') + '⚠ Overboeking via admin-link';
+      await client.query(`UPDATE reservations SET admin_notes = $1 WHERE id = $2`, [note, reservation.id]);
     }
 
     // Create vehicles
@@ -2228,6 +2257,25 @@ router.put('/admin/availability/override', requireAuth, async (req: Request, res
     console.error('Override error:', e.message);
     return res.status(500).json({ error: e.message });
   }
+});
+
+// ============================================================
+// ADMIN — OVERBOEK-LINK GENEREREN
+// Maakt een boekingslink die direct op stap 2 opent (datums vooringevuld) en
+// waarmee volle dagen omzeild mogen worden. Het ondertekende token is 48u geldig
+// en gebonden aan déze datums + aantal auto's, zodat het niet elders bruikbaar is.
+// ============================================================
+router.post('/admin/overbook-link', requireAuth, async (req: Request, res: Response) => {
+  const { arrivalDate, departureDate, vehicles } = req.body || {};
+  const isDate = (d: any) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
+  if (!isDate(arrivalDate) || !isDate(departureDate) || departureDate <= arrivalDate) {
+    return res.status(400).json({ error: 'Ongeldige datums (vertrek moet na aankomst liggen).' });
+  }
+  const n = Math.max(1, Math.min(5, parseInt(String(vehicles), 10) || 1));
+  const token = signOverbookToken(arrivalDate, departureDate, n);
+  const bookingUrl = process.env.BOOKING_URL || 'https://booking.parkeren-harlingen.nl';
+  const url = `${bookingUrl}/boeken?arrival=${arrivalDate}&departure=${departureDate}&autos=${n}&stap=2&ob=${encodeURIComponent(token)}`;
+  return res.json({ url, vehicles: n, arrivalDate, departureDate, expiresInHours: 48 });
 });
 
 // ============================================================

@@ -23,6 +23,27 @@ export default function CalendarPage() {
   const [capNight, setCapNight] = useState<number | ''>('');
   const [capDay, setCapDay] = useState<number | ''>('');
   const [capSaving, setCapSaving] = useState(false);
+  // Overboek-link maken
+  const [obArrival, setObArrival] = useState('');
+  const [obDeparture, setObDeparture] = useState('');
+  const [obAutos, setObAutos] = useState(1);
+  const [obLink, setObLink] = useState('');
+  const [obLoading, setObLoading] = useState(false);
+
+  async function genOverbookLink() {
+    if (!obArrival || !obDeparture || obDeparture <= obArrival) { toastError('Kies een geldige aankomst- en vertrekdatum (vertrek na aankomst)'); return; }
+    setObLoading(true);
+    setObLink('');
+    try {
+      const r = await api.availability.overbookLink(obArrival, obDeparture, obAutos);
+      setObLink(r.url);
+      toast('Overboek-link gemaakt — 48 uur geldig');
+    } catch (e: any) { toastError(e.message); }
+    finally { setObLoading(false); }
+  }
+  async function copyObLink() {
+    try { await navigator.clipboard.writeText(obLink); toast('Link gekopieerd'); } catch { toastError('Kopiëren mislukt — selecteer de link handmatig'); }
+  }
 
   async function loadCapacity() {
     try { const c = await api.availability.capacity(); setCapNight(c.onlineSpots); setCapDay(c.daytimeSpots); } catch (e: any) { console.error(e); }
@@ -196,6 +217,47 @@ export default function CalendarPage() {
             <div style={{ fontSize: 11, color: '#7a5010', flexBasis: '100%' }}>
               <ExclamationTriangleIcon className="w-3 h-3" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
               Let op: de dag-max is lager dan de nacht-max — meestal wil je 'm juist gelijk of hoger zetten.
+            </div>
+          )}
+        </div>
+
+        {/* Overboek-link maken */}
+        <div style={{ background: 'white', border: '0.5px solid rgba(10,34,64,0.12)', borderRadius: 12, padding: '16px 20px', marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ flexBasis: '100%' }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#0a2240', marginBottom: 2 }}>Overboek-link maken</div>
+              <div style={{ fontSize: 11, color: '#7090b0' }}>Genereer een boekingslink die direct op de veerboot-stap opent en volle dagen mag omzeilen. Alleen geldig voor deze datums + aantal auto's, 48 uur.</div>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>Aankomst</label>
+              <input type="date" value={obArrival} onChange={e => setObArrival(e.target.value)}
+                style={{ padding: '8px 10px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 7, fontSize: 14 }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>Vertrek</label>
+              <input type="date" value={obDeparture} min={obArrival || undefined} onChange={e => setObDeparture(e.target.value)}
+                style={{ padding: '8px 10px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 7, fontSize: 14 }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>Auto's</label>
+              <input type="number" min={1} max={5} value={obAutos} onChange={e => setObAutos(Math.max(1, Math.min(5, Number(e.target.value) || 1)))}
+                style={{ width: 70, padding: '8px 10px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 7, fontSize: 14, fontWeight: 700 }} />
+            </div>
+            <button className="btn btn-primary" onClick={genOverbookLink} disabled={obLoading}>
+              {obLoading ? 'Bezig…' : 'Genereer link'}
+            </button>
+          </div>
+          {obLink && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: '0.5px solid rgba(10,34,64,0.1)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <input readOnly value={obLink} onFocus={e => e.currentTarget.select()}
+                  style={{ flex: 1, minWidth: 260, padding: '9px 11px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 7, fontSize: 12, fontFamily: 'monospace', color: '#0a2240', background: '#f8fafc' }} />
+                <button className="btn btn-ghost btn-sm" onClick={copyObLink}>Kopieer</button>
+              </div>
+              <div style={{ fontSize: 11, color: '#7a5010', marginTop: 6 }}>
+                <ExclamationTriangleIcon className="w-3 h-3" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
+                48 uur geldig · staat overboeken toe voor deze datums · de klant betaalt het normale tarief.
+              </div>
             </div>
           )}
         </div>

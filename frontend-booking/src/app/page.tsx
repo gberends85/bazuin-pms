@@ -471,6 +471,8 @@ export default function BookingPage() {
   const [step, setStep] = useState<Step>(1);
   const [state, setState] = useState<BookingState>(INIT);
   const [savedProfile, setSavedProfile] = useState<SavedProfile | null>(null);
+  // Overboek-token uit een admin-link (?ob=...): laat volle dagen toe voor deze datums.
+  const [overbookToken, setOverbookToken] = useState<string>('');
 
   // Pre-fill from URL params en/of localStorage na mount
   useEffect(() => {
@@ -486,6 +488,10 @@ export default function BookingPage() {
     const autosRaw = parseInt(p.get('autos') || p.get('vehicles') || '', 10);
     const autos = Number.isFinite(autosRaw) ? Math.max(1, Math.min(5, autosRaw)) : 0;
     const dateDeepLink = /^\d{4}-\d{2}-\d{2}$/.test(arrival) && /^\d{4}-\d{2}-\d{2}$/.test(departure) && departure > arrival;
+
+    // Overboek-token uit een admin-link
+    const ob = p.get('ob') || '';
+    if (ob) setOverbookToken(ob);
 
     // Lees opgeslagen profiel
     const profile = loadProfile();
@@ -646,6 +652,7 @@ export default function BookingPage() {
       const body = {
         arrivalDate: state.arrival,
         departureDate: state.departure,
+        overbookToken: overbookToken || undefined,
         ferryOutboundId: state.ferryOutId || undefined,
         ferryOutboundTime: state.ferryOutTime || undefined,
         ferryOutboundDestination: state.destination,
@@ -873,7 +880,8 @@ export default function BookingPage() {
 
             {/* Knop + validatiemeldingen */}
             {(() => {
-              const isFull = avail && avail.available < state.vehicleCount;
+              // Overboek-link (admin): volle dagen mogen dan doorgaan.
+              const isFull = avail && avail.available < state.vehicleCount && !overbookToken;
               const missingDates = !state.arrival || !state.departure;
               // Zonder geldig tarief (price) is boeken niet mogelijk.
               const canProceed = avail && !isFull && state.arrival && state.departure && !!price;

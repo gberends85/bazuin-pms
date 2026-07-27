@@ -113,6 +113,8 @@ export const api = {
     removeOverride: (date: string) => req<any>('/admin/availability/override', { method: 'DELETE', body: JSON.stringify({ date }) }),
     capacity: () => req<{ onlineSpots: number; daytimeSpots: number }>('/admin/location-capacity'),
     setCapacity: (onlineSpots: number | null, daytimeSpots: number | null) => req<any>('/admin/location-capacity', { method: 'PUT', body: JSON.stringify({ onlineSpots, daytimeSpots }) }),
+    overbookLink: (arrivalDate: string, departureDate: string, vehicles: number) =>
+      req<{ url: string; vehicles: number; arrivalDate: string; departureDate: string; expiresInHours: number }>('/admin/overbook-link', { method: 'POST', body: JSON.stringify({ arrivalDate, departureDate, vehicles }) }),
   },
   reports: {
     financial: (p: any) => req<any>(`/admin/reports/financial?${new URLSearchParams(p)}`),

@@ -473,6 +473,9 @@ export default function BookingPage() {
   const [savedProfile, setSavedProfile] = useState<SavedProfile | null>(null);
   // Overboek-token uit een admin-link (?ob=...): laat volle dagen toe voor deze datums.
   const [overbookToken, setOverbookToken] = useState<string>('');
+  // Deeplink wil naar stap 2, maar we springen pas zodra beschikbaarheid bekend is
+  // (en niet vol, tenzij er een geldig overboek-token is).
+  const [pendingStep2, setPendingStep2] = useState(false);
 
   // Pre-fill from URL params en/of localStorage na mount
   useEffect(() => {
@@ -517,9 +520,12 @@ export default function BookingPage() {
       };
     });
 
-    // Datums vooraf ingevuld én gevraagd om door te gaan (stap=2): spring naar veerbootselectie
+    // Datums vooraf ingevuld én gevraagd om door te gaan (stap=2): pas naar de
+    // veerbootstap springen zodra de beschikbaarheid bekend is — en alleen als de
+    // datums vrij zijn, tenzij er een geldig overboek-token in de link zit. Zo kan
+    // een gewone deeplink volle dagen niet omzeilen.
     if (dateDeepLink && (p.get('stap') === '2' || p.get('step') === '2')) {
-      setStep(2);
+      setPendingStep2(true);
     }
   }, []);
 
@@ -597,6 +603,18 @@ export default function BookingPage() {
       .then(p => { if (p && p.totalPrice > 0) { setPrice(p); setPriceError(false); } else setPriceError(true); })
       .catch(() => { setPrice(null); setPriceError(true); }); // geen tarief → boeken niet mogelijk
   }, [state.arrival, state.departure, state.vehicleCount]);
+
+  // Deeplink-sprong naar stap 2 afhandelen zodra beschikbaarheid bekend is.
+  // Met geldig overboek-token mag het altijd; anders alleen als er plek is.
+  // Zonder token op volle datums: blijf op stap 1 (toont de 'vol'-melding).
+  useEffect(() => {
+    if (!pendingStep2) return;
+    if (overbookToken) { setStep(2); setPendingStep2(false); return; }
+    if (avail) {
+      if (avail.available >= state.vehicleCount) setStep(2);
+      setPendingStep2(false);
+    }
+  }, [pendingStep2, avail, overbookToken, state.vehicleCount]);
 
   // Load ferries when destination + dates known
   useEffect(() => {

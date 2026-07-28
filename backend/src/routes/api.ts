@@ -4152,10 +4152,9 @@ router.post('/reservations/token/:token/modify-phone', async (req: Request, res:
   if (result.rows.length === 0) return res.status(404).json({ error: 'Niet gevonden' });
   const r = result.rows[0];
 
-  if (['cancelled', 'completed'].includes(r.status)) {
-    return res.status(400).json({ error: 'Deze reservering kan niet worden gewijzigd' });
-  }
-
+  // Geen status-blokkade: contactgegevens horen bij de KLANT, niet bij de
+  // levenscyclus van één boeking. Ook na afloop moet een telefoonnummer
+  // gecorrigeerd kunnen worden.
   await query('UPDATE customers SET phone = $1 WHERE id = $2', [phone, r.customer_id]);
 
   return res.json({ success: true });
@@ -4177,9 +4176,8 @@ router.post('/reservations/token/:token/request-email-change', async (req: Reque
   if (result.rows.length === 0) return res.status(404).json({ error: 'Niet gevonden' });
   const r = result.rows[0];
 
-  if (['cancelled', 'completed'].includes(r.status)) {
-    return res.status(400).json({ error: 'Deze reservering kan niet worden gewijzigd' });
-  }
+  // Geen status-blokkade: het e-mailadres hoort bij de KLANT. De wijziging loopt
+  // sowieso via e-mailverificatie op het nieuwe adres.
 
   const { randomBytes } = await import('crypto');
   const verifyToken = randomBytes(32).toString('hex');

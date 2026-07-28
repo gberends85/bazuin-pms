@@ -1824,11 +1824,48 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         </h2>
         <p style={{ color: '#7090b0', fontSize: 14, marginBottom: 24 }}>
           {isCancelled
-            ? 'Deze reservering is geannuleerd en kan niet meer worden gewijzigd.'
-            : 'Deze reservering is afgelopen en kan niet meer worden gewijzigd.'}
+            ? 'Deze reservering is geannuleerd. Datums, boottijden en kentekens kunnen niet meer worden gewijzigd.'
+            : 'Deze reservering is afgelopen. Datums, boottijden en kentekens kunnen niet meer worden gewijzigd.'}
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* Wél nog mogelijk na afloop: factuur- en contactgegevens corrigeren
+              en doorklikken naar de andere reserveringen van deze klant. */}
+          <button
+            onClick={() => {
+              setError(''); setInvSaved(false);
+              setInvCompany(res?.guest_company || ''); setInvBtw(res?.guest_btw_number || '');
+              setInvAddress(res?.guest_address || ''); setInvPostal(res?.guest_postal_code || '');
+              setInvCity(res?.guest_city || ''); setStep('invoice-details');
+            }}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '12px 14px', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              color: '#142440', border: '0.5px solid rgba(10,34,64,0.2)', background: 'white',
+            }}
+          >
+            <DocumentTextIcon className="w-4 h-4" />Factuurgegevens (bedrijf, adres, BTW)
+          </button>
+          <button
+            onClick={() => { setError(''); setStep('contact'); }}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '12px 14px', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              color: '#142440', border: '0.5px solid rgba(10,34,64,0.2)', background: 'white',
+            }}
+          >
+            <UserIcon className="w-4 h-4" />Persoonsgegevens
+          </button>
+          <button
+            onClick={() => { setError(''); loadAllReservations(); }}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '12px 14px', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              color: '#142440', border: '0.5px solid rgba(10,34,64,0.2)', background: 'white',
+            }}
+          >
+            <ClipboardDocumentListIcon className="w-4 h-4" />Mijn reserveringen
+          </button>
           <a
             href={`${API_BASE}/invoice/${params.token}`}
             style={{

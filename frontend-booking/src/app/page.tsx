@@ -1,6 +1,6 @@
 'use client';
 export const dynamic = 'force-dynamic'; // Voorkomt dat Next.js new Date() bevriest in statische HTML
-import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import {
   CheckIcon, XMarkIcon, ArrowRightIcon, ArrowLeftIcon, ArrowPathIcon,
   ExclamationTriangleIcon, BoltIcon, TruckIcon, KeyIcon, Battery50Icon, NoSymbolIcon,
@@ -650,6 +650,27 @@ export default function BookingPage() {
       return { ...prev, vehicles: v };
     });
   }
+
+  // Kentekens die al zijn opgezocht (per voertuig-index), zodat we niet blijven herhalen.
+  const autoRdwRef = useRef<Record<number, string>>({});
+
+  // RDW automatisch opzoeken zodra een kenteken bekend is. Zonder dit werd de
+  // lookup alleen bij onBlur gedaan, waardoor een vooringevuld kenteken (uit een
+  // link met ?kenteken=... of uit het opgeslagen profiel) de eerste keer geen
+  // auto-gegevens toonde. Gedebounced zodat er niet bij elke toetsaanslag wordt gezocht.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      state.vehicles.forEach((v: any, i: number) => {
+        const norm = (v.plate || '').replace(/[-\s]/g, '').toUpperCase();
+        if (norm.length < 5) return;
+        if (autoRdwRef.current[i] === norm) return; // al opgezocht
+        autoRdwRef.current[i] = norm;
+        lookupPlate(i, norm);
+      });
+    }, 500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.vehicles]);
 
   function updateVehicle(idx: number, field: string, val: any) {
     const v = [...state.vehicles];

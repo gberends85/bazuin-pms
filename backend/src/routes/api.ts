@@ -2260,6 +2260,39 @@ router.put('/admin/availability/override', requireAuth, async (req: Request, res
 });
 
 // ============================================================
+// ADMIN — BEZETTE KLUIZEN (datum-onafhankelijk)
+// Een kluis is bezet zodra de sleutel erin ligt, tot de code is gebruikt. Dat is
+// losgekoppeld van de vertrekdatum: een sleutel die vandaag wordt afgegeven voor
+// een vertrek van morgen houdt de kluis NU al bezet. Alleen nog-actieve boekingen
+// tellen mee; oude 'completed' boekingen hebben vaak nog een parking_spot uit de
+// tijd vóór het kluissysteem en zouden anders alles permanent op bezet zetten.
+// ============================================================
+router.get('/admin/lockers/occupied', requireAuth, async (_req: Request, res: Response) => {
+  const result = await query(
+    `SELECT r.id, r.reference, r.parking_spot, r.locker_code, r.locker_code_sent_at,
+            r.locker_collected_at, r.arrival_date, r.departure_date, r.status,
+            COALESCE(r.guest_first_name, c.first_name) AS first_name,
+            COALESCE(r.guest_last_name, c.last_name)  AS last_name,
+            (SELECT string_agg(v.license_plate, ', ' ORDER BY v.sort_order)
+               FROM vehicles v WHERE v.reservation_id = r.id) AS plates,
+            r.contract_customer_id,
+            cc.name AS contract_customer_name
+     FROM reservations r
+     JOIN customers c ON c.id = r.customer_id
+     LEFT JOIN contract_customers cc ON cc.id = r.contract_customer_id
+     WHERE r.parking_spot IS NOT NULL AND r.parking_spot <> ''
+       AND r.status IN ('booked', 'checked_in')
+       AND r.locker_collected_at IS NULL
+       -- Marge van 7 dagen: een klant die te laat ophaalt houdt de kluis nog bezet,
+       -- maar oude blijven-hangen-rijen (vertrek maanden geleden, nooit afgerond)
+       -- blokkeren de kluis niet voor altijd.
+       AND r.departure_date >= CURRENT_DATE - INTERVAL '7 days'
+     ORDER BY r.parking_spot`
+  );
+  return res.json(result.rows);
+});
+
+// ============================================================
 // ADMIN — OVERBOEK-LINK GENEREREN
 // Maakt een boekingslink die direct op stap 2 opent (datums vooringevuld) en
 // waarmee volle dagen omzeild mogen worden. Het ondertekende token is 48u geldig

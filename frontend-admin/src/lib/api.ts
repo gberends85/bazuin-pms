@@ -263,5 +263,7 @@ export const api = {
   },
   keysafe: {
     lockers: () => req<any[]>('/admin/keysafe/lockers'),
+    // Bezette kluizen, ongeacht de bekeken datum (sleutel ligt erin tot de code is gebruikt)
+    occupied: () => req<any[]>('/admin/lockers/occupied'),
   },
 };

@@ -1589,6 +1589,8 @@ export default function ArrivalsPage() {
   const [arrivalTab, setArrivalTab] = useState<'booked'|'checked_in'|'completed'>(saved?.arrivalTab || 'booked');
   const [showDepartedToday, setShowDepartedToday] = useState<boolean>(saved?.showDepartedToday ?? false);
   const [keysafeLockers, setKeysafeLockers] = useState<any[]>([]);
+  // Reserveringen die NU een kluis bezet houden — los van de bekeken datum.
+  const [lockerHolders, setLockerHolders] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -1625,6 +1627,7 @@ export default function ArrivalsPage() {
   useEffect(() => {
     function fetchLockers() {
       api.keysafe.lockers().then(setKeysafeLockers).catch(() => {});
+      api.keysafe.occupied().then(setLockerHolders).catch(() => {});
       load(undefined, undefined, true); // stille achtergrond-refresh
     }
     fetchLockers();
@@ -1937,8 +1940,12 @@ export default function ArrivalsPage() {
             {/* ── Keysafe live overzicht: kluis 1–7 ── */}
             <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap', alignItems: 'stretch' }}>
               {[1,2,3,4,5,6,7].map(n => {
-                // Reserveringsdata (uit DB) — alleen vertrekkende klanten vandaag
-                const dep       = allDepartures.find((r: any) => String(r.parking_spot) === String(n));
+                // Bezetting is datum-ONAFHANKELIJK: de sleutel ligt in de kluis tot de
+                // code is gebruikt. Een sleutel die vandaag wordt afgegeven voor een
+                // vertrek van morgen houdt de kluis dus nu al bezet. Val terug op de
+                // vertrekkers van vandaag zolang de bezettingslijst nog laadt.
+                const holder    = lockerHolders.find((r: any) => String(r.parking_spot) === String(n));
+                const dep       = holder || allDepartures.find((r: any) => String(r.parking_spot) === String(n));
                 const collected = dep?.locker_collected_at;
                 const depCode   = dep?.locker_code || null;  // code uit DB (aangemaakt via PMS)
 
@@ -1951,7 +1958,9 @@ export default function ArrivalsPage() {
 
                 // Bepaal status — alleen op basis van PMS-data (dep), niet op rauwe gateway-code
                 // want de gateway slaat altijd de laatste code op, ook als de kluis leeg/vrij is.
-                const isOccupied = !!dep && !!depCode && !collected; // code aangemaakt, nog niet opgehaald
+                // Staat de reservering in de bezettingslijst, dan is de kluis bezet —
+                // ook zonder aangemaakte code (sleutel is al afgegeven).
+                const isOccupied = holder ? !collected : (!!dep && !!depCode && !collected);
                 const isDone     = !!collected;
 
                 const color = isDone ? '#3a80c0' : keyIn ? '#43a047' : isOccupied ? '#e8a020' : '#9ab0c8';
@@ -1984,6 +1993,13 @@ export default function ArrivalsPage() {
                               {formatPlate(plate)}
                             </span>
                           </div>
+                        )}
+                        {/* Ophaaldatum tonen als die niet de bekeken dag is: zo zie je dat
+                            een kluis nu bezet is voor een vertrek op een andere datum. */}
+                        {!isDone && dep.departure_date && String(dep.departure_date).slice(0, 10) !== dateFrom && (
+                          <span style={{ fontSize:10, color:'#a06010', fontWeight:700, whiteSpace:'nowrap' }}>
+                            ophalen {fmtDateCompact(dep.departure_date)}
+                          </span>
                         )}
                         {/* Code tonen (uit DB, niet uit gateway — gateway heeft altijd een code) */}
                         {depCode && !isDone && (
@@ -2032,10 +2048,14 @@ export default function ArrivalsPage() {
               const tb = b.ferry_return_arrival_harlingen || b.ferry_return_time || b.ferry_return_custom_time || '99:99';
               return ta.localeCompare(tb);
             }).map((r: any) => {
-              // Bezette kluizen = alle andere vertrekkers die vandaag al een kluis hebben
-              const occupied = allDepartures
+              // Bezette kluizen: alle lopende reserveringen met een kluis (ongeacht datum,
+              // want de sleutel ligt er al in) plus de vertrekkers van vandaag.
+              const occupied = Array.from(new Set([
+                ...lockerHolders,
+                ...allDepartures,
+              ]
                 .filter((d: any) => d.id !== r.id && d.parking_spot && !d.locker_collected_at)
-                .map((d: any) => String(d.parking_spot));
+                .map((d: any) => String(d.parking_spot))));
               return (
                 <DepartureCard key={r.id} res={r} onUpdate={handleUpdate} occupiedLockers={occupied} />
               );

@@ -38,10 +38,10 @@ export default function KeyDropModal({
     if (!open) return;
     setLocker(''); setBusy(false); setCode('');
     setPhone(defaultPhone || '');
-    const today = new Date().toISOString().slice(0, 10);
-    api.reservations.today(today).then((d: any) => {
-      const rows = [...(d?.departures || []), ...(d?.arrivals || [])];
-      setOccupied(new Set(rows.filter((r: any) => r.parking_spot && !r.locker_collected_at).map((r: any) => String(r.parking_spot))));
+    // Bezette kluizen ongeacht datum: een sleutel die al is afgegeven houdt de
+    // kluis bezet tot de code is gebruikt, ook als het vertrek pas later is.
+    api.keysafe.occupied().then((rows: any[]) => {
+      setOccupied(new Set((rows || []).map((r: any) => String(r.parking_spot))));
     }).catch(() => setOccupied(new Set()));
   }, [open, defaultPhone]);
 

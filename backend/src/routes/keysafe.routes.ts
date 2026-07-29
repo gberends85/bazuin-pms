@@ -121,8 +121,25 @@ keysafeRouter.post('/admin/reservations/:id/keysafe/assign', requireAuth, async 
 keysafeRouter.post('/admin/reservations/:id/keysafe/send-email', requireAuth, async (req: Request, res: Response) => {
   const result = await query(
     `SELECT r.id, r.locker_code, r.parking_spot, r.reference,
-            c.first_name, c.email
-     FROM reservations r JOIN customers c ON c.id = r.customer_id
+            c.first_name, c.email,
+            (SELECT string_agg(v.license_plate, ', ' ORDER BY v.sort_order)
+               FROM vehicles v WHERE v.reservation_id = r.id) AS plates,
+            TO_CHAR(r.ferry_return_time, 'HH24:MI')        AS ferry_return_time,
+            TO_CHAR(r.ferry_return_custom_time, 'HH24:MI') AS ferry_return_custom_time,
+            -- Aankomsttijd in Harlingen van de gekozen terugboot (zelfde afleiding
+            -- als in het aankomsten-overzicht: dichtstbijzijnde dienst binnen 20 min)
+            (SELECT TO_CHAR(fs.arrival_harlingen, 'HH24:MI')
+               FROM ferry_schedules fs
+              WHERE fs.schedule_date = r.departure_date AND fs.direction = 'return'
+                AND r.ferry_return_time IS NOT NULL
+                AND ABS(EXTRACT(EPOCH FROM (fs.departure_time - r.ferry_return_time)) / 60) <= 20
+                AND (COALESCE(r.ferry_return_destination, f_ret.destination) IS NULL
+                     OR fs.destination = COALESCE(r.ferry_return_destination, f_ret.destination))
+              ORDER BY ABS(EXTRACT(EPOCH FROM (fs.departure_time - r.ferry_return_time)))
+              LIMIT 1) AS ferry_return_arrival_harlingen
+     FROM reservations r
+     JOIN customers c ON c.id = r.customer_id
+     LEFT JOIN ferries f_ret ON f_ret.id = r.ferry_return_id
      WHERE r.id = $1`,
     [req.params.id]
   );
@@ -146,6 +163,15 @@ keysafeRouter.post('/admin/reservations/:id/keysafe/send-email', requireAuth, as
   const variant = String((req.body || {}).variant || 'default');
   const locationLine = locationLines[variant] || locationLines.default;
 
+  // Kenteken + aankomsttijd van de boot: herkenbaar voor de klant. Het kluisnummer
+  // laten we bewust weg — dat is interne informatie, de code opent de juiste kluis.
+  const plates = (r.plates || '').split(',').map((p: string) => p.trim()).filter(Boolean);
+  const arrivalTime = r.ferry_return_arrival_harlingen || r.ferry_return_time || r.ferry_return_custom_time || '';
+  const detailRows = [
+    plates.length ? `<strong>${plates.length > 1 ? 'Kentekens' : 'Kenteken'}:</strong> ${plates.join(', ')}` : '',
+    arrivalTime ? `<strong>Aankomst Harlingen:</strong> ${arrivalTime} uur` : '',
+  ].filter(Boolean).join('<br/>');
+
   const subject = `Uw afhaalcode voor de autosleutel — ${r.reference}`;
   const html = `
     <div style="font-family:Georgia,serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#fff;color:#1a1814;">
@@ -162,9 +188,7 @@ keysafeRouter.post('/admin/reservations/:id/keysafe/send-email', requireAuth, as
       <p style="font-size:15px;color:#4a4339;line-height:1.7;">
         ${locationLine}, de code gebruikt u om uw sleutel uit de afhaalkluis naast onze intercom te verkrijgen.
       </p>
-      <p style="font-size:14px;color:#4a4339;line-height:1.7;">
-        <strong>Kluisnummer:</strong> ${r.parking_spot || '—'}
-      </p>
+      ${detailRows ? `<p style="font-size:14px;color:#4a4339;line-height:1.7;">${detailRows}</p>` : ''}
       <p style="font-size:14px;color:#4a4339;line-height:1.7;margin-top:20px;">
         <strong>Gaat er iets mis?</strong><br/>
         &bull; reply op deze e-mail<br/>

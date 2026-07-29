@@ -136,12 +136,22 @@ keysafeRouter.post('/admin/reservations/:id/keysafe/send-email', requireAuth, as
     return res.status(400).json({ error: 'Geen e-mailadres bekend voor deze klant' });
   }
 
+  // Zelfde locatieregels als het WhatsApp-bericht in de admin, zodat de klant via
+  // beide kanalen exact dezelfde instructie krijgt.
+  const locationLines: Record<string, string> = {
+    default: 'Uw auto staat naast ons pand startklaar',
+    buiten: 'Uw auto staat op ons buitenterrein klaar',
+    loods: 'Uw auto staat achter in onze loods startklaar',
+  };
+  const variant = String((req.body || {}).variant || 'default');
+  const locationLine = locationLines[variant] || locationLines.default;
+
   const subject = `Uw afhaalcode voor de autosleutel — ${r.reference}`;
   const html = `
     <div style="font-family:Georgia,serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#fff;color:#1a1814;">
       <p style="font-size:15px;color:#4a4339;">Beste ${r.first_name},</p>
       <p style="font-size:15px;color:#4a4339;line-height:1.7;">
-        Uw auto staat startklaar. Gebruik de onderstaande code om uw autosleutel op te halen uit de afhaalkluis naast de intercom.
+        Onderstaande code gebruikt u om vandaag uw autosleutel af te halen.
       </p>
       <div style="margin:28px 0;text-align:center;">
         <div style="display:inline-block;background:#f5f0e8;border:2px solid #c8b89e;border-radius:8px;padding:20px 40px;">
@@ -149,13 +159,17 @@ keysafeRouter.post('/admin/reservations/:id/keysafe/send-email', requireAuth, as
           <div style="font-size:48px;font-weight:900;letter-spacing:10px;color:#1a1814;font-family:'Courier New',monospace;">${r.locker_code}</div>
         </div>
       </div>
-      <p style="font-size:14px;color:#4a4339;line-height:1.7;">
-        <strong>Kluisnummer:</strong> ${r.parking_spot || '—'}<br/>
-        De kluis bevindt zich naast de intercom bij de ingang van Autostalling De Bazuin.<br/>
-        Toets de code in op het paneel van de kluis om de deur te openen en uw sleutel op te halen.
+      <p style="font-size:15px;color:#4a4339;line-height:1.7;">
+        ${locationLine}, de code gebruikt u om uw sleutel uit de afhaalkluis naast onze intercom te verkrijgen.
       </p>
-      <p style="font-size:13px;color:#b5ada3;margin-top:24px;">
-        Gaat er iets mis? Bel aan bij de intercom of bel ons op.
+      <p style="font-size:14px;color:#4a4339;line-height:1.7;">
+        <strong>Kluisnummer:</strong> ${r.parking_spot || '—'}
+      </p>
+      <p style="font-size:14px;color:#4a4339;line-height:1.7;margin-top:20px;">
+        <strong>Gaat er iets mis?</strong><br/>
+        &bull; reply op deze e-mail<br/>
+        &bull; of bel aan (intercom)<br/>
+        &bull; of volg de bel instructie zoals aangegeven bij de intercom.
       </p>
     </div>`;
 

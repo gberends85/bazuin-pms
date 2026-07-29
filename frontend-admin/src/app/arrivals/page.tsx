@@ -1328,6 +1328,12 @@ function DepartureCard({ res, onUpdate, occupiedLockers = [] }: { res: any; onUp
     setSending(true);
     setShowVariants(false);
     setTimeout(() => setSending(false), 2000);
+
+    // Stuur dezelfde code ook per e-mail (zelfde locatie-variant). Mislukt dat —
+    // bv. geen e-mailadres bekend — dan blijft de WhatsApp-actie gewoon staan.
+    api.reservations.sendLockerEmail(res.id, variant)
+      .then(() => { toast('Code via WhatsApp + e-mail ✓'); onUpdate(); })
+      .catch((err: any) => toastError('WhatsApp geopend, e-mail mislukt: ' + (err?.message || '')));
   }
 
   const isCheckedOut = res.status === 'completed';

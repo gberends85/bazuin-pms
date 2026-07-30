@@ -118,6 +118,7 @@ export const api = {
   },
   reports: {
     financial: (p: any) => req<any>(`/admin/reports/financial?${new URLSearchParams(p)}`),
+    daily: (date: string) => req<any>(`/admin/reports/daily?date=${date}`),
     occupancy: (p: any) => req<any>(`/admin/reports/occupancy?${new URLSearchParams(p)}`),
     cash: (from: string, to?: string) => req<any>(`/admin/reports/cash?from=${from}${to && to !== from ? '&to=' + to : ''}`),
   },

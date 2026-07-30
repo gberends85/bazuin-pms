@@ -2460,6 +2460,111 @@ router.get('/admin/reports/cash', requireAuth, async (req: Request, res: Respons
 });
 
 // ─── Bezetting & omzet per periode (jaar-vergelijk) ──────────────────────────
+// ─── Dagoverzicht — wat er op één dag is gebeurd ────────────────────────────
+// Let op de omzetbasis: paid_at wordt alleen betrouwbaar gezet bij handmatig
+// afgerekende betalingen (pin/contant/tikkie). Bij online betalingen ontbreekt
+// die vaak, dus vallen we terug op created_at — bij een online boeking wordt
+// immers direct bij het boeken betaald.
+const PAID_MOMENT = "COALESCE(r.paid_at, r.created_at)";
+
+router.get('/admin/reports/daily', requireAuth, async (req: Request, res: Response) => {
+  const { date } = req.query as Record<string, string>;
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : new Date().toISOString().slice(0, 10);
+
+  const naam = `COALESCE(r.guest_first_name, c.first_name) || ' ' || COALESCE(r.guest_last_name, c.last_name)`;
+  const kentekens = `(SELECT string_agg(v.license_plate, ', ' ORDER BY v.sort_order)
+                       FROM vehicles v WHERE v.reservation_id = r.id)`;
+
+  const [gemaakt, geannuleerd, ontvangen, perMethode, wijzigingen] = await Promise.all([
+    // 1. Reserveringen die op deze dag zijn aangemaakt (niet-afgeronde
+    //    betaalpogingen tellen niet mee: dat zijn geen echte boekingen)
+    query(
+      `SELECT r.id, r.reference, ${naam} AS klant, ${kentekens} AS kentekens,
+              r.arrival_date, r.departure_date, r.total_price, r.payment_method,
+              r.payment_status, r.status, r.created_at
+       FROM reservations r JOIN customers c ON c.id = r.customer_id
+       WHERE r.created_at::date = $1 AND r.status <> 'pending_payment'
+       ORDER BY r.created_at`,
+      [day]
+    ),
+    // 2. Annuleringen op deze dag
+    query(
+      `SELECT r.id, r.reference, ${naam} AS klant, ${kentekens} AS kentekens,
+              r.arrival_date, r.departure_date, r.total_price,
+              COALESCE(r.refund_amount, 0) AS refund_amount, r.cancelled_at
+       FROM reservations r JOIN customers c ON c.id = r.customer_id
+       WHERE r.cancelled_at::date = $1
+       ORDER BY r.cancelled_at`,
+      [day]
+    ),
+    // 3. Omzet die op deze dag is ontvangen
+    query(
+      `SELECT r.id, r.reference, ${naam} AS klant, r.total_price, r.payment_method,
+              ${PAID_MOMENT} AS betaald_op, r.arrival_date, r.departure_date
+       FROM reservations r JOIN customers c ON c.id = r.customer_id
+       WHERE r.payment_status = 'paid' AND ${PAID_MOMENT}::date = $1
+       ORDER BY ${PAID_MOMENT}`,
+      [day]
+    ),
+    query(
+      `SELECT r.payment_method, COUNT(*)::int AS aantal,
+              COALESCE(SUM(r.total_price), 0) AS bedrag
+       FROM reservations r
+       WHERE r.payment_status = 'paid' AND ${PAID_MOMENT}::date = $1
+       GROUP BY r.payment_method ORDER BY 3 DESC`,
+      [day]
+    ),
+    // 5. Wijzigingen op deze dag. Afgebroken betaalpogingen tellen niet mee als
+    //    wijziging, maar geven we wel terug zodat de lijst volledig blijft.
+    query(
+      `SELECT m.id, m.modification_type, m.status, m.change_details, m.created_at,
+              m.modified_by, m.price_difference, m.modification_fee,
+              m.old_arrival_date, m.old_departure_date,
+              m.new_arrival_date, m.new_departure_date,
+              m.old_total_price, m.new_total_price,
+              r.id AS reservation_id, r.reference, ${naam} AS klant, a.email AS admin_email
+       FROM reservation_modifications m
+       JOIN reservations r ON r.id = m.reservation_id
+       JOIN customers c ON c.id = r.customer_id
+       LEFT JOIN admin_users a ON a.id = m.admin_user_id
+       WHERE m.created_at::date = $1
+       ORDER BY m.created_at`,
+      [day]
+    ),
+  ]);
+
+  const som = (rows: any[], veld: string) =>
+    Math.round(rows.reduce((t, x) => t + parseFloat(x[veld] || 0), 0) * 100) / 100;
+
+  const modRows = wijzigingen.rows;
+  const echteWijzigingen = modRows.filter((m: any) => m.status !== 'abandoned');
+
+  return res.json({
+    date: day,
+    reserveringen: {
+      aantal: gemaakt.rows.length,
+      omzet: som(gemaakt.rows, 'total_price'),
+      rows: gemaakt.rows,
+    },
+    annuleringen: {
+      aantal: geannuleerd.rows.length,
+      waarde: som(geannuleerd.rows, 'total_price'),
+      terugbetaald: som(geannuleerd.rows, 'refund_amount'),
+      rows: geannuleerd.rows,
+    },
+    omzet: {
+      totaal: som(ontvangen.rows, 'total_price'),
+      perMethode: perMethode.rows,
+      rows: ontvangen.rows,
+    },
+    wijzigingen: {
+      aantal: echteWijzigingen.length,
+      afgebroken: modRows.length - echteWijzigingen.length,
+      rows: modRows,
+    },
+  });
+});
+
 router.get('/admin/reports/occupancy', requireAuth, async (req: Request, res: Response) => {
   try {
     const { groupBy = 'month', fromYear, toYear, filterMonth } = req.query as Record<string, string>;

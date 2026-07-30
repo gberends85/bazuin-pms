@@ -33,6 +33,7 @@ const nav = [
   { href: '/arrivals', icon: ArrowDownTrayIcon, label: 'Reserveringen' },
   { href: '/modifications', icon: PencilSquareIcon, label: 'Wijzigingsverzoeken' },
   { href: '/calendar', icon: CalendarDaysIcon, label: 'Agenda' },
+  { href: '/dagoverzicht', icon: ClipboardDocumentListIcon, label: 'Dagoverzicht' },
   { href: '/kas', icon: BanknotesIcon, label: 'Kas' },
   { href: '/reports', icon: ChartBarIcon, label: 'Financieel rapport' },
   { href: '/customers', icon: UsersIcon, label: 'Klanten' },

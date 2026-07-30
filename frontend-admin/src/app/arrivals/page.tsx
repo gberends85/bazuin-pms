@@ -1316,7 +1316,7 @@ function DepartureCard({ res, onUpdate, occupiedLockers = [] }: { res: any; onUp
     loods: 'Uw auto staat achter in onze loods startklaar',
   };
   function buildMessage(c: string, variant: string = 'default') {
-    return `*${c}* Is de code om vandaag uw autosleutel af te halen.\n${locationLines[variant] || locationLines.default}, de code gebruikt u om uw sleutel uit de afhaalkluis naast onze intercom te verkrijgen.\nGaat er iets mis?\n- reply op deze app\n- of bel aan (intercom)\n- of volg de bel instructie zoals aangegeven bij de intercom.`;
+    return `*${c}* Is de code om vandaag uw autosleutel af te halen.\n${locationLines[variant] || locationLines.default}, de code gebruikt u om uw sleutel uit de afhaalkluis naast onze intercom te verkrijgen. De sleutel valt en vervolgens gaat het onderste luikje open.\nGaat er iets mis?\n- Probeer de code nogmaals.\n- reply op deze app\n- of bel aan (intercom)\n- Bel 0517 - 412986 via de vaste lijn.`;
   }
 
   function sendCode(e: React.MouseEvent, variant: string = 'default') {

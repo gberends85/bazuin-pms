@@ -187,13 +187,15 @@ keysafeRouter.post('/admin/reservations/:id/keysafe/send-email', requireAuth, as
       </div>
       <p style="font-size:15px;color:#4a4339;line-height:1.7;">
         ${locationLine}, de code gebruikt u om uw sleutel uit de afhaalkluis naast onze intercom te verkrijgen.
+        De sleutel valt en vervolgens gaat het onderste luikje open.
       </p>
       ${detailRows ? `<p style="font-size:14px;color:#4a4339;line-height:1.7;">${detailRows}</p>` : ''}
       <p style="font-size:14px;color:#4a4339;line-height:1.7;margin-top:20px;">
         <strong>Gaat er iets mis?</strong><br/>
+        &bull; Probeer de code nogmaals.<br/>
         &bull; reply op deze e-mail<br/>
         &bull; of bel aan (intercom)<br/>
-        &bull; of volg de bel instructie zoals aangegeven bij de intercom.
+        &bull; Bel 0517 - 412986 via de vaste lijn.
       </p>
     </div>`;
 

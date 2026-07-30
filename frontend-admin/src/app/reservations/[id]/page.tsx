@@ -773,12 +773,32 @@ export default function ReservationDetailPage({ params }: { params: { id: string
                     <span>€ {Number(res.season_surcharge_amount).toFixed(2)}</span>
                   </div>
                 )}
-                {Number(res.services_total) > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '0.5px solid rgba(10,34,64,0.06)' }}>
-                    <span style={{ color: '#7090b0' }}>Extra diensten (EV etc.)</span>
-                    <span>€ {Number(res.services_total).toFixed(2)}</span>
-                  </div>
-                )}
+                {Number(res.services_total) > 0 && (() => {
+                  // Laadpakketten per voertuig uitsplitsen, zodat zichtbaar is hoeveel
+                  // er geladen moet worden en niet alleen het totaalbedrag.
+                  const laden = (res.vehicles || []).filter((v: any) => Number(v.ev_kwh) > 0 || Number(v.ev_price) > 0);
+                  const meerdere = (res.vehicles || []).length > 1;
+                  return (
+                    <div style={{ padding: '5px 0', borderBottom: '0.5px solid rgba(10,34,64,0.06)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#7090b0' }}>Extra diensten (EV etc.)</span>
+                        <span>€ {Number(res.services_total).toFixed(2)}</span>
+                      </div>
+                      {laden.map((v: any) => (
+                        <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, paddingLeft: 12, fontSize: 12, color: '#5a6b80' }}>
+                          <span>
+                            <BoltIcon className="w-3 h-3" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4, color: '#0a7c6e' }} />
+                            {Number(v.ev_kwh) > 0 ? `Laden ${v.ev_kwh} kWh` : 'Laden'}
+                            {meerdere && v.license_plate && (
+                              <span style={{ color: '#7090b0', fontFamily: 'monospace', marginLeft: 6 }}>{v.license_plate}</span>
+                            )}
+                          </span>
+                          {Number(v.ev_price) > 0 && <span>€ {Number(v.ev_price).toFixed(2)}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
                 {Number(res.overbooking_surcharge) > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '0.5px solid rgba(10,34,64,0.06)' }}>
                     <span style={{ color: '#7090b0' }}>Overboekingstoeslag</span>

@@ -261,8 +261,12 @@ keysafeRouter.post('/keysafe/events', async (req: Request, res: Response) => {
         if (row.contract_stay_id != null) {
           try {
             await query(
+              // $1 expliciet typeren: zonder cast wordt dezelfde parameter zowel als
+              // timestamptz (picked_up_at) als date (departure_date) gebruikt, en dan
+              // faalt PostgreSQL met "inconsistent types deduced for parameter $1".
               `UPDATE contract_vehicle_stays
-               SET picked_up_at = $1, departure_date = $1::date
+               SET picked_up_at   = $1::timestamptz,
+                   departure_date = ($1::timestamptz)::date
                WHERE id = $2`,
               [row.locker_collected_at, row.contract_stay_id]
             );

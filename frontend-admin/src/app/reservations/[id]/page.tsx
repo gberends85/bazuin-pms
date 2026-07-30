@@ -397,7 +397,9 @@ export default function ReservationDetailPage({ params }: { params: { id: string
         {/* Breadcrumb + actions */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Link href={searchParams.get('from') || '/reservations'} style={{ color: '#7090b0', textDecoration: 'none', fontSize: 13 }}>
+            {/* Terug: standaard naar de aankomstenlijst (in de sidebar 'Reserveringen').
+                Komt de bezoeker via ?from= ergens anders vandaan, dan daarheen terug. */}
+            <Link href={searchParams.get('from') || '/arrivals'} style={{ color: '#7090b0', textDecoration: 'none', fontSize: 13 }}>
               ← {searchParams.get('from') === '/facturen' ? 'Facturen' : searchParams.get('from')?.startsWith('/facturen/') ? 'Factuurgroep' : 'Reserveringen'}
             </Link>
             <span style={{ color: '#7090b0' }}>/</span>

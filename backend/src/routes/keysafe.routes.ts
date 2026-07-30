@@ -172,7 +172,11 @@ keysafeRouter.post('/admin/reservations/:id/keysafe/send-email', requireAuth, as
     arrivalTime ? `<strong>Aankomst Harlingen:</strong> ${arrivalTime} uur` : '',
   ].filter(Boolean).join('<br/>');
 
-  const subject = `Uw afhaalcode voor de autosleutel — ${r.reference}`;
+  // Code voorop in de titel, zodat de klant die al in het overzicht van de mailbox
+  // ziet. Daarna het kenteken ter herkenning; het reserveringsnummer zegt de klant
+  // hier niets en laten we weg.
+  const subject = `${r.locker_code} is de afhaalcode voor de autosleutel`
+    + (plates.length ? ` — ${plates.join(', ')}` : '');
   const html = `
     <div style="font-family:Georgia,serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#fff;color:#1a1814;">
       <p style="font-size:15px;color:#4a4339;">Beste ${r.first_name},</p>

@@ -1299,10 +1299,22 @@ router.get('/reservations/token/:token', async (req: Request, res: Response) => 
       )
     : { refundAmount: 0, refundPct: 0, policyDescription: 'Niet van toepassing — nog niet betaald' };
 
+  // Lopende wijzigingsverzoeken, zodat de klant in het menu de status ziet.
+  // Alleen wat de klant aangaat: type, status en tijdstip — geen interne details.
+  const openVerzoeken = await query(
+    `SELECT id, modification_type, status, created_at
+     FROM reservation_modifications
+     WHERE reservation_id = $1
+       AND status IN ('pending_review', 'pending_payment', 'pending_email_verify')
+     ORDER BY created_at DESC`,
+    [res2.id]
+  );
+
   return res.json({
     ...res2,
     vehicles: vehicles.rows,
     refundInfo,
+    openModifications: openVerzoeken.rows,
   });
 });
 
@@ -4717,6 +4729,17 @@ router.get('/admin/modifications/pending', requireAuth, async (_req, res) => {
   const result = await query(
     `SELECT rm.*, r.reference, r.arrival_date, r.departure_date, r.status as reservation_status,
             c.first_name, c.last_name, c.email,
+            -- Boottijden erbij: nodig voor de compacte "afhalen was … nu …"-regel
+            TO_CHAR(r.ferry_outbound_time, 'HH24:MI')      AS ferry_outbound_time,
+            TO_CHAR(r.ferry_return_time, 'HH24:MI')        AS ferry_return_time,
+            TO_CHAR(r.ferry_return_custom_time, 'HH24:MI') AS ferry_return_custom_time,
+            (SELECT TO_CHAR(fs.arrival_harlingen, 'HH24:MI')
+               FROM ferry_schedules fs
+              WHERE fs.schedule_date = r.departure_date AND fs.direction = 'return'
+                AND r.ferry_return_time IS NOT NULL
+                AND ABS(EXTRACT(EPOCH FROM (fs.departure_time - r.ferry_return_time)) / 60) <= 20
+              ORDER BY ABS(EXTRACT(EPOCH FROM (fs.departure_time - r.ferry_return_time)))
+              LIMIT 1) AS ferry_return_arrival_harlingen,
             (SELECT STRING_AGG(v.license_plate, ', ' ORDER BY v.sort_order) FROM vehicles v WHERE v.reservation_id = r.id) as plates
      FROM reservation_modifications rm
      JOIN reservations r ON r.id = rm.reservation_id

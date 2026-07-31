@@ -17,6 +17,63 @@ function fmtDateTime(iso: string) {
 function fmtMoney(n: number) {
   return `€ ${n.toFixed(2).replace('.', ',')}`;
 }
+// Korte datum zonder jaar: "31-7"
+function kortDatum(iso: any) {
+  if (!iso) return '';
+  const d = new Date(String(iso).slice(0, 10) + 'T12:00:00');
+  return `${d.getDate()}-${d.getMonth() + 1}`;
+}
+const kortTijd = (t: any) => (t ? String(t).slice(0, 5) : '');
+
+// Eén regel die in één oogopslag zegt wát er verandert, bv.
+// "Afhalen was 31-7 14:30, nu 1-8 16:25".
+function kortOverzicht(m: any, details: any): string {
+  const type = m.modification_type || 'dates';
+  // Moment waarop de klant de auto ophaalt = vertrekdatum + aankomsttijd Harlingen
+  const ophaalTijd = m.ferry_return_arrival_harlingen || m.ferry_return_time || m.ferry_return_custom_time || '';
+
+  if (type === 'dates') {
+    const oud = `${kortDatum(m.old_departure_date)}${ophaalTijd ? ' ' + kortTijd(ophaalTijd) : ''}`;
+    const nieuw = `${kortDatum(m.new_departure_date)}${ophaalTijd ? ' ' + kortTijd(ophaalTijd) : ''}`;
+    const aankomstGewijzigd = kortDatum(m.old_arrival_date) !== kortDatum(m.new_arrival_date);
+    const brengen = aankomstGewijzigd
+      ? `Brengen was ${kortDatum(m.old_arrival_date)}, nu ${kortDatum(m.new_arrival_date)}. `
+      : '';
+    return `${brengen}Afhalen was ${oud}, nu ${nieuw}`;
+  }
+  if (type === 'checkedin_departure') {
+    return `Afhalen was ${kortDatum(m.old_departure_date)}, nu ${kortDatum(m.new_departure_date)}`;
+  }
+  if (type === 'ferry') {
+    const regels: string[] = [];
+    const o1 = kortTijd(details.currentOutboundTime), o2 = kortTijd(details.newOutboundTime);
+    const r1 = kortTijd(details.currentReturnTime), r2 = kortTijd(details.newReturnTime);
+    if (o2 && o2 !== o1) regels.push(`Heenreis was ${o1 || '—'}, nu ${o2}`);
+    if (r2 && r2 !== r1) {
+      // Alleen "afhalen" zeggen als we van beide kanten de aankomsttijd in
+      // Harlingen kennen; anders vertrektijd met vertrektijd vergelijken.
+      const oudAankomst = kortTijd(details.currentReturnArrivalHarlingen) || kortTijd(ophaalTijd);
+      const nieuwAankomst = kortTijd(details.newReturnArrivalHarlingen);
+      regels.push(oudAankomst && nieuwAankomst
+        ? `Afhalen was ${oudAankomst}, nu ${nieuwAankomst}`
+        : `Terugboot was ${r1 || '—'}, nu ${r2}`);
+    }
+    return regels.length ? regels.join(' · ') : 'Boottijden aangepast';
+  }
+  if (type === 'plate') {
+    const vs = Array.isArray(details.vehicles) ? details.vehicles : [];
+    return vs.length
+      ? vs.map((v: any) => `${String(v.oldPlate || '—').toUpperCase()} → ${String(v.newPlate || '').toUpperCase()}`).join(' · ')
+      : 'Kenteken aangepast';
+  }
+  if (type === 'contact' || type === 'email') {
+    const regels: string[] = [];
+    if (details.newEmail && details.newEmail !== details.oldEmail) regels.push(`${details.oldEmail || '—'} → ${details.newEmail}`);
+    if (details.newPhone && details.newPhone !== details.oldPhone) regels.push(`${details.oldPhone || '—'} → ${details.newPhone}`);
+    return regels.length ? regels.join(' · ') : 'Contactgegevens aangepast';
+  }
+  return 'Wijziging aangevraagd';
+}
 
 // ── Type-specific card body ────────────────────────────────────
 function ModCardBody({ m, details, priceDiff, isDuringStay }: { m: any; details: any; priceDiff: number; isDuringStay: boolean }) {
@@ -354,6 +411,30 @@ export default function ModificationsPage() {
                 </div>
 
                 <div style={{ padding: '16px 18px' }}>
+
+                  {/* ── Kern van de wijziging in één regel ── */}
+                  <div style={{
+                    display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap',
+                    marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid rgba(10,34,64,0.08)',
+                  }}>
+                    {m.plates && (
+                      <span style={{
+                        background: '#0a2240', color: 'white', borderRadius: 4,
+                        padding: '3px 10px', fontSize: 13, fontWeight: 800, letterSpacing: 1, whiteSpace: 'nowrap',
+                      }}>{m.plates.split(', ')[0]}</span>
+                    )}
+                    <span style={{ fontSize: 16, fontWeight: 700, color: '#0a2240', lineHeight: 1.35 }}>
+                      {kortOverzicht(m, details)}
+                    </span>
+                    {priceDiff !== 0 && (
+                      <span style={{
+                        fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap',
+                        color: priceDiff > 0 ? '#8a2020' : '#0a7c6e',
+                      }}>
+                        {priceDiff > 0 ? '+' : ''}{fmtMoney(priceDiff)}
+                      </span>
+                    )}
+                  </div>
 
                   {/* ── Vaste inforegel: kenteken(s) + reserveringsdata ── */}
                   <div style={{

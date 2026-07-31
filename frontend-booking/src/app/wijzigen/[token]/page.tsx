@@ -1965,6 +1965,43 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         )}
       </div>
 
+      {/* Status van lopende wijzigingsverzoeken, zodat de klant weet waar het staat. */}
+      {Array.isArray(res?.openModifications) && res.openModifications.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          {res.openModifications.map((v: any) => {
+            const soort: Record<string, string> = {
+              dates: 'Datumwijziging', checkedin_departure: 'Vervroegd vertrek',
+              ferry: 'Boottijden', plate: 'Kenteken', charging: 'Laden',
+              contact: 'Persoonsgegevens', email: 'E-mailadres',
+            };
+            const uitleg: Record<string, string> = {
+              pending_review: 'In behandeling — wij beoordelen uw verzoek en u ontvangt bericht.',
+              pending_payment: 'Wacht op betaling — uw wijziging is nog niet definitief.',
+              pending_email_verify: 'Bevestig uw nieuwe e-mailadres via de link die we u stuurden.',
+            };
+            const kleur = v.status === 'pending_payment' ? '#a06010' : '#1a6bb5';
+            const vlak = v.status === 'pending_payment' ? '#fff8e6' : '#e6f1fb';
+            return (
+              <div key={v.id} style={{ background: vlak, border: `1px solid ${kleur}33`, borderRadius: 9, padding: '10px 14px', marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <ArrowPathIcon className="w-4 h-4" style={{ color: kleur }} />
+                  <strong style={{ fontSize: 13, color: '#142440' }}>{soort[v.modification_type] || 'Wijziging'}</strong>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: kleur, background: 'white', borderRadius: 5, padding: '2px 7px' }}>
+                    {v.status === 'pending_payment' ? 'Nog niet betaald' : v.status === 'pending_email_verify' ? 'Bevestig e-mail' : 'In behandeling'}
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: '#556070', marginTop: 5, lineHeight: 1.5 }}>
+                  {uitleg[v.status] || 'Uw verzoek is ontvangen.'}
+                </div>
+                <div style={{ fontSize: 11, color: '#7d8ea3', marginTop: 3 }}>
+                  Aangevraagd op {new Date(v.created_at).toLocaleString('nl-NL', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <p style={{ margin: '0 0 16px', fontSize: 14, color: '#556070', fontWeight: 600 }}>Wat wilt u wijzigen?</p>
 
       {error && <div style={{ background: '#fdeaea', borderRadius: 8, padding: '10px 14px', color: '#8a2020', fontSize: 13, marginBottom: 12 }}>{error}</div>}

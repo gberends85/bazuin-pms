@@ -4066,6 +4066,91 @@ router.post('/reservations/token/:token/invoice-details', async (req: Request, r
 });
 
 // ============================================================
+// CUSTOMER — BOOTTIJD BIJ EEN DATUMWIJZIGING
+// Wordt direct na een geslaagde datumwijziging aangeroepen. De boottijd wordt
+// toegepast én samengevoegd in de zojuist aangemaakte wijziging, zodat het voor
+// de admin één melding blijft in plaats van twee losse verzoeken. Bewust een
+// apart endpoint: zo blijven de betaalpaden van de datumwijziging ongemoeid.
+// ============================================================
+router.post('/reservations/token/:token/dates-ferry', async (req: Request, res: Response) => {
+  const { outboundTime, returnTime, returnDestination, outboundDestination } = req.body || {};
+  const tijd = (t: any) => (t ? String(t).slice(0, 5) : null);
+  const out = tijd(outboundTime);
+  const ret = tijd(returnTime);
+  if (!out && !ret) return res.status(400).json({ error: 'Geen boottijd opgegeven' });
+
+  const result = await query('SELECT * FROM reservations WHERE cancellation_token = $1', [req.params.token]);
+  if (result.rows.length === 0) return res.status(404).json({ error: 'Niet gevonden' });
+  const r = result.rows[0];
+  if (['cancelled', 'completed'].includes(r.status)) {
+    return res.status(400).json({ error: 'Deze reservering kan niet worden gewijzigd' });
+  }
+
+  const huidigeUit = r.ferry_outbound_time ? String(r.ferry_outbound_time).slice(0, 5) : null;
+  const huidigeTerug = r.ferry_return_time ? String(r.ferry_return_time).slice(0, 5) : null;
+
+  const sets: string[] = [];
+  const p: unknown[] = [];
+  let i = 1;
+  if (out) { sets.push(`ferry_outbound_time = $${i++}`); p.push(out); }
+  if (outboundDestination) { sets.push(`ferry_outbound_destination = $${i++}`); p.push(outboundDestination); }
+  if (ret) {
+    // Een gekozen dienstregelingstijd vervangt een eventuele eigen opgegeven tijd
+    sets.push(`ferry_return_time = $${i++}`, `ferry_return_custom = false`, `ferry_return_custom_time = NULL`);
+    p.push(ret);
+  }
+  if (returnDestination) { sets.push(`ferry_return_destination = $${i++}`); p.push(returnDestination); }
+  p.push(r.id);
+  await query(`UPDATE reservations SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${i}`, p);
+
+  // Aankomsttijd in Harlingen bij de gekozen terugboot, zodat de admin die ziet
+  let aankomstHarlingen: string | null = null;
+  if (ret) {
+    const fs = await query(
+      `SELECT TO_CHAR(arrival_harlingen, 'HH24:MI') AS t
+         FROM ferry_schedules
+        WHERE schedule_date = $1 AND direction = 'return'
+          AND ABS(EXTRACT(EPOCH FROM (departure_time - $2::time)) / 60) <= 20
+        ORDER BY ABS(EXTRACT(EPOCH FROM (departure_time - $2::time))) LIMIT 1`,
+      [r.departure_date, ret]
+    );
+    aankomstHarlingen = fs.rows[0]?.t || null;
+  }
+
+  // Samenvoegen met de zojuist aangemaakte datumwijziging (binnen 10 minuten),
+  // zodat het één melding blijft. Is die er niet, dan valt het stil terug —
+  // de boottijd is dan wel toegepast.
+  const mod = await query(
+    `SELECT id, change_details FROM reservation_modifications
+      WHERE reservation_id = $1
+        AND modification_type IN ('dates', 'checkedin_departure')
+        AND created_at > NOW() - INTERVAL '10 minutes'
+      ORDER BY created_at DESC LIMIT 1`,
+    [r.id]
+  );
+  if (mod.rows.length > 0) {
+    const huidig = typeof mod.rows[0].change_details === 'string'
+      ? JSON.parse(mod.rows[0].change_details || '{}')
+      : (mod.rows[0].change_details || {});
+    const samengevoegd = {
+      ...huidig,
+      ferryChanged: true,
+      currentOutboundTime: huidigeUit,
+      currentReturnTime: huidigeTerug,
+      newOutboundTime: out,
+      newReturnTime: ret,
+      newReturnArrivalHarlingen: aankomstHarlingen,
+    };
+    await query(
+      `UPDATE reservation_modifications SET change_details = $1 WHERE id = $2`,
+      [JSON.stringify(samengevoegd), mod.rows[0].id]
+    );
+  }
+
+  return res.json({ success: true, merged: mod.rows.length > 0, arrivalHarlingen: aankomstHarlingen });
+});
+
+// ============================================================
 // CUSTOMER — MODIFY PLATE
 // ============================================================
 router.post('/reservations/token/:token/modify-plate', async (req: Request, res: Response) => {

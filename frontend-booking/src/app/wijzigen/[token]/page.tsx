@@ -189,6 +189,27 @@ function ChargingPaymentForm({
   );
 }
 
+// Eilandkeuze op moduleniveau, zodat die ook buiten de boottijden-stap bruikbaar
+// is (de variant binnen die stap staat lokaal en is daar niet zichtbaar).
+function EilandKeuze({ value, onChange }: { value: 'terschelling' | 'vlieland'; onChange: (d: 'terschelling' | 'vlieland') => void }) {
+  return (
+    <div style={{ display: 'flex', gap: 8 }}>
+      {(['terschelling', 'vlieland'] as const).map(dest => (
+        <button key={dest} type="button" onClick={() => onChange(dest)}
+          style={{
+            flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 12, fontWeight: 700,
+            border: value === dest ? '1.5px solid #19499e' : '0.5px solid rgba(10,34,64,0.2)',
+            background: value === dest ? '#eaf1fb' : 'white',
+            color: value === dest ? '#19499e' : '#7090b0',
+            cursor: 'pointer',
+          }}>
+          {dest === 'terschelling' ? 'Terschelling' : 'Vlieland'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── Ferry schedule picker ────────────────────────────────────────────────────
 function FerryPicker({
   label, date, destination, direction, currentTime, selectedTime, onSelect,
@@ -350,6 +371,10 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   const [ferrySyncing, setFerrySyncing] = useState(false);
   const [ferryOutboundDest, setFerryOutboundDest] = useState<'terschelling' | 'vlieland'>('terschelling');
   const [ferryReturnDest, setFerryReturnDest] = useState<'terschelling' | 'vlieland'>('terschelling');
+  // Boottijden die bij een datumwijziging worden meegenomen: bij een andere
+  // vertrekdatum verandert de terugboot immers bijna altijd mee.
+  const [datesFerryOut, setDatesFerryOut] = useState('');
+  const [datesFerryRet, setDatesFerryRet] = useState('');
 
   // All reservations state
   const [allReservations, setAllReservations] = useState<any[]>([]);
@@ -415,11 +440,13 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
               setNewArrival(returnArrival);
               setNewDeparture(returnDeparture);
               await bookingApi.modifyDatesStripeComplete(params.token, piId, returnArrival, returnDeparture);
+              await pasBoottijdToe();
               setDoneData({ preStayPaid: true });
               setStep('dates-done');
             } else if (payType === 'during_stay' && returnDeparture) {
               setNewDeparture(returnDeparture);
               await bookingApi.modifyDuringStayComplete(params.token, piId, returnDeparture);
+              await pasBoottijdToe();
               setDoneData({ duringStayPaid: true });
               setStep('dates-done');
             } else {
@@ -461,12 +488,53 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   // Vervroegd vertrek (tijdens verblijf óf na inchecken) — backend bepaalt dit.
   const checkedInEarlier = !!preview?.earlierDeparture;
 
+  // Bij online betalen verlaat de klant de pagina (Stripe) en komt daarna terug
+  // op een herladen pagina. De gekozen boottijd bewaren we daarom kortstondig,
+  // anders is die na terugkomst verdwenen.
+  const FERRY_KEY = 'bazuin_dates_ferry';
+  function bewaarBoottijdKeuze() {
+    try {
+      if (!datesFerryOut && !datesFerryRet) return;
+      sessionStorage.setItem(FERRY_KEY, JSON.stringify({
+        out: datesFerryOut, ret: datesFerryRet,
+        oDest: ferryOutboundDest, rDest: ferryReturnDest,
+      }));
+    } catch { /* sessionStorage niet beschikbaar — dan zonder boottijd verder */ }
+  }
+
+  // Boottijd toepassen die bij de zojuist doorgevoerde datumwijziging hoort.
+  // Mislukt dit, dan blijft de datumwijziging staan; we melden het alleen.
+  async function pasBoottijdToe() {
+    let out = datesFerryOut, ret = datesFerryRet;
+    let oDest: string = ferryOutboundDest, rDest: string = ferryReturnDest;
+    if (!out && !ret) {
+      try {
+        const bewaard = JSON.parse(sessionStorage.getItem(FERRY_KEY) || 'null');
+        if (bewaard) { out = bewaard.out || ''; ret = bewaard.ret || ''; oDest = bewaard.oDest; rDest = bewaard.rDest; }
+      } catch { /* niets bewaard */ }
+    }
+    if (!out && !ret) return;
+    try {
+      await bookingApi.applyDatesFerry(params.token, {
+        outboundTime: out || null,
+        returnTime: ret || null,
+        outboundDestination: out ? oDest : undefined,
+        returnDestination: ret ? rDest : undefined,
+      });
+    } catch {
+      setError('De datumwijziging is doorgevoerd, maar de boottijd kon niet worden opgeslagen. Pas die aan via "Boottijden".');
+    } finally {
+      try { sessionStorage.removeItem(FERRY_KEY); } catch { /* niets te wissen */ }
+    }
+  }
+
   async function confirmDates() {
     // If checkedIn with earlier departure → call special endpoint
     if (checkedInEarlier) {
       setStep('dates-confirming');
       try {
         await bookingApi.modifyCheckedinDeparture(params.token, newDeparture);
+        await pasBoottijdToe();
         setDoneData({ pending: true, sendWa: true });
         setStep('dates-done');
       } catch (e: any) { setError(e.message); setStep('dates-preview'); }
@@ -477,6 +545,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
     if (preview?.duringStay && preview?.netAmountDue > 0) {
       setError('');
       try {
+        bewaarBoottijdKeuze();
         const payData = await bookingApi.modifyDuringStayPay(params.token, newDeparture);
         setStripeClientSecret(payData.clientSecret);
         setStripeAmount(payData.amount);
@@ -490,6 +559,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
     setStep('dates-confirming');
     try {
       const result = await bookingApi.confirmModification(params.token, newArrival, newDeparture);
+      await pasBoottijdToe();
       setDoneData(result); setStep('dates-done');
     } catch (e: any) { setError(e.message); setStep('dates-preview'); }
   }
@@ -513,6 +583,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   async function handlePreStayStripePay(overbooked = false) {
     setError('');
     try {
+      bewaarBoottijdKeuze();
       const data = await bookingApi.modifyDatesStripePay(params.token, newArrival, newDeparture, overbooked);
       setStripePreStayClientSecret(data.clientSecret);
       setStripePreStayAmount(data.amount);
@@ -940,7 +1011,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
             amount={stripeAmount}
             extraDays={stripeExtraDays}
             dailyRate={stripeDailyRate}
-            onSuccess={() => { setDoneData({ duringStayPaid: true }); setStep('dates-done'); }}
+            onSuccess={async () => { await pasBoottijdToe(); setDoneData({ duringStayPaid: true }); setStep('dates-done'); }}
             onError={msg => setError(msg)}
           />
         </Elements>
@@ -976,7 +1047,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
             newArrival={newArrival}
             newDeparture={newDeparture}
             amount={stripePreStayAmount}
-            onSuccess={() => { setDoneData({ preStayPaid: true }); setStep('dates-done'); }}
+            onSuccess={async () => { await pasBoottijdToe(); setDoneData({ preStayPaid: true }); setStep('dates-done'); }}
             onError={msg => setError(msg)}
           />
         </Elements>
@@ -1071,6 +1142,54 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
             </strong>
           </div>
         )}
+      </div>
+
+      {/* Boottijd meteen meenemen: bij een andere datum verandert de boot bijna
+          altijd mee. Beide wijzigingen gaan als één verzoek naar De Bazuin. */}
+      <div style={{ background: '#f4f8ff', border: '1px solid rgba(25,73,158,0.2)', borderRadius: 10, padding: '14px 16px', marginBottom: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#142440', marginBottom: 4 }}>
+          Boottijd aanpassen <span style={{ fontWeight: 400, color: '#7090b0' }}>(optioneel)</span>
+        </div>
+        <div style={{ fontSize: 12, color: '#556070', marginBottom: 12, lineHeight: 1.55 }}>
+          Kiest u hieronder een tijd, dan wordt dat samen met de datum in één keer doorgegeven.
+          Laat u dit leeg, dan blijft uw huidige boottijd staan.
+        </div>
+
+        {newArrival && newArrival !== res?.arrival_date?.slice(0, 10) && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>
+              Eiland heenreis
+            </div>
+            <div style={{ marginBottom: 10 }}>
+              <EilandKeuze value={ferryOutboundDest} onChange={d => { setFerryOutboundDest(d); setDatesFerryOut(""); }} />
+            </div>
+            <FerryPicker
+              label={`Heenreis → ${ferryOutboundDest === 'terschelling' ? 'Terschelling' : 'Vlieland'}`}
+              date={newArrival}
+              destination={ferryOutboundDest}
+              direction="outbound"
+              currentTime={res?.ferry_outbound_time}
+              selectedTime={datesFerryOut}
+              onSelect={setDatesFerryOut}
+            />
+          </div>
+        )}
+
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>
+          Eiland terugreis
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <EilandKeuze value={ferryReturnDest} onChange={d => { setFerryReturnDest(d); setDatesFerryRet(""); }} />
+        </div>
+        <FerryPicker
+          label={`Terugreis ← ${ferryReturnDest === 'terschelling' ? 'Terschelling' : 'Vlieland'}`}
+          date={newDeparture}
+          destination={ferryReturnDest}
+          direction="return"
+          currentTime={res?.ferry_return_time}
+          selectedTime={datesFerryRet}
+          onSelect={setDatesFerryRet}
+        />
       </div>
 
       {preview.duringStay && preview.netAmountDue > 0 && (

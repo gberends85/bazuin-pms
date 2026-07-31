@@ -112,6 +112,11 @@ export const bookingApi = {
   confirmModification: (token: string, newArrivalDate: string, newDepartureDate: string) =>
     post<any>(`/reservations/token/${token}/modify`, { newArrivalDate, newDepartureDate }),
 
+  // Boottijd die hoort bij een zojuist doorgevoerde datumwijziging. Wordt
+  // samengevoegd met die wijziging, zodat de admin één melding krijgt.
+  applyDatesFerry: (token: string, d: { outboundTime?: string | null; returnTime?: string | null; outboundDestination?: string; returnDestination?: string }) =>
+    post<{ success: boolean; merged: boolean; arrivalHarlingen: string | null }>(`/reservations/token/${token}/dates-ferry`, d),
+
   modifyPlate: (token: string, vehicles: { vehicleId: string; oldPlate: string; newPlate: string }[]) =>
     post<any>(`/reservations/token/${token}/modify-plate`, { vehicles }),
 

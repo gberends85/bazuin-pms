@@ -33,8 +33,12 @@ function kortOverzicht(m: any, details: any): string {
   const ophaalTijd = m.ferry_return_arrival_harlingen || m.ferry_return_time || m.ferry_return_custom_time || '';
 
   if (type === 'dates') {
+    // Is er tegelijk een boottijd gekozen, dan die als nieuwe ophaaltijd tonen
+    const nieuweTijd = kortTijd(details.newReturnArrivalHarlingen)
+      || kortTijd(details.newReturnTime)
+      || kortTijd(ophaalTijd);
     const oud = `${kortDatum(m.old_departure_date)}${ophaalTijd ? ' ' + kortTijd(ophaalTijd) : ''}`;
-    const nieuw = `${kortDatum(m.new_departure_date)}${ophaalTijd ? ' ' + kortTijd(ophaalTijd) : ''}`;
+    const nieuw = `${kortDatum(m.new_departure_date)}${nieuweTijd ? ' ' + nieuweTijd : ''}`;
     const aankomstGewijzigd = kortDatum(m.old_arrival_date) !== kortDatum(m.new_arrival_date);
     const brengen = aankomstGewijzigd
       ? `Brengen was ${kortDatum(m.old_arrival_date)}, nu ${kortDatum(m.new_arrival_date)}. `

@@ -1566,6 +1566,11 @@ router.get('/admin/reservations', requireAuth, async (req: Request, res: Respons
                WHERE reservation_id = r.id AND status='pending_payment' LIMIT 1) as pending_payment_amount,
               (SELECT id::text FROM reservation_modifications
                WHERE reservation_id = r.id AND status='pending_payment' LIMIT 1) as pending_modification_id,
+              -- Kentekenwijziging op of na de aankomstdag: dan is de enveloppe
+              -- meestal al voorbereid, dus dat wil de balie zien.
+              (SELECT MAX(m2.created_at) FROM reservation_modifications m2
+                WHERE m2.reservation_id = r.id AND m2.modification_type = 'plate'
+                  AND m2.created_at::date >= r.arrival_date) as plate_changed_late_at,
               COALESCE(r.ferry_return_destination, f_ret.destination) as ferry_return_destination,
               (SELECT TO_CHAR(fs.arrival_harlingen, 'HH24:MI')
                FROM ferry_schedules fs
@@ -1625,6 +1630,11 @@ router.get('/admin/reservations/today', requireAuth, async (req: Request, res: R
                WHERE reservation_id = r.id AND status='pending_payment' LIMIT 1) as pending_payment_amount,
               (SELECT id::text FROM reservation_modifications
                WHERE reservation_id = r.id AND status='pending_payment' LIMIT 1) as pending_modification_id,
+              -- Kentekenwijziging op of na de aankomstdag: dan is de enveloppe
+              -- meestal al voorbereid, dus dat wil de balie zien.
+              (SELECT MAX(m2.created_at) FROM reservation_modifications m2
+                WHERE m2.reservation_id = r.id AND m2.modification_type = 'plate'
+                  AND m2.created_at::date >= r.arrival_date) as plate_changed_late_at,
               f_out.name as ferry_outbound_name,
               f_out.duration_min as ferry_outbound_duration,
               f_ret.name as ferry_return_name,
@@ -4167,23 +4177,20 @@ router.post('/reservations/token/:token/modify-plate', async (req: Request, res:
     return res.status(400).json({ error: 'Deze reservering kan niet worden gewijzigd' });
   }
 
-  const { differenceInDays } = await import('date-fns');
   const isoDate = (d: any) => d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const arrivalDate = new Date(isoDate(r.arrival_date) + 'T12:00:00');
-  const currentDepartureDate = new Date(isoDate(r.departure_date) + 'T12:00:00');
-  const duringStay = today >= arrivalDate && today < currentDepartureDate;
 
-  // Block plate change during stay
-  if (duringStay) {
-    return res.status(400).json({ error: 'Kentekenwijziging is niet mogelijk tijdens uw verblijf' });
+  // Kenteken wijzigen mag tot het voertuig is ingecheckt — ook nog op de
+  // aankomstdag zelf. Daarna staat de auto er en klopt de sleutel/enveloppe niet
+  // meer bij een wijziging. Geen goedkeuring nodig; het wordt direct doorgevoerd.
+  if (r.status === 'checked_in') {
+    return res.status(400).json({ error: 'Uw voertuig is al ingecheckt — neem contact met ons op om het kenteken te wijzigen.' });
   }
 
-  // Enforce minimum 1 day before arrival
-  const daysUntilArrival = differenceInDays(arrivalDate, today);
-  if (daysUntilArrival < 1) {
-    return res.status(400).json({ error: 'Kentekenwijziging moet minimaal 1 dag voor aankomst worden gedaan' });
-  }
+  // Wijziging op de aankomstdag zelf: dan wil de admin het zien, want de
+  // enveloppe en de aankomstenlijst zijn dan meestal al voorbereid.
+  const opAankomstdag = today >= arrivalDate;
 
   // Validate that all vehicleIds belong to this reservation
   const vehicleIds = vehicles.map((v: any) => v.vehicleId);
@@ -4221,7 +4228,7 @@ router.post('/reservations/token/:token/modify-plate', async (req: Request, res:
     }
   }
 
-  const changeDetails = JSON.stringify({ vehicles });
+  const changeDetails = JSON.stringify({ vehicles, sameDay: opAankomstdag });
 
   await query(
     `INSERT INTO reservation_modifications

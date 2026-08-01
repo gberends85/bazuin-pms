@@ -1036,6 +1036,7 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
             <div style={{ fontSize: 10, color: '#9ab0c8', marginTop: 2, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <span>#{res.reference}</span>
               {res.contract_customer_id ? <span style={{ background: '#eef3ff', color: '#19499e', fontWeight: 700, fontSize: 9, padding: '1px 5px', borderRadius: 4, marginLeft: 6, letterSpacing: '0.3px' }}>CONTRACT</span> : null}
+              {res.plate_changed_late_at ? <span title="Kenteken gewijzigd op de aankomstdag" style={{ background: '#fff4e5', color: '#a06010', fontWeight: 700, fontSize: 9, padding: '1px 5px', borderRadius: 4, marginLeft: 6, letterSpacing: '0.3px' }}>KENTEKEN GEWIJZIGD</span> : null}
               {res.phone && <a href={waLink(res.phone, plateIsBelgian(res.plates))} onClick={stopProp} style={{ color: '#25D366', textDecoration: 'none', fontWeight: 600, display:'inline-flex', alignItems:'center', gap:3 }}><ChatBubbleLeftIcon className="w-3 h-3" style={{display:'inline',verticalAlign:'middle'}} />WA</a>}
               {res.has_ev && <span style={{ color: '#0a7c6e', fontWeight: 700 }}><><Zap size={11} style={{ display:'inline', verticalAlign:'middle', marginRight:2 }} />{res.ev_kwh_total > 0 ? res.ev_kwh_total + ' kWh' : 'vol'}</></span>}
               {res.created_at && <span style={{ color: '#b0c4d8' }}>gereserveerd {new Date(res.created_at).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
@@ -1130,6 +1131,7 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
             <div style={{ fontSize: 10, color: '#9ab0c8', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
               <span>#{res.reference}</span>
               {res.contract_customer_id ? <span style={{ background: '#eef3ff', color: '#19499e', fontWeight: 700, fontSize: 9, padding: '1px 5px', borderRadius: 4, marginLeft: 6, letterSpacing: '0.3px' }}>CONTRACT</span> : null}
+              {res.plate_changed_late_at ? <span title="Kenteken gewijzigd op de aankomstdag" style={{ background: '#fff4e5', color: '#a06010', fontWeight: 700, fontSize: 9, padding: '1px 5px', borderRadius: 4, marginLeft: 6, letterSpacing: '0.3px' }}>KENTEKEN GEWIJZIGD</span> : null}
               {res.has_ev && <span style={{ color: '#0a7c6e', fontWeight: 700 }}><Zap size={10} style={{ display:'inline', verticalAlign:'middle', marginRight:2 }} />{res.ev_kwh_total > 0 ? res.ev_kwh_total + ' kWh' : 'vol'}</span>}
             </div>
             <div onClick={stopProp} style={{ flexShrink: 0 }}>{actionBtns}</div>

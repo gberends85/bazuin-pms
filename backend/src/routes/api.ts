@@ -7143,11 +7143,111 @@ router.post('/admin/umbraco/vehicle-repair-scan', requireAuth, async (req: Reque
   }
 });
 
+// ============================================================
+// ADMIN — FACTURENOVERZICHT (factuurklanten + contractklanten samen)
+// Twee soorten facturen op één plek, met betaalregistratie.
+// ============================================================
+router.get('/admin/invoices/overview', requireAuth, async (req: Request, res: Response) => {
+  const { status } = req.query as Record<string, string>;
+
+  const [groepen, contracten] = await Promise.all([
+    // Factuurgroepen: bedrag is de som van de gekoppelde reserveringen
+    query(
+      `SELECT ig.id, ig.reference AS nummer,
+              COALESCE(NULLIF(ig.billing_company, ''), ig.billing_name) AS klant,
+              ig.billing_email AS email, ig.status, ig.created_at,
+              ig.sent_at, ig.paid_at, ig.payment_method,
+              COALESCE(SUM(r.total_price), 0) AS bedrag,
+              COUNT(r.id)::int AS regels
+       FROM invoice_groups ig
+       LEFT JOIN reservations r ON r.invoice_group_id = ig.id
+       GROUP BY ig.id
+       ORDER BY ig.created_at DESC`
+    ),
+    query(
+      `SELECT ci.id, ci.invoice_number AS nummer, cc.name AS klant,
+              cc.email, ci.created_at, ci.sent_at, ci.paid_at, ci.payment_method,
+              ci.total_incl_vat AS bedrag, ci.total_cars::int AS regels,
+              ci.period_from, ci.period_to, ci.payment_link_url
+       FROM contract_invoices ci
+       JOIN contract_customers cc ON cc.id = ci.contract_customer_id
+       ORDER BY ci.created_at DESC`
+    ),
+  ]);
+
+  const rijen = [
+    ...groepen.rows.map((g: any) => ({ ...g, soort: 'factuurgroep' as const })),
+    ...contracten.rows.map((c: any) => ({ ...c, soort: 'contract' as const })),
+  ]
+    // Alleen verstuurde/definitieve facturen tellen als "openstaand";
+    // concepten laten we zien maar nooit als onbetaald meerekenen.
+    .map((r: any) => ({
+      ...r,
+      isConcept: r.soort === 'factuurgroep' && r.status === 'draft',
+      isBetaald: !!r.paid_at,
+    }))
+    .filter((r: any) => {
+      if (status === 'open') return !r.isBetaald && !r.isConcept;
+      if (status === 'paid') return r.isBetaald;
+      return true;
+    })
+    .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  const geld = (rows: any[]) =>
+    Math.round(rows.reduce((t, x) => t + parseFloat(x.bedrag || 0), 0) * 100) / 100;
+  const open = rijen.filter((r: any) => !r.isBetaald && !r.isConcept);
+  const betaald = rijen.filter((r: any) => r.isBetaald);
+
+  return res.json({
+    rows: rijen,
+    totalen: {
+      openBedrag: geld(open), openAantal: open.length,
+      betaaldBedrag: geld(betaald), betaaldAantal: betaald.length,
+    },
+  });
+});
+
+// Betaling vastleggen of terugdraaien
+router.post('/admin/invoices/:soort/:id/payment', requireAuth, async (req: Request, res: Response) => {
+  const { soort, id } = req.params;
+  const { paid, paidAt, paymentMethod } = req.body || {};
+  const tabel = soort === 'contract' ? 'contract_invoices'
+    : soort === 'factuurgroep' ? 'invoice_groups' : null;
+  if (!tabel) return res.status(400).json({ error: 'Onbekend factuursoort' });
+
+  if (paid === false) {
+    await query(`UPDATE ${tabel} SET paid_at = NULL, payment_method = NULL WHERE id = $1`, [id]);
+    return res.json({ success: true, paid: false });
+  }
+
+  const toegestaan = ['overboeking', 'pin', 'contant', 'tikkie', 'ideal', 'stripe', 'anders'];
+  const methode = toegestaan.includes(String(paymentMethod)) ? String(paymentMethod) : 'overboeking';
+  // Datum mag leeg zijn -> vandaag
+  const datum = /^\d{4}-\d{2}-\d{2}$/.test(String(paidAt || '')) ? String(paidAt) : null;
+
+  const upd = await query(
+    `UPDATE ${tabel}
+        SET paid_at = COALESCE($1::date::timestamptz, NOW()), payment_method = $2
+      WHERE id = $3
+      RETURNING id, paid_at, payment_method`,
+    [datum, methode, id]
+  );
+  if (upd.rows.length === 0) return res.status(404).json({ error: 'Factuur niet gevonden' });
+  return res.json({ success: true, paid: true, ...upd.rows[0] });
+});
+
 // ── Contract-klanten ────────────────────────────────────────────
 
 // Idempotente kolom-migraties
 (async () => {
   try {
+    // Betaalregistratie op facturen: wanneer en hoe er is betaald.
+    // contract_invoices heeft paid_at al; invoice_groups nog niets.
+    await query(`ALTER TABLE contract_invoices ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30)`);
+    await query(`ALTER TABLE invoice_groups ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ`);
+    await query(`ALTER TABLE invoice_groups ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`);
+    await query(`ALTER TABLE invoice_groups ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30)`);
+
     await query(`ALTER TABLE contract_customers ADD COLUMN IF NOT EXISTS low_season_rate NUMERIC(10,2) DEFAULT 0`);
     await query(`ALTER TABLE contract_customers ADD COLUMN IF NOT EXISTS high_season_rate NUMERIC(10,2) DEFAULT 0`);
     await query(`ALTER TABLE contract_customers ADD COLUMN IF NOT EXISTS high_season_from VARCHAR(5) DEFAULT '04-01'`);

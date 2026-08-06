@@ -119,6 +119,9 @@ export const api = {
   reports: {
     financial: (p: any) => req<any>(`/admin/reports/financial?${new URLSearchParams(p)}`),
     daily: (date: string) => req<any>(`/admin/reports/daily?date=${date}`),
+    invoicesOverview: (status: string) => req<any>(`/admin/invoices/overview?status=${status}`),
+    invoicePayment: (soort: string, id: string, d: { paid: boolean; paidAt?: string; paymentMethod?: string }) =>
+      req<any>(`/admin/invoices/${soort}/${id}/payment`, { method: 'POST', body: JSON.stringify(d) }),
     occupancy: (p: any) => req<any>(`/admin/reports/occupancy?${new URLSearchParams(p)}`),
     cash: (from: string, to?: string) => req<any>(`/admin/reports/cash?from=${from}${to && to !== from ? '&to=' + to : ''}`),
   },

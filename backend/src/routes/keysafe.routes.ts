@@ -197,7 +197,8 @@ keysafeRouter.post('/admin/reservations/:id/keysafe/send-email', requireAuth, as
       <p style="font-size:14px;color:#4a4339;line-height:1.7;margin-top:20px;">
         <strong>Gaat er iets mis?</strong><br/>
         &bull; Probeer de code nogmaals.<br/>
-        &bull; reply op deze e-mail<br/>
+        &bull; stuur een bericht via WhatsApp op nummer
+          <a href="https://wa.me/31517412986" style="color:#1a1814;">0517412986</a><br/>
         &bull; of bel aan (intercom)<br/>
         &bull; Bel 0517 - 412986 via de vaste lijn.
       </p>

@@ -4,7 +4,7 @@ import AdminLayout from '@/components/layout/AdminLayout';
 import Modal from '@/components/ui/Modal';
 import Toaster, { toast, toastError } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
-import { BanknotesIcon, CheckCircleIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
+import { BanknotesIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
 
 const eur = (v: any) => `€ ${parseFloat(v || 0).toFixed(2).replace('.', ',')}`;
 const dat = (v: any) => v ? new Date(v).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
@@ -150,9 +150,11 @@ export default function FacturenOverzichtPage() {
                               <ArrowUturnLeftIcon className="w-3 h-3" />Terugdraaien
                             </button>
                           ) : (
+                            /* Neutrale actieknop: een groene "Betaald"-knop leest
+                               als een status alsof de factuur al voldaan is. */
                             <button onClick={() => openMarkeer(r)} disabled={bezig === r.id}
-                              style={{ background: '#0a7c6e', border: 'none', color: 'white', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                              <CheckCircleIcon className="w-4 h-4" />Betaald
+                              style={{ background: 'white', border: '1px solid #19499e', color: '#19499e', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+                              <BanknotesIcon className="w-4 h-4" />Betaling registreren
                             </button>
                           )}
                         </td>
@@ -166,7 +168,7 @@ export default function FacturenOverzichtPage() {
         )}
       </div>
 
-      <Modal open={!!markeer} onClose={() => setMarkeer(null)} title="Factuur als betaald markeren">
+      <Modal open={!!markeer} onClose={() => setMarkeer(null)} title="Betaling registreren">
         {markeer && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ background: '#f4f6f9', borderRadius: 8, padding: '10px 13px', fontSize: 13 }}>

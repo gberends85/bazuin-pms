@@ -101,9 +101,21 @@ function DateRangePicker({ arrival, departure, onArrival, onDeparture, vehicleCo
     if (dateStr < todayStr) return;
     if (isDayBlocked(dateStr)) {
       const d = new Date(dateStr + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
-      const msg = (picking === 'end' && arrival && dateStr > arrival)
-        ? `Tussen uw aankomst en ${d} zit een volgeboekte nacht — kies een kortere periode of andere datums.`
-        : `Op ${d} is het ook overdag al vol — parkeren is op die datum niet meer mogelijk.`;
+      let msg: string;
+      if (picking === 'end' && arrival && dateStr > arrival) {
+        // Tel álle volgeboekte nachten in de gekozen periode. Noemden we er maar
+        // één, dan lijkt het alsof er net één dag tussen zit en gaan mensen
+        // bellen of het tóch kan, terwijl de hele periode vol zit.
+        let vol = 0;
+        for (let cur = arrival; cur < dateStr; cur = addDay(cur)) {
+          if (isNightFull(cur) || isDayFull(cur)) vol++;
+        }
+        msg = vol > 1
+          ? `In deze periode zijn ${vol} nachten volgeboekt — kies een kortere periode of andere datums.`
+          : `Tussen uw aankomst en ${d} zit een volgeboekte nacht — kies een kortere periode of andere datums.`;
+      } else {
+        msg = `Op ${d} is het ook overdag al vol — parkeren is op die datum niet meer mogelijk.`;
+      }
       setFullMsg(msg);
       return;
     }

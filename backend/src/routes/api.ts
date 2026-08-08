@@ -793,6 +793,38 @@ function verifyOverbookToken(token: string, arrivalDate: string, departureDate: 
   } catch { return false; }
 }
 
+// Nieuwe, korte overboeklinks: de datums staan in de database in plaats van in
+// de URL. Daardoor valt er in de link niets te verdraaien en is hij kort.
+// De oude JWT-links blijven werken zolang ze geldig zijn.
+async function overbookGrant(code: string): Promise<{ arrival: string; departure: string; vehicles: number } | null> {
+  if (!/^[A-Za-z0-9]{6,16}$/.test(code || '')) return null;
+  const r = await query(
+    `SELECT TO_CHAR(arrival_date, 'YYYY-MM-DD')   AS arrival,
+            TO_CHAR(departure_date, 'YYYY-MM-DD') AS departure,
+            vehicles
+       FROM overbook_links
+      WHERE code = $1 AND expires_at > NOW()`,
+    [code]
+  );
+  return r.rows[0] || null;
+}
+
+// Geldig als de aanvraag binnen de toegekende ruimte valt: zelfde datums en niet
+// meer auto's dan toegestaan. Eerst de korte code, anders de oude JWT.
+async function overbookToegestaan(token: string, arrivalDate: string, departureDate: string, vehicles: number): Promise<boolean> {
+  const g = await overbookGrant(token);
+  if (g) return g.arrival === arrivalDate && g.departure === departureDate && g.vehicles >= Number(vehicles);
+  return verifyOverbookToken(token, arrivalDate, departureDate, vehicles);
+}
+
+// Publiek: de boekingspagina haalt hiermee op wat de link toestaat, zodat de
+// datums niet uit de URL hoeven te komen.
+router.get('/overbook/:code', async (req: Request, res: Response) => {
+  const g = await overbookGrant(req.params.code);
+  if (!g) return res.status(404).json({ error: 'Deze link is niet meer geldig' });
+  return res.json(g);
+});
+
 const CreateReservationSchema = z.object({
   arrivalDate: z.string(),
   departureDate: z.string(),
@@ -898,9 +930,9 @@ router.post('/reservations', async (req: Request, res: Response) => {
     );
 
     const available = parseInt(nightCheckResult.rows[0].min_available) || 0;
-    // Admin-overboeklink: geldig token voor déze datums/aantal → vol-check overslaan.
+    // Admin-overboeklink: geldig voor déze datums/aantal → vol-check overslaan.
     const overbookOk = data.overbookToken
-      ? verifyOverbookToken(data.overbookToken, data.arrivalDate, data.departureDate, data.vehicles.length)
+      ? await overbookToegestaan(data.overbookToken, data.arrivalDate, data.departureDate, data.vehicles.length)
       : false;
     if (available < data.vehicles.length && !overbookOk) {
       await client.query('ROLLBACK');
@@ -2327,10 +2359,40 @@ router.post('/admin/overbook-link', requireAuth, async (req: Request, res: Respo
     return res.status(400).json({ error: 'Ongeldige datums (vertrek moet na aankomst liggen).' });
   }
   const n = Math.max(1, Math.min(5, parseInt(String(vehicles), 10) || 1));
-  const token = signOverbookToken(arrivalDate, departureDate, n);
+
+  // Korte code i.p.v. de datums in de URL: zo valt er niets aan te verdraaien.
+  await query(
+    `CREATE TABLE IF NOT EXISTS overbook_links (
+       code VARCHAR(16) PRIMARY KEY,
+       arrival_date DATE NOT NULL,
+       departure_date DATE NOT NULL,
+       vehicles INTEGER NOT NULL DEFAULT 1,
+       expires_at TIMESTAMPTZ NOT NULL,
+       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+     )`
+  );
+
+  const { randomBytes } = await import('crypto');
+  // Zonder klinkers en gelijkende tekens: niet uit te spreken tot een woord en
+  // geen verwarring tussen 0/O of 1/l bij overtypen.
+  const alfabet = '23456789BCDFGHJKLMNPQRSTVWXZ';
+  let code = '';
+  for (let poging = 0; poging < 5; poging++) {
+    const b = randomBytes(8);
+    code = Array.from(b).map(x => alfabet[x % alfabet.length]).join('');
+    const bestaat = await query('SELECT 1 FROM overbook_links WHERE code = $1', [code]);
+    if (bestaat.rows.length === 0) break;
+  }
+
+  await query(
+    `INSERT INTO overbook_links (code, arrival_date, departure_date, vehicles, expires_at)
+     VALUES ($1, $2, $3, $4, NOW() + INTERVAL '48 hours')`,
+    [code, arrivalDate, departureDate, n]
+  );
+
   const bookingUrl = process.env.BOOKING_URL || 'https://booking.parkeren-harlingen.nl';
-  const url = `${bookingUrl}/boeken?arrival=${arrivalDate}&departure=${departureDate}&autos=${n}&stap=2&ob=${encodeURIComponent(token)}`;
-  return res.json({ url, vehicles: n, arrivalDate, departureDate, expiresInHours: 48 });
+  const url = `${bookingUrl}/boeken?ob=${code}`;
+  return res.json({ url, code, vehicles: n, arrivalDate, departureDate, expiresInHours: 48 });
 });
 
 // ============================================================

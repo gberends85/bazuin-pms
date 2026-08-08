@@ -89,6 +89,11 @@ export const bookingApi = {
 
   getServices: () => get<any[]>('/services'),
 
+  // Wat een overboeklink toestaat. De datums komen hiervandaan en niet uit de
+  // URL, zodat er in de link niets te verdraaien valt.
+  getOverbookGrant: (code: string) =>
+    get<{ arrival: string; departure: string; vehicles: number }>(`/overbook/${encodeURIComponent(code)}`),
+
   lookupPlate: (plate: string) =>
     get<any>(`/vehicles/rdw/${plate.replace(/[-\s]/g, '').toUpperCase()}`),
 

@@ -226,7 +226,7 @@ export default function CalendarPage() {
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
             <div style={{ flexBasis: '100%' }}>
               <div style={{ fontSize: 13, fontWeight: 800, color: '#0a2240', marginBottom: 2 }}>Overboek-link maken</div>
-              <div style={{ fontSize: 11, color: '#7090b0' }}>Genereer een boekingslink die direct op de veerboot-stap opent en volle dagen mag omzeilen. Alleen geldig voor deze datums + aantal auto's, 48 uur.</div>
+              <div style={{ fontSize: 11, color: '#7090b0' }}>Genereer een korte boekingslink die volle dagen mag omzeilen. De datums zitten in de link zelf en zijn niet in de URL aan te passen. Geldig voor deze datums + aantal auto&apos;s, 48 uur.</div>
             </div>
             <div>
               <label style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>Aankomst</label>

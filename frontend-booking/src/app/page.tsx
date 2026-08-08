@@ -502,11 +502,44 @@ export default function BookingPage() {
     const departure = p.get('departure') || '';
     const autosRaw = parseInt(p.get('autos') || p.get('vehicles') || '', 10);
     const autos = Number.isFinite(autosRaw) ? Math.max(1, Math.min(5, autosRaw)) : 0;
-    const dateDeepLink = /^\d{4}-\d{2}-\d{2}$/.test(arrival) && /^\d{4}-\d{2}-\d{2}$/.test(departure) && departure > arrival;
+    // Bij een overboeklink negeren we de datums uit de URL volledig; die komen
+    // dan uit de link zelf (zie hieronder).
+    const dateDeepLink = !p.get('ob')
+      && /^\d{4}-\d{2}-\d{2}$/.test(arrival) && /^\d{4}-\d{2}-\d{2}$/.test(departure) && departure > arrival;
 
-    // Overboek-token uit een admin-link
+    // Overboek-link uit de admin. De datums komen NIET uit de URL: die zijn
+    // aan te passen. Ze worden opgehaald bij de link zelf (korte code) of uit
+    // het ondertekende token van een oudere link gelezen. Klopt er niets van,
+    // dan vervalt de link en geldt gewoon de normale beschikbaarheid.
     const ob = p.get('ob') || '';
-    if (ob) setOverbookToken(ob);
+    if (ob) {
+      setOverbookToken(ob);
+      (async () => {
+        let g: { arrival: string; departure: string; vehicles: number } | null = null;
+        try { g = await bookingApi.getOverbookGrant(ob); } catch { g = null; }
+        if (!g && ob.includes('.')) {
+          // Oudere link: de datums staan in het token zelf. Alleen voor het
+          // invullen — de handtekening wordt bij het boeken op de server gecheckt.
+          try {
+            const deel = ob.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+            const body = JSON.parse(atob(deel));
+            if (body?.t === 'overbook' && body.a && body.d) {
+              g = { arrival: body.a, departure: body.d, vehicles: Number(body.n) || 1 };
+            }
+          } catch { g = null; }
+        }
+        if (!g) { setOverbookToken(''); return; }
+        const n = Math.max(1, Math.min(5, g.vehicles || 1));
+        setState(prev => ({
+          ...prev,
+          arrival: g!.arrival,
+          departure: g!.departure,
+          vehicleCount: n,
+          vehicles: Array.from({ length: n }, (_, i) => prev.vehicles[i] || { plate: '' }),
+        }));
+        setPendingStep2(true);
+      })();
+    }
 
     // Lees opgeslagen profiel
     const profile = loadProfile();

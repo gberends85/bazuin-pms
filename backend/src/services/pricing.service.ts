@@ -352,6 +352,8 @@ export async function calculateModificationRefund(
   newNights: number,
   currentPrice: number,    // huidig totaalbedrag
   priceDiff: number,       // newPrice - currentPrice (negatief bij goedkoper)
+  oldArrival?: Date | string, // oorspronkelijke aankomst — nodig om te weten of
+  newArrival?: Date | string, // er dagen vooraan of achteraan wegvallen
 ): Promise<{ refundPct: number; refundAmount: number; effectiveRatio: number; perDay: number; removedDays: number; breakdown: RefundBreakdownRow[]; policyDescription: string }> {
   const diff = Math.round(Math.abs(priceDiff) * 100) / 100;
   const removed = Math.max(0, Math.round(originalNights) - Math.round(newNights));
@@ -392,12 +394,30 @@ export async function calculateModificationRefund(
   const origDays = Math.max(1, Math.round(originalNights) + 1);
   const perDay = currentPrice / origDays;
 
-  // Dag-index 0 = aankomstdag. Het nieuwe (kortere) verblijf houdt de eerste
-  // (newNights + 1) dagen; de geschrapte dagen beginnen bij index newNights + 1.
-  const firstRemovedIdx = Math.round(newNights) + 1;
+  // Dag-index 0 = de oorspronkelijke aankomstdag; hoe hoger de index, hoe verder
+  // de dag in de toekomst ligt en hoe meer er van terugkomt.
+  //
+  // Wélke dagen wegvallen hangt af van de wijziging. Komt de klant later aan,
+  // dan vervallen juist de EERSTE dagen — die liggen het dichtst bij vandaag en
+  // leveren dus het minst op. Vertrekt de klant eerder, dan vervallen de laatste
+  // dagen. Zonder dit onderscheid werd een latere aankomst afgerekend alsof de
+  // verste dagen vervielen, wat veel te veel restitutie gaf.
+  const dagen = (a?: Date | string, b?: Date | string): number => {
+    if (!a || !b) return 0;
+    const d1 = new Date(typeof a === 'string' ? a + 'T12:00:00' : a); d1.setHours(0, 0, 0, 0);
+    const d2 = new Date(typeof b === 'string' ? b + 'T12:00:00' : b); d2.setHours(0, 0, 0, 0);
+    return differenceInCalendarDays(d2, d1);
+  };
+  const vooraanWeg = Math.max(0, Math.min(removed, dagen(oldArrival, newArrival)));
+  const achteraanWeg = removed - vooraanWeg;
+
+  const verwijderdeIndexen: number[] = [];
+  for (let i = 0; i < vooraanWeg; i++) verwijderdeIndexen.push(i);
+  for (let i = 0; i < achteraanWeg; i++) verwijderdeIndexen.push(origDays - 1 - i);
+
   const groups = new Map<number, { pct: number; days: number; amount: number }>();
-  for (let i = 0; i < removed; i++) {
-    const daysAway = daysUntilAnchor + firstRemovedIdx + i;
+  for (const idx of verwijderdeIndexen) {
+    const daysAway = daysUntilAnchor + idx;
     const rt = rateFor(daysAway);
     const pct = Math.round(rt * 100);
     const g = groups.get(pct) || { pct, days: 0, amount: 0 };

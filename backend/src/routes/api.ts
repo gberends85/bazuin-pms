@@ -3870,6 +3870,7 @@ router.get('/reservations/token/:token/modification-preview', async (req: Reques
       resNights({ arrival_date: newArrival, departure_date: newDeparture }),
       currentPrice,
       priceDiff,
+      r.arrival_date, newArrival,
     );
     cancellationRefundPct = mod.refundPct;
     policyDescription = mod.policyDescription;
@@ -4037,6 +4038,7 @@ router.post('/reservations/token/:token/modify', async (req: Request, res: Respo
       resNights({ arrival_date: newArrivalDate, departure_date: newDepartureDate }),
       currentPrice,
       priceDiff,
+      r.arrival_date, newArrivalDate,
     );
     cancellationRefundPct = mod.refundPct;
     // Bij restitutie geen wijzigingskosten in mindering brengen

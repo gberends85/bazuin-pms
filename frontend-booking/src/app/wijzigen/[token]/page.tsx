@@ -1215,7 +1215,9 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
           {Array.isArray(preview.refundBreakdown) && preview.refundBreakdown.length > 0 ? (
             <>
               <div style={{ marginBottom: 6 }}>
-                U kort <strong>{preview.refundRemovedDays} dag{preview.refundRemovedDays !== 1 ? 'en' : ''}</strong> in. Deze liggen het verst van uw aankomst en worden per dag terugbetaald{typeof preview.refundPerDay === 'number' && preview.refundPerDay > 0 ? ` (€ ${preview.refundPerDay.toFixed(2)} per dag)` : ''}:
+                {/* Geen aanname meer over wélke dagen vervallen: bij later aankomen
+                    zijn dat juist de dagen het dichtst bij de aankomst. */}
+                U kort <strong>{preview.refundRemovedDays} dag{preview.refundRemovedDays !== 1 ? 'en' : ''}</strong> in. Elke dag telt afzonderlijk mee: hoe dichter een dag bij uw aankomst ligt, hoe minder u ervan terugkrijgt{typeof preview.refundPerDay === 'number' && preview.refundPerDay > 0 ? ` (€ ${preview.refundPerDay.toFixed(2)} per dag)` : ''}:
               </div>
               {preview.refundBreakdown.filter((b: any) => b.amount > 0).map((b: any) => (
                 <div key={b.pct} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#3a4a5e' }}>

@@ -845,13 +845,16 @@ export default function ContractInvoicesPage() {
                 const iso = isoDate(d);
                 const isToday = iso === isoDate(new Date());
                 const session = evSessions[iso];
+                // Al gefactureerde dagen niet meer aanpasbaar: anders wijkt het
+                // aantal auto's af van wat er op de factuur staat.
+                const isInvoiced = invoicedDates.has(iso);
                 return (
-                  <div key={iso} style={{ border: isToday ? '1.5px solid #0a7c6e' : '0.5px solid rgba(10,34,64,0.15)', borderRadius: 8, padding: '10px 8px', background: i >= 5 ? '#f8fafc' : 'white' }}>
+                  <div key={iso} title={isInvoiced ? 'Deze dag is al gefactureerd' : undefined} style={{ border: isToday ? '1.5px solid #0a7c6e' : '0.5px solid rgba(10,34,64,0.15)', borderRadius: 8, padding: '10px 8px', background: isInvoiced ? 'repeating-linear-gradient(45deg,#f4f4f4,#f4f4f4 4px,#e8e8e8 4px,#e8e8e8 8px)' : (i >= 5 ? '#f8fafc' : 'white') }}>
                     <div style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: isToday ? '#0a7c6e' : '#7090b0', textTransform: 'uppercase' }}>{DAY_LABELS[i].slice(0,3)}</div>
                     <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 700, color: '#0a2240', marginTop: 2 }}>{d.getDate()}/{d.getMonth()+1}</div>
-                    <input type="number" min="0" value={entries[iso]??''} onChange={e => setCars(iso, e.target.value)} onBlur={saveEntries} placeholder="0" disabled={loadingEntries}
-                      style={{ width: '100%', marginTop: 8, padding: '7px 6px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 6, textAlign: 'center', fontSize: 18, fontWeight: 700, color: '#0a2240', background: (entries[iso]||0) > 0 ? '#e6f7f5' : 'white', boxSizing: 'border-box' }} />
-                    <div style={{ textAlign: 'center', fontSize: 10, color: '#aab8cc', marginTop: 3 }}>auto&apos;s</div>
+                    <input type="number" min="0" value={entries[iso]??''} onChange={e => setCars(iso, e.target.value)} onBlur={saveEntries} placeholder="0" disabled={loadingEntries || isInvoiced}
+                      style={{ width: '100%', marginTop: 8, padding: '7px 6px', border: '0.5px solid rgba(10,34,64,0.2)', borderRadius: 6, textAlign: 'center', fontSize: 18, fontWeight: 700, color: '#0a2240', background: isInvoiced ? '#f0f0f0' : ((entries[iso]||0) > 0 ? '#e6f7f5' : 'white'), boxSizing: 'border-box' }} />
+                    <div style={{ textAlign: 'center', fontSize: 10, color: isInvoiced ? '#8a94a6' : '#aab8cc', marginTop: 3 }}>{isInvoiced ? 'gefactureerd' : <>auto&apos;s</>}</div>
                     {evEnabled && session && (
                       <div style={{ marginTop: 4, textAlign: 'center', fontSize: 10, color: '#d97706', fontWeight: 700 }}><><Zap size={11} style={{ display:'inline', verticalAlign:'middle', marginRight:2 }} />{Number(session.kwh).toFixed(1)} kWh</></div>
                     )}
@@ -870,6 +873,7 @@ export default function ContractInvoicesPage() {
                     defaultRate={parseFloat(selectedCustomer?.ev_rate_per_kwh || 0.35)}
                     defaultStartFee={parseFloat(selectedCustomer?.ev_start_fee || 0)}
                     onSessionsChange={loadEvSessions}
+                    invoicedDates={invoicedDates}
                   />
                 )}
               </div>
@@ -934,14 +938,20 @@ export default function ContractInvoicesPage() {
                     const price = stayPrice(displayStay);
                     const hasExtra = days_ > fpd;
                     const pickedUp = s.picked_up_at ? new Date(s.picked_up_at) : null;
+                    // Verblijf valt binnen een al gefactureerde periode
+                    const stayInvoiced = invoicedDates.has(String(s.arrival_date).slice(0, 10));
                     return (
-                      <tr key={s.id} style={{ borderBottom: '0.5px solid rgba(10,34,64,0.06)', background: pickedUp ? '#f0faf8' : i % 2 === 0 ? 'white' : '#f8f9fb' }}>
+                      <tr key={s.id} title={stayInvoiced ? 'Dit verblijf is al gefactureerd' : undefined}
+                        style={{ borderBottom: '0.5px solid rgba(10,34,64,0.06)', background: stayInvoiced ? 'repeating-linear-gradient(45deg,#f4f4f4,#f4f4f4 4px,#ececec 4px,#ececec 8px)' : (pickedUp ? '#f0faf8' : i % 2 === 0 ? 'white' : '#f8f9fb') }}>
                         <td style={tdSt}>
                           {isEditing
                             ? <input value={editStayData.license_plate} onChange={e => setEditStayData((p:any) => ({...p, license_plate: e.target.value.toUpperCase()}))}
                                 style={{ padding: '4px 7px', border: '1px solid #aac8e8', borderRadius: 5, fontSize: 13, fontWeight: 700, width: 110, letterSpacing: '1px' }} />
                             : <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
                                 <strong style={{ fontFamily: 'monospace', letterSpacing: '1px' }}>{s.license_plate}</strong>
+                                {stayInvoiced && (
+                                  <span style={{ fontSize: 9, fontWeight: 700, color: '#6b7280', background: '#e8e8e8', borderRadius: 4, padding: '1px 5px', letterSpacing: '0.3px' }}>GEFACTUREERD</span>
+                                )}
                                 {!s.picked_up_at && (
                                   <button onClick={() => setKdStay(s)} title="Sleutel in kluis doen + afhaalcode sturen"
                                     style={{ padding: '3px 8px', background: '#eaf1fb', border: '1px solid #19499e', color: '#19499e', borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}>

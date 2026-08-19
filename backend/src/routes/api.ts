@@ -2544,6 +2544,31 @@ router.get('/admin/reports/cash', requireAuth, async (req: Request, res: Respons
 });
 
 // ─── Bezetting & omzet per periode (jaar-vergelijk) ──────────────────────────
+// Seizoensgrens naar MM-DD. In de database staat soms "27-3" (dag-maand) en
+// soms "04-01" (maand-dag). Als tekst vergelijken gaat dan mis: "03-24" telt
+// dan als kleiner dan "1-11" en valt onterecht in het hoogseizoen. Is het
+// eerste getal groter dan 12, dan kan het alleen een dag zijn.
+function seizoenGrenzen(van: any, tot: any): { van: string; tot: string } {
+  const deel = (v: any): [number, number] | null => {
+    const m = String(v ?? '').trim().match(/^(\d{1,2})\D+(\d{1,2})$/);
+    return m ? [parseInt(m[1], 10), parseInt(m[2], 10)] : null;
+  };
+  const a = deel(van), b = deel(tot);
+  if (!a || !b) return { van: '04-01', tot: '09-30' };
+  // Formaat voor het PAAR bepalen: is ergens het eerste getal groter dan 12,
+  // dan kan dat alleen een dag zijn en is alles dag-maand. Anders maand-dag,
+  // zoals de standaardwaarden '04-01' en '09-30'.
+  const dagMaand = a[0] > 12 || b[0] > 12;
+  const naar = ([x, y]: [number, number]) => {
+    const maand = dagMaand ? y : x;
+    const dag = dagMaand ? x : y;
+    if (!(maand >= 1 && maand <= 12) || !(dag >= 1 && dag <= 31)) return null;
+    return String(maand).padStart(2, '0') + '-' + String(dag).padStart(2, '0');
+  };
+  const v = naar(a), t = naar(b);
+  return v && t ? { van: v, tot: t } : { van: '04-01', tot: '09-30' };
+}
+
 // ─── Dagoverzicht — wat er op één dag is gebeurd ────────────────────────────
 // Let op de omzetbasis: paid_at wordt alleen betrouwbaar gezet bij handmatig
 // afgerekende betalingen (pin/contant/tikkie). Bij online betalingen ontbreekt
@@ -7966,8 +7991,9 @@ router.post('/admin/contract-customers/:id/invoice', requireAuth, async (req: Re
   } else if (rateType === 'seasonal') {
     const lowSeasonRate  = parseFloat(customer.low_season_rate)  || 0;
     const highSeasonRate = parseFloat(customer.high_season_rate) || 0;
-    const highSeasonFrom  = customer.high_season_from  || '04-01';
-    const highSeasonUntil = customer.high_season_until || '09-30';
+    const _grenzen = seizoenGrenzen(customer.high_season_from, customer.high_season_until);
+    const highSeasonFrom  = _grenzen.van;
+    const highSeasonUntil = _grenzen.tot;
     const nextYearLowRate  = parseFloat(customer.next_year_low_season_rate)  || 0;
     const nextYearHighRate = parseFloat(customer.next_year_high_season_rate) || 0;
     const currentYear = new Date().getFullYear();
@@ -8183,15 +8209,21 @@ async function pdfFromStoredContractInvoice(inv: any, paymentUrl?: string): Prom
 // Volgende nog niet-gefactureerde, volledig verstreken periode voor een klant
 async function nextAutoInvoicePeriod(custId: string, intervalMonths: number, startDate: string | null): Promise<{ from: string; to: string } | null> {
   const r = await query(`SELECT MAX(period_to) AS last_to FROM contract_invoices WHERE contract_customer_id = $1`, [custId]);
+  // Let op: datumkolommen komen als Date-object terug. String(...).slice(0,10)
+  // maakt daar "Tue Mar 24" van en levert een ongeldige datum op (NaN-NaN-NaN),
+  // waardoor de hele automatische facturatie stukliep. toIsoDateStr doet het goed.
   let fromDate: Date;
-  if (r.rows[0]?.last_to) {
-    fromDate = new Date(String(r.rows[0].last_to).slice(0, 10) + 'T00:00:00');
+  const laatste = toIsoDateStr(r.rows[0]?.last_to);
+  const start = toIsoDateStr(startDate);
+  if (laatste) {
+    fromDate = new Date(laatste + 'T00:00:00');
     fromDate.setDate(fromDate.getDate() + 1);
-  } else if (startDate) {
-    fromDate = new Date(String(startDate).slice(0, 10) + 'T00:00:00');
+  } else if (start) {
+    fromDate = new Date(start + 'T00:00:00');
   } else {
     return null;
   }
+  if (isNaN(fromDate.getTime())) return null;
   const toDate = new Date(fromDate);
   toDate.setMonth(toDate.getMonth() + intervalMonths);
   toDate.setDate(toDate.getDate() - 1);
@@ -8211,7 +8243,7 @@ async function runAutoInvoiceGeneration(): Promise<{ created: number; details: s
     const pend = await query(`SELECT 1 FROM pending_contract_invoices WHERE contract_customer_id=$1 AND status='pending' LIMIT 1`, [c.id]);
     if (pend.rows.length > 0) continue; // al een openstaand concept voor deze klant
     const interval = parseInt(c.auto_invoice_interval_months) || 3;
-    const startDate = c.auto_invoice_start_date ? String(c.auto_invoice_start_date).slice(0, 10) : null;
+    const startDate = toIsoDateStr(c.auto_invoice_start_date) || null;
     const period = await nextAutoInvoicePeriod(c.id, interval, startDate);
     if (!period) continue;
     const dup = await query(`SELECT 1 FROM contract_invoices WHERE contract_customer_id=$1 AND period_from=$2 LIMIT 1`, [c.id, period.from]);
@@ -8292,12 +8324,19 @@ router.post('/admin/contract-invoices/:id/send-email', requireAuth, async (req: 
   return res.json({ ok: true, email: to, paymentLink: payUrl });
 });
 
-// Dagelijks automatisch concept-facturen genereren
-setInterval(() => {
+// Automatisch concept-facturen genereren: kort na opstarten en daarna dagelijks.
+// Alleen een dag-interval volstaat niet: bij elke herstart begint die teller
+// opnieuw, dus na een deploy werd er in de praktijk nooit gegenereerd.
+function planAutoFacturen() {
   runAutoInvoiceGeneration()
-    .then(r => { if (r.created > 0) console.log(`[Auto-factuur] ${r.created} concept(en) aangemaakt:`, r.details.join(' | ')); })
+    .then(r => {
+      if (r.created > 0) console.log(`[Auto-factuur] ${r.created} concept(en) aangemaakt:`, r.details.join(' | '));
+      else console.log('[Auto-factuur] niets te genereren');
+    })
     .catch(e => console.error('[Auto-factuur] mislukt:', e.message));
-}, 24 * 60 * 60 * 1000);
+}
+setTimeout(planAutoFacturen, 60 * 1000);
+setInterval(planAutoFacturen, 24 * 60 * 60 * 1000);
 
 router.delete('/admin/contract-invoices/:id', requireAuth, async (req: Request, res: Response) => {
   const r = await query('DELETE FROM contract_invoices WHERE id = $1 RETURNING id', [req.params.id]);

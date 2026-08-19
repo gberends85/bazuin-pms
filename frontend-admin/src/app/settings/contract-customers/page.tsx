@@ -199,54 +199,16 @@ export default function ContractCustomersPage() {
                           style={{ ...inputSt, width: 110, fontWeight: 700, letterSpacing: '1px' }} />
                       </label>
                       <div style={{ width: '100%', height: 0 }} />
-                      <span style={{ fontSize: 11, fontWeight: 700, color: '#8b5cf6', width: '100%', marginTop: 4 }}>
-                        Tarieven {new Date().getFullYear()}
-                      </span>
-                      <label style={lblSt}>
-                        Laagseizoen €
-                        <input type="number" step="0.01" min="0" value={c.low_season_rate ?? 0}
-                          onChange={e => update(c.id, 'low_season_rate', e.target.value)}
-                          style={{ ...inputSt, width: 80, fontWeight: 700, textAlign: 'right' }} />
-                        <span style={{ fontSize: 11, color: '#7090b0' }}>/dag (incl. BTW)</span>
-                      </label>
-                      <label style={lblSt}>
-                        Hoogseizoen €
-                        <input type="number" step="0.01" min="0" value={c.high_season_rate ?? 0}
-                          onChange={e => update(c.id, 'high_season_rate', e.target.value)}
-                          style={{ ...inputSt, width: 80, fontWeight: 700, textAlign: 'right' }} />
-                        <span style={{ fontSize: 11, color: '#7090b0' }}>/dag (incl. BTW)</span>
-                      </label>
-                      <label style={lblSt}>
-                        Hoogseizoen van
-                        <input type="text" value={c.high_season_from ?? '04-01'}
-                          onChange={e => update(c.id, 'high_season_from', e.target.value)}
-                          placeholder="04-01"
-                          style={{ ...inputSt, width: 70, textAlign: 'center' }} />
-                        t/m
-                        <input type="text" value={c.high_season_until ?? '09-30'}
-                          onChange={e => update(c.id, 'high_season_until', e.target.value)}
-                          placeholder="09-30"
-                          style={{ ...inputSt, width: 70, textAlign: 'center' }} />
-                        <span style={{ fontSize: 11, color: '#7090b0' }}>(MM-DD)</span>
-                      </label>
-                      <div style={{ width: '100%', height: 0 }} />
-                      <span style={{ fontSize: 11, fontWeight: 700, color: '#8b5cf6', width: '100%', marginTop: 4 }}>
-                        Tarieven {new Date().getFullYear() + 1}
-                      </span>
-                      <label style={lblSt}>
-                        Laagseizoen €
-                        <input type="number" step="0.01" min="0" value={c.next_year_low_season_rate ?? 0}
-                          onChange={e => update(c.id, 'next_year_low_season_rate', e.target.value)}
-                          style={{ ...inputSt, width: 80, textAlign: 'right' }} />
-                        <span style={{ fontSize: 11, color: '#7090b0' }}>/dag (incl. BTW)</span>
-                      </label>
-                      <label style={lblSt}>
-                        Hoogseizoen €
-                        <input type="number" step="0.01" min="0" value={c.next_year_high_season_rate ?? 0}
-                          onChange={e => update(c.id, 'next_year_high_season_rate', e.target.value)}
-                          style={{ ...inputSt, width: 80, textAlign: 'right' }} />
-                        <span style={{ fontSize: 11, color: '#7090b0' }}>/dag (incl. BTW)</span>
-                      </label>
+                      {/* Seizoenstarieven staan centraal onder Instellingen > Tarieven,
+                          zodat ze voor alle seizoensklanten gelijk zijn. */}
+                      <div style={{ width: '100%', background: '#f6f4ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '9px 12px', marginTop: 4 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#8b5cf6', marginBottom: 3 }}>Seizoenstarieven</div>
+                        <div style={{ fontSize: 12, color: '#556070', lineHeight: 1.5 }}>
+                          De tarieven en de seizoensdatums gelden voor alle seizoensklanten en staan onder{' '}
+                          <a href="/settings/algemeen" style={{ color: '#19499e', fontWeight: 600 }}>Instellingen &rsaquo; Algemeen</a>.
+                          Alleen de startdatum hieronder is per klant.
+                        </div>
+                      </div>
                       <div style={{ width: '100%', height: 0 }} />
                       <span style={{ fontSize: 11, fontWeight: 700, color: '#8b5cf6', width: '100%', marginTop: 4 }}>
                         Startdatum seizoen

@@ -413,6 +413,8 @@ export default function ContractInvoicesPage() {
 
   // Invoiced periods (for calendar marking + auto-suggest)
   const [invoicedPeriods, setInvoicedPeriods] = useState<{ invoice_number: string; period_from: string; period_to: string }[]>([]);
+  // Seizoenstarieven staan centraal in de instellingen, niet per klant.
+  const [seizoen, setSeizoen] = useState<Record<string, string>>({});
 
   const entriesRef = useRef<Record<string, number>>({});
   const originalRef = useRef<Record<string, number>>({});
@@ -502,6 +504,8 @@ export default function ContractInvoicesPage() {
     } catch (e: any) { toastError(e.message); }
     finally { setLoadingEv(false); }
   }
+
+  useEffect(() => { api.settings.get().then(setSeizoen).catch(() => {}); }, []);
 
   async function loadInvoices() {
     if (!customerId) return;
@@ -811,8 +815,8 @@ export default function ContractInvoicesPage() {
                 </span>
               ) : isSeasonal ? (
                 <span style={{ fontSize: 13, fontWeight: 700, color: '#8b5cf6' }}>
-                  Hoog: € {parseFloat(selectedCustomer.high_season_rate||0).toFixed(2).replace('.',',')} · Laag: € {parseFloat(selectedCustomer.low_season_rate||0).toFixed(2).replace('.',',')}
-                  <span style={{ fontWeight: 400, color: '#7090b0' }}> ({selectedCustomer.high_season_from||'04-01'}–{selectedCustomer.high_season_until||'09-30'})</span>
+                  Hoog: € {parseFloat(seizoen.season_high_rate||'0').toFixed(2).replace('.',',')} · Laag: € {parseFloat(seizoen.season_low_rate||'0').toFixed(2).replace('.',',')}
+                  <span style={{ fontWeight: 400, color: '#7090b0' }}> ({seizoen.season_high_from||'04-01'}–{seizoen.season_high_until||'09-30'})</span>
                   {selectedCustomer.license_plate && (
                     <span style={{ marginLeft: 10, fontFamily: 'monospace', letterSpacing: '1px', background: '#f4f8fd', padding: '2px 8px', borderRadius: 5, border: '1px solid #aac8e8', fontSize: 12 }}>
                       {selectedCustomer.license_plate}

@@ -7309,6 +7309,19 @@ router.post('/admin/invoices/:soort/:id/payment', requireAuth, async (req: Reque
 // Idempotente kolom-migraties
 (async () => {
   try {
+    // Centrale seizoenstarieven (gelden voor alle contractklanten met
+    // rate_type 'seasonal'). Alleen aanmaken als ze nog niet bestaan.
+    await query(
+      `INSERT INTO settings (key, value, description) VALUES
+         ('season_low_rate',       '0',     'Laagseizoentarief per dag voor contractklanten met seizoenstarief'),
+         ('season_high_rate',      '0',     'Hoogseizoentarief per dag voor contractklanten met seizoenstarief'),
+         ('season_high_from',      '04-01', 'Begin hoogseizoen (MM-DD)'),
+         ('season_high_until',     '09-30', 'Einde hoogseizoen (MM-DD)'),
+         ('season_next_low_rate',  '0',     'Laagseizoentarief volgend jaar (0 = zelfde als dit jaar)'),
+         ('season_next_high_rate', '0',     'Hoogseizoentarief volgend jaar (0 = zelfde als dit jaar)')
+       ON CONFLICT (key) DO NOTHING`
+    );
+
     // Betaalregistratie op facturen: wanneer en hoe er is betaald.
     // contract_invoices heeft paid_at al; invoice_groups nog niets.
     await query(`ALTER TABLE contract_invoices ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30)`);
@@ -7761,6 +7774,30 @@ function calcVehicleStayPrice(
 }
 
 // Helper: safely convert a DB date value (Date object or string) to "YYYY-MM-DD"
+// Seizoenstarief staat centraal in settings, niet per klant. Zo geldt overal
+// hetzelfde tarief en dezelfde seizoensgrens. Alleen season_start_date blijft
+// per klant: dat is het moment waarop díe auto het seizoen instapt.
+async function seizoenInstellingen(): Promise<{
+  laag: number; hoog: number; van: string; tot: string; volgendLaag: number; volgendHoog: number;
+}> {
+  const r = await query(
+    `SELECT key, value FROM settings WHERE key IN
+     ('season_low_rate','season_high_rate','season_high_from','season_high_until',
+      'season_next_low_rate','season_next_high_rate')`
+  );
+  const m: Record<string, string> = {};
+  for (const row of r.rows) m[row.key] = row.value;
+  const g = seizoenGrenzen(m['season_high_from'] ?? '04-01', m['season_high_until'] ?? '09-30');
+  return {
+    laag: parseFloat(m['season_low_rate'] ?? '0') || 0,
+    hoog: parseFloat(m['season_high_rate'] ?? '0') || 0,
+    van: g.van,
+    tot: g.tot,
+    volgendLaag: parseFloat(m['season_next_low_rate'] ?? '0') || 0,
+    volgendHoog: parseFloat(m['season_next_high_rate'] ?? '0') || 0,
+  };
+}
+
 function toIsoDateStr(d: any): string {
   if (!d) return '';
   if (d instanceof Date) return d.toISOString().slice(0, 10);
@@ -7857,18 +7894,19 @@ router.post('/admin/contract-customers/:id/invoice-preview', requireAuth, async 
     const _ssd = toIsoDateStr(customer.season_start_date) || null;
     const effectiveFrom = _ssd && _ssd > from ? _ssd : from;
     const rows = buildSeasonalRows(effectiveFrom, to);
+    const _seiz = await seizoenInstellingen();
     pdf = await generateContractInvoicePdf({
       customer, periodFrom: effectiveFrom, periodTo: to,
       invoiceNumber: 'VOORBEELD',
       rateType: 'seasonal',
       rows,
       dailyRate: 0,
-      lowSeasonRate: parseFloat(customer.low_season_rate) || 0,
-      highSeasonRate: parseFloat(customer.high_season_rate) || 0,
-      highSeasonFrom: customer.high_season_from || '04-01',
-      highSeasonUntil: customer.high_season_until || '09-30',
-      nextYearLowSeasonRate: parseFloat(customer.next_year_low_season_rate) || 0,
-      nextYearHighSeasonRate: parseFloat(customer.next_year_high_season_rate) || 0,
+      lowSeasonRate: _seiz.laag,
+      highSeasonRate: _seiz.hoog,
+      highSeasonFrom: _seiz.van,
+      highSeasonUntil: _seiz.tot,
+      nextYearLowSeasonRate: _seiz.volgendLaag,
+      nextYearHighSeasonRate: _seiz.volgendHoog,
       vatPercentage: parseFloat(customer.vat_percentage),
       evLines: allEvLines,
       invoiceDate: invDate,
@@ -7968,13 +8006,13 @@ router.post('/admin/contract-customers/:id/invoice', requireAuth, async (req: Re
       ev_lines: parsedEvLines,
     };
   } else if (rateType === 'seasonal') {
-    const lowSeasonRate  = parseFloat(customer.low_season_rate)  || 0;
-    const highSeasonRate = parseFloat(customer.high_season_rate) || 0;
-    const _grenzen = seizoenGrenzen(customer.high_season_from, customer.high_season_until);
-    const highSeasonFrom  = _grenzen.van;
-    const highSeasonUntil = _grenzen.tot;
-    const nextYearLowRate  = parseFloat(customer.next_year_low_season_rate)  || 0;
-    const nextYearHighRate = parseFloat(customer.next_year_high_season_rate) || 0;
+    const _seizGen = await seizoenInstellingen();
+    const lowSeasonRate  = _seizGen.laag;
+    const highSeasonRate = _seizGen.hoog;
+    const highSeasonFrom  = _seizGen.van;
+    const highSeasonUntil = _seizGen.tot;
+    const nextYearLowRate  = _seizGen.volgendLaag;
+    const nextYearHighRate = _seizGen.volgendHoog;
     const currentYear = new Date().getFullYear();
 
     // Seasonal: auto-calculate from period, 1 car per day

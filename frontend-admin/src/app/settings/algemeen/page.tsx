@@ -29,6 +29,50 @@ const FIELDS: SettingField[] = [
     type: 'number',
     unit: 'dagen',
   },
+  // Seizoenstarief voor contractklanten: centraal, zodat het voor alle
+  // seizoensklanten gelijk is. Alleen de startdatum blijft per klant.
+  {
+    key: 'season_low_rate',
+    label: 'Laagseizoen — tarief',
+    description: 'Dagtarief buiten het hoogseizoen, voor contractklanten met seizoenstarief. Geldt voor al deze klanten.',
+    type: 'euro',
+    unit: '€ per dag',
+  },
+  {
+    key: 'season_high_rate',
+    label: 'Hoogseizoen — tarief',
+    description: 'Dagtarief binnen het hoogseizoen, voor contractklanten met seizoenstarief.',
+    type: 'euro',
+    unit: '€ per dag',
+  },
+  {
+    key: 'season_high_from',
+    label: 'Hoogseizoen begint op',
+    description: 'Dag waarop het hoogseizoen ingaat, als MM-DD (03-27 = 27 maart).',
+    type: 'text',
+    unit: 'MM-DD',
+  },
+  {
+    key: 'season_high_until',
+    label: 'Hoogseizoen eindigt op',
+    description: 'Laatste dag van het hoogseizoen, als MM-DD (11-01 = 1 november).',
+    type: 'text',
+    unit: 'MM-DD',
+  },
+  {
+    key: 'season_next_low_rate',
+    label: 'Laagseizoen — tarief volgend jaar',
+    description: 'Wordt gebruikt voor dagen in het volgende kalenderjaar. Op 0 laten = zelfde tarief als dit jaar.',
+    type: 'euro',
+    unit: '€ per dag',
+  },
+  {
+    key: 'season_next_high_rate',
+    label: 'Hoogseizoen — tarief volgend jaar',
+    description: 'Wordt gebruikt voor dagen in het volgende kalenderjaar. Op 0 laten = zelfde tarief als dit jaar.',
+    type: 'euro',
+    unit: '€ per dag',
+  },
 ];
 
 export default function AlgemeenSettingsPage() {

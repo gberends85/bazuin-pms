@@ -97,6 +97,13 @@ const transporter = nodemailer.createTransport({
 
 // Whitelist: als EMAIL_WHITELIST is ingesteld, worden mails alleen naar deze adressen verstuurd.
 // Meerdere adressen scheiden met komma. Leeg = iedereen mag ontvangen.
+// Blind kopie op uitgaande facturen, zodat er intern altijd een exemplaar is.
+// Via INVOICE_BCC aan te passen of leeg te laten (dan geen kopie).
+function factuurBcc(): string | undefined {
+  const raw = (process.env.INVOICE_BCC ?? 'info@parkeren-harlingen.nl').trim();
+  return raw ? raw : undefined;
+}
+
 function isWhitelisted(to: string): boolean {
   const raw = process.env.EMAIL_WHITELIST || '';
   if (!raw.trim()) return true; // geen whitelist → alles doorlaten
@@ -130,9 +137,11 @@ export async function sendContractInvoiceEmail(to: string, name: string, invoice
        </p>
        <p style="font-size:13px;color:#555">Of maak het bedrag over op IBAN <strong>NL81 ABNA 0108 0879 48</strong> t.n.v. Autostalling De Bazuin, o.v.v. ${invoiceNumber}.</p>`
     : `<p style="font-size:13px;color:#555">Maak het bedrag over op IBAN <strong>NL81 ABNA 0108 0879 48</strong> t.n.v. Autostalling De Bazuin, o.v.v. ${invoiceNumber}.</p>`;
+  const bcc = factuurBcc();
   await transporter.sendMail({
     from: `"${process.env.EMAIL_FROM_NAME || 'Autostalling De Bazuin'}" <${process.env.EMAIL_FROM_ADDRESS}>`,
     to,
+    ...(bcc ? { bcc } : {}),
     subject: `Factuur ${invoiceNumber} — Autostalling De Bazuin`,
     html: `<p>Beste ${name || 'klant'},</p>
       <p>In de bijlage vindt u factuur <strong>${invoiceNumber}</strong> van Autostalling De Bazuin.</p>
@@ -140,7 +149,7 @@ export async function sendContractInvoiceEmail(to: string, name: string, invoice
       <p>Met vriendelijke groet,<br>Autostalling De Bazuin</p>`,
     attachments: [{ filename: `Factuur-${invoiceNumber}.pdf`, content: pdf, contentType: 'application/pdf' }],
   });
-  console.log(`Contractfactuur ${invoiceNumber} gemaild naar ${to}${payUrl ? ' (incl. iDEAL-link)' : ''}`);
+  console.log(`Contractfactuur ${invoiceNumber} gemaild naar ${to}${bcc ? ` (bcc ${bcc})` : ''}${payUrl ? ' (incl. iDEAL-link)' : ''}`);
 }
 
 export async function sendTemplatedEmail(

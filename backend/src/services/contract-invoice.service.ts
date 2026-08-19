@@ -121,6 +121,29 @@ function groupByWeek(rows: { date: string; car_count: number }[]): WeekGroup[] {
 }
 
 // ── Seizoenscheck ────────────────────────────────────────────
+// Seizoensgrenzen normaliseren naar MM-DD. In de database staat soms "27-3"
+// (dag-maand) en soms "04-01" (maand-dag). Als tekst vergelijken gaat dan mis:
+// "03-24" telt dan als kleiner dan "1-11" en valt onterecht in het hoogseizoen.
+// Het formaat wordt voor het PAAR bepaald: is ergens het eerste getal groter
+// dan 12, dan kan dat alleen een dag zijn en is alles dag-maand.
+export function seizoenGrenzen(van: any, tot: any): { van: string; tot: string } {
+  const deel = (v: any): [number, number] | null => {
+    const m = String(v ?? '').trim().match(/^(\d{1,2})\D+(\d{1,2})$/);
+    return m ? [parseInt(m[1], 10), parseInt(m[2], 10)] : null;
+  };
+  const a = deel(van), b = deel(tot);
+  if (!a || !b) return { van: '04-01', tot: '09-30' };
+  const dagMaand = a[0] > 12 || b[0] > 12;
+  const naar = ([x, y]: [number, number]) => {
+    const maand = dagMaand ? y : x;
+    const dag = dagMaand ? x : y;
+    if (!(maand >= 1 && maand <= 12) || !(dag >= 1 && dag <= 31)) return null;
+    return String(maand).padStart(2, '0') + '-' + String(dag).padStart(2, '0');
+  };
+  const v = naar(a), t = naar(b);
+  return v && t ? { van: v, tot: t } : { van: '04-01', tot: '09-30' };
+}
+
 function isHighSeason(dateIso: string, from: string, until: string): boolean {
   // from/until zijn "MM-DD" bijv. "04-01" / "09-30"
   const mmdd = dateIso.slice(5, 10); // "MM-DD" uit "YYYY-MM-DD"
@@ -200,8 +223,9 @@ export function buildContractInvoiceHtml(input: ContractInvoiceInput): string {
     // Seizoenstarief — gesplitst in hoog/laagseizoen, evt. apart voor volgend jaar
     const lowRate  = input.lowSeasonRate  ?? 0;
     const highRate = input.highSeasonRate ?? 0;
-    const hsFrom   = input.highSeasonFrom  ?? '04-01';
-    const hsUntil  = input.highSeasonUntil ?? '09-30';
+    const _g = seizoenGrenzen(input.highSeasonFrom, input.highSeasonUntil);
+    const hsFrom   = _g.van;
+    const hsUntil  = _g.tot;
     const nyLowRate  = input.nextYearLowSeasonRate  ?? 0;
     const nyHighRate = input.nextYearHighSeasonRate ?? 0;
     const currentYear = new Date().getFullYear();

@@ -24,7 +24,7 @@ import {
 import { syncDoeksenSchedule, syncDoeksenScheduleDays } from '../services/doeksen.service';
 import { generateInvoicePdf, generateInvoiceHtml, generateCreditNoteHtml } from '../services/invoice.service';
 import {
-  generateContractInvoicePdf, generateNextContractInvoiceNumber,
+  generateContractInvoicePdf, generateNextContractInvoiceNumber, seizoenGrenzen,
 } from '../services/contract-invoice.service';
 import { generateInvoiceGroupPdf } from '../services/invoice-group.service';
 import { importUmbracoRecord } from '../services/umbraco-import.service';
@@ -2548,27 +2548,6 @@ router.get('/admin/reports/cash', requireAuth, async (req: Request, res: Respons
 // soms "04-01" (maand-dag). Als tekst vergelijken gaat dan mis: "03-24" telt
 // dan als kleiner dan "1-11" en valt onterecht in het hoogseizoen. Is het
 // eerste getal groter dan 12, dan kan het alleen een dag zijn.
-function seizoenGrenzen(van: any, tot: any): { van: string; tot: string } {
-  const deel = (v: any): [number, number] | null => {
-    const m = String(v ?? '').trim().match(/^(\d{1,2})\D+(\d{1,2})$/);
-    return m ? [parseInt(m[1], 10), parseInt(m[2], 10)] : null;
-  };
-  const a = deel(van), b = deel(tot);
-  if (!a || !b) return { van: '04-01', tot: '09-30' };
-  // Formaat voor het PAAR bepalen: is ergens het eerste getal groter dan 12,
-  // dan kan dat alleen een dag zijn en is alles dag-maand. Anders maand-dag,
-  // zoals de standaardwaarden '04-01' en '09-30'.
-  const dagMaand = a[0] > 12 || b[0] > 12;
-  const naar = ([x, y]: [number, number]) => {
-    const maand = dagMaand ? y : x;
-    const dag = dagMaand ? x : y;
-    if (!(maand >= 1 && maand <= 12) || !(dag >= 1 && dag <= 31)) return null;
-    return String(maand).padStart(2, '0') + '-' + String(dag).padStart(2, '0');
-  };
-  const v = naar(a), t = naar(b);
-  return v && t ? { van: v, tot: t } : { van: '04-01', tot: '09-30' };
-}
-
 // ─── Dagoverzicht — wat er op één dag is gebeurd ────────────────────────────
 // Let op de omzetbasis: paid_at wordt alleen betrouwbaar gezet bij handmatig
 // afgerekende betalingen (pin/contant/tikkie). Bij online betalingen ontbreekt

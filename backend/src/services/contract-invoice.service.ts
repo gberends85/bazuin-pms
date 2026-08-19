@@ -230,23 +230,48 @@ export function buildContractInvoiceHtml(input: ContractInvoiceInput): string {
     const nyHighRate = input.nextYearHighSeasonRate ?? 0;
     const currentYear = new Date().getFullYear();
 
+    // Per dag bepalen in welk seizoen (en welk tarief) hij valt, en daarna
+    // aaneengesloten dagen samenvoegen tot één factuurregel. Zo klopt de periode
+    // per regel — voorheen stond overal de volledige factuurperiode — en staan
+    // de regels vanzelf op chronologische volgorde.
+    const effNyHigh = nyHighRate > 0 ? nyHighRate : highRate;
+    const effNyLow  = nyLowRate  > 0 ? nyLowRate  : lowRate;
+
+    type Stuk = { soort: string; jaar: number; tarief: number; van: string; tot: string; cars: number };
+    const stukken: Stuk[] = [];
+    const gesorteerd = input.rows
+      .map(r => ({ iso: toIsoDate(r.date), cars: r.car_count }))
+      .filter(r => !!r.iso)
+      .sort((a, b) => a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0);
+
+    const volgendeDag = (iso: string) => {
+      const d = new Date(iso + 'T12:00:00');
+      d.setDate(d.getDate() + 1);
+      return d.toISOString().slice(0, 10);
+    };
+
     let highCars = 0, lowCars = 0, nyHighCars = 0, nyLowCars = 0;
-    for (const r of input.rows) {
-      const iso = toIsoDate(r.date);
-      if (!iso) continue;
-      const rowYear = parseInt(iso.slice(0, 4));
-      const inHigh = isHighSeason(iso, hsFrom, hsUntil);
-      if (rowYear > currentYear && (nyLowRate > 0 || nyHighRate > 0)) {
-        if (inHigh) nyHighCars += r.car_count; else nyLowCars += r.car_count;
+    for (const r of gesorteerd) {
+      const jaar = parseInt(r.iso.slice(0, 4));
+      const hoog = isHighSeason(r.iso, hsFrom, hsUntil);
+      const volgendJaar = jaar > currentYear && (nyLowRate > 0 || nyHighRate > 0);
+      const soort = hoog ? 'hoogseizoen' : 'laagseizoen';
+      const tarief = volgendJaar ? (hoog ? effNyHigh : effNyLow) : (hoog ? highRate : lowRate);
+
+      if (volgendJaar) { if (hoog) nyHighCars += r.cars; else nyLowCars += r.cars; }
+      else { if (hoog) highCars += r.cars; else lowCars += r.cars; }
+
+      const laatste = stukken[stukken.length - 1];
+      if (laatste && laatste.soort === soort && laatste.jaar === jaar
+          && laatste.tarief === tarief && volgendeDag(laatste.tot) === r.iso) {
+        laatste.tot = r.iso;
+        laatste.cars += r.cars;
       } else {
-        if (inHigh) highCars += r.car_count; else lowCars += r.car_count;
+        stukken.push({ soort, jaar, tarief, van: r.iso, tot: r.iso, cars: r.cars });
       }
     }
 
-    const effNyHigh = nyHighRate > 0 ? nyHighRate : highRate;
-    const effNyLow  = nyLowRate  > 0 ? nyLowRate  : lowRate;
-    totalIncl = highCars * highRate + lowCars * lowRate
-              + nyHighCars * effNyHigh + nyLowCars * effNyLow;
+    totalIncl = stukken.reduce((s2, st) => s2 + st.cars * st.tarief, 0);
 
     tableHeader = `<tr>
       <th>Omschrijving</th>
@@ -255,42 +280,19 @@ export function buildContractInvoiceHtml(input: ContractInvoiceInput): string {
       <th class="num">Bedrag</th>
     </tr>`;
 
-    const totalDays = highCars + lowCars + nyHighCars + nyLowCars;
     const licensePlate = input.customer?.license_plate ? ` · kenteken <strong style="font-family:monospace;letter-spacing:1px">${esc(input.customer.license_plate)}</strong>` : '';
-    if (totalDays === 0) {
+    if (stukken.length === 0) {
       rowsHtml = `<tr><td colspan="4" style="text-align:center;color:#777;padding:6mm 0">Geen auto-dagen geregistreerd in deze periode</td></tr>`;
     } else {
-      const periodStr = `${fmtDateShort(input.periodFrom)} t/m ${fmtDateShort(input.periodTo)}`;
-      if (highCars > 0) {
+      for (const st of stukken) {
+        const periode = st.van === st.tot
+          ? fmtDateShort(st.van)
+          : `${fmtDateShort(st.van)} t/m ${fmtDateShort(st.tot)}`;
         rowsHtml += `<tr>
-          <td>Parkeren hoogseizoen ${currentYear} · ${esc(periodStr)}${licensePlate}</td>
-          <td class="num">${highCars}×</td>
-          <td class="num">${fmtMoney(highRate)}/dag</td>
-          <td class="num">${fmtMoney(highCars * highRate)}</td>
-        </tr>`;
-      }
-      if (lowCars > 0) {
-        rowsHtml += `<tr>
-          <td>Parkeren laagseizoen ${currentYear} · ${esc(periodStr)}${licensePlate}</td>
-          <td class="num">${lowCars}×</td>
-          <td class="num">${fmtMoney(lowRate)}/dag</td>
-          <td class="num">${fmtMoney(lowCars * lowRate)}</td>
-        </tr>`;
-      }
-      if (nyHighCars > 0) {
-        rowsHtml += `<tr>
-          <td>Parkeren hoogseizoen ${currentYear + 1} · ${esc(periodStr)}${licensePlate}</td>
-          <td class="num">${nyHighCars}×</td>
-          <td class="num">${fmtMoney(effNyHigh)}/dag</td>
-          <td class="num">${fmtMoney(nyHighCars * effNyHigh)}</td>
-        </tr>`;
-      }
-      if (nyLowCars > 0) {
-        rowsHtml += `<tr>
-          <td>Parkeren laagseizoen ${currentYear + 1} · ${esc(periodStr)}${licensePlate}</td>
-          <td class="num">${nyLowCars}×</td>
-          <td class="num">${fmtMoney(effNyLow)}/dag</td>
-          <td class="num">${fmtMoney(nyLowCars * effNyLow)}</td>
+          <td>Parkeren ${st.soort} ${st.jaar} · ${esc(periode)}${licensePlate}</td>
+          <td class="num">${st.cars}×</td>
+          <td class="num">${fmtMoney(st.tarief)}/dag</td>
+          <td class="num">${fmtMoney(st.cars * st.tarief)}</td>
         </tr>`;
       }
     }

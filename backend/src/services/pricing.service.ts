@@ -388,11 +388,17 @@ export async function calculateModificationRefund(
   const anchor0 = new Date(anchorDate); anchor0.setHours(0, 0, 0, 0);
   const daysUntilAnchor = differenceInCalendarDays(anchor0, today);
 
-  // Gemiddeld dagtarief van de HELE reservering = totale parkeerkosten /
-  // parkeerdagen (parkeerdagen = nachten + 1, dezelfde telling als bij de
-  // annuleringsberekening). Dat is het tarief dat per geschrapte dag geldt.
+  // Waarde van een geschrapte dag = wat de klant er daadwerkelijk mee bespaart,
+  // dus het prijsverschil verdeeld over de geschrapte dagen.
+  //
+  // Eerder werd hiervoor het gemiddelde dagtarief van de hele reservering
+  // gebruikt (totaalprijs / parkeerdagen). Omdat het tarief degressief is, ligt
+  // dat gemiddelde hoger dan wat een laatste dag werkelijk kost. Het beleids-
+  // percentage kwam dan boven het prijsverschil uit, waarna de aftopping
+  // hieronder de korting volledig wegpoetste: 90% van EUR 13,33 = EUR 12,00,
+  // afgetopt op EUR 10,00 — de klant kreeg alles terug in plaats van 90%.
   const origDays = Math.max(1, Math.round(originalNights) + 1);
-  const perDay = currentPrice / origDays;
+  const perDay = diff / removed;
 
   // Dag-index 0 = de oorspronkelijke aankomstdag; hoe hoger de index, hoe verder
   // de dag in de toekomst ligt en hoe meer er van terugkomt.

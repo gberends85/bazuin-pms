@@ -14,6 +14,28 @@ function fmtDate(iso: string) {
 function fmtDateTime(iso: string) {
   return new Date(iso).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
+// Kenteken in de vertrouwde gele plaatstijl, zoals elders in het systeem.
+function Kentekenplaat({ plaat }: { plaat: string }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'stretch', borderRadius: 4,
+      border: '2px solid #111', overflow: 'hidden', background: '#f5c518',
+      fontFamily: "'Arial Narrow',Arial,sans-serif", fontWeight: 800,
+      fontSize: 15, letterSpacing: 1.5, whiteSpace: 'nowrap',
+    }}>
+      <span style={{
+        width: 12, background: '#003399', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', color: 'white',
+        fontSize: 6, fontWeight: 700, letterSpacing: 0, lineHeight: 1.1, paddingTop: 1,
+      }}>
+        <span style={{ fontSize: 7 }}>★</span>
+        <span>NL</span>
+      </span>
+      <span style={{ padding: '2px 8px', color: '#111', textTransform: 'uppercase' }}>{plaat}</span>
+    </span>
+  );
+}
+
 function fmtMoney(n: number) {
   return `€ ${n.toFixed(2).replace('.', ',')}`;
 }
@@ -24,6 +46,17 @@ function kortDatum(iso: any) {
   return `${d.getDate()}-${d.getMonth() + 1}`;
 }
 const kortTijd = (t: any) => (t ? String(t).slice(0, 5) : '');
+
+// Is er bij een datumwijziging ook een boottijd gekozen, dan hoort die in
+// dezelfde regel: de afhaaltijd verandert immers mee.
+function boottijdTekst(details: any): string {
+  if (!details?.ferryChanged) return '';
+  const boot = kortTijd(details.newReturnTime);
+  const aankomst = kortTijd(details.newReturnArrivalHarlingen);
+  if (!boot && !aankomst) return '';
+  if (boot && aankomst) return ` met de boot om ${boot}, aankomst om ${aankomst}`;
+  return boot ? ` met de boot om ${boot}` : ` aankomst om ${aankomst}`;
+}
 
 // Eén regel die in één oogopslag zegt wát er verandert, bv.
 // "Afhalen was 31-7 14:30, nu 1-8 16:25".
@@ -43,10 +76,10 @@ function kortOverzicht(m: any, details: any): string {
     const brengen = aankomstGewijzigd
       ? `Brengen was ${kortDatum(m.old_arrival_date)}, nu ${kortDatum(m.new_arrival_date)}. `
       : '';
-    return `${brengen}Afhalen was ${oud}, nu ${nieuw}`;
+    return `${brengen}Afhalen was ${oud}, nu ${nieuw}${boottijdTekst(details)}`;
   }
   if (type === 'checkedin_departure') {
-    return `Afhalen was ${kortDatum(m.old_departure_date)}, nu ${kortDatum(m.new_departure_date)}`;
+    return `Afhalen was ${kortDatum(m.old_departure_date)}, nu ${kortDatum(m.new_departure_date)}${boottijdTekst(details)}`;
   }
   if (type === 'ferry') {
     const regels: string[] = [];
@@ -231,8 +264,23 @@ function ModCardBody({ m, details, priceDiff, isDuringStay }: { m: any; details:
           <div style={{ background: '#e6f1fb', borderRadius: 8, padding: '10px 14px', border: '1.5px solid #1a6bb5' }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: '#1a6bb5', marginBottom: 4 }}>NIEUW VERTREK</div>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#1a6bb5' }}>{fmtDate(m.new_departure_date)}</div>
+            {details?.ferryChanged && (details.newReturnTime || details.newReturnArrivalHarlingen) && (
+              <div style={{ fontSize: 12, color: '#1a6bb5', marginTop: 5, lineHeight: 1.5 }}>
+                {details.newReturnTime && <>Boot {kortTijd(details.newReturnTime)}</>}
+                {details.newReturnArrivalHarlingen && <> · aankomst {kortTijd(details.newReturnArrivalHarlingen)}</>}
+              </div>
+            )}
           </div>
         </div>
+        {/* De klant koos tegelijk een andere terugboot; die hoort hier zichtbaar
+            te zijn, want de afhaaltijd verandert daarmee mee. */}
+        {details?.ferryChanged && details.currentReturnTime && (
+          <div style={{ marginTop: 8, fontSize: 12, color: '#556070' }}>
+            Terugboot was <strong>{kortTijd(details.currentReturnTime)}</strong>
+            {details.newReturnTime && <> , nu <strong style={{ color: '#1a6bb5' }}>{kortTijd(details.newReturnTime)}</strong></>}
+            {details.newReturnArrivalHarlingen && <> (aankomst Harlingen {kortTijd(details.newReturnArrivalHarlingen)})</>}
+          </div>
+        )}
         <div style={{ marginTop: 10, background: '#f4f6f9', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#556070' }}>
           Geen restitutie — prijs blijft ongewijzigd op {fmtMoney(parseFloat(m.old_total_price))}.
         </div>
@@ -421,12 +469,7 @@ export default function ModificationsPage() {
                     display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap',
                     marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid rgba(10,34,64,0.08)',
                   }}>
-                    {m.plates && (
-                      <span style={{
-                        background: '#0a2240', color: 'white', borderRadius: 4,
-                        padding: '3px 10px', fontSize: 13, fontWeight: 800, letterSpacing: 1, whiteSpace: 'nowrap',
-                      }}>{m.plates.split(', ')[0]}</span>
-                    )}
+                    {m.plates && <Kentekenplaat plaat={m.plates.split(', ')[0]} />}
                     <span style={{ fontSize: 16, fontWeight: 700, color: '#0a2240', lineHeight: 1.35 }}>
                       {kortOverzicht(m, details)}
                     </span>

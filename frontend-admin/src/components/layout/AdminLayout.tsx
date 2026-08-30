@@ -16,6 +16,7 @@ const TOP_LINKS = [
 
 const MOD_LABELS: Record<string, string> = {
   dates: 'Datumwijziging',
+  checkedin_departure: 'Vervroegd vertrek',
   ferry: 'Boottijden',
   contact: 'Contactgegevens',
   plate: 'Kenteken',
@@ -26,6 +27,22 @@ function fmtShort(d: any): string {
   return new Date(d).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
 }
 function timeShort(t: any): string { return t ? String(t).slice(0, 5) : ''; }
+// Korte datum zonder jaar: "31-8"
+function dayShort(d: any): string {
+  if (!d) return '';
+  const x = new Date(String(d).slice(0, 10) + 'T12:00:00');
+  return `${x.getDate()}-${x.getMonth() + 1}`;
+}
+// Koos de klant tegelijk een andere terugboot, dan hoort die erbij: de
+// afhaaltijd verandert daarmee mee.
+function boatSuffix(d: any): string {
+  if (!d?.ferryChanged) return '';
+  const boot = timeShort(d.newReturnTime);
+  const aankomst = timeShort(d.newReturnArrivalHarlingen);
+  if (boot && aankomst) return ` met de boot om ${boot}, aankomst om ${aankomst}`;
+  if (boot) return ` met de boot om ${boot}`;
+  return aankomst ? ` aankomst om ${aankomst}` : '';
+}
 
 // Korte samenvatting van de wijziging voor in de popup (vooral boottijden).
 function modSummary(m: any): string | null {
@@ -45,6 +62,17 @@ function modSummary(m: any): string | null {
       legs.push(`Was ${timeShort(d.currentOutboundTime) || '—'} heen → NU ${timeShort(d.newOutboundTime)} veerboot${arr}`);
     }
     return legs.length ? prefix + legs.join('   |   ') : null;
+  }
+
+  if (m.modification_type === 'checkedin_departure') {
+    return `${prefix}Afhalen was ${dayShort(m.old_departure_date)}, nu ${dayShort(m.new_departure_date)}${boatSuffix(d)}`;
+  }
+
+  if (m.modification_type === 'dates') {
+    const heen = dayShort(m.old_arrival_date) !== dayShort(m.new_arrival_date)
+      ? `Brengen was ${dayShort(m.old_arrival_date)}, nu ${dayShort(m.new_arrival_date)}. `
+      : '';
+    return `${prefix}${heen}Afhalen was ${dayShort(m.old_departure_date)}, nu ${dayShort(m.new_departure_date)}${boatSuffix(d)}`;
   }
 
   if (m.modification_type === 'plate') {

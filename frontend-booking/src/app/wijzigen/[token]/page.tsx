@@ -15,6 +15,7 @@ const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY 
 type Step =
   | 'loading' | 'menu'
   | 'dates-form' | 'dates-preview' | 'dates-confirming' | 'dates-pay' | 'dates-done'
+  | 'vehicles' | 'vehicles-pay' | 'vehicles-done'
   | 'dates-pay-preStay' | 'dates-on-site-confirm'
   | 'plate' | 'plate-done'
   | 'charging-pay' | 'charging-done'
@@ -176,6 +177,49 @@ function ChargingPaymentForm({
     } finally {
       setPaying(false);
     }
+  }
+
+  return (
+    <form onSubmit={handlePay}>
+      <PaymentElement options={{ layout: 'tabs' }} />
+      <button type="submit" disabled={paying || !stripe}
+        style={{ width: '100%', marginTop: 20, padding: '13px', borderRadius: 9, background: paying ? '#ccc' : '#19499e', color: 'white', border: 'none', fontSize: 15, fontWeight: 700, cursor: paying ? 'not-allowed' : 'pointer' }}>
+        {paying ? 'Betaling verwerken...' : `Nu betalen — € ${amount.toFixed(2).replace('.', ',')}`}
+      </button>
+    </form>
+  );
+}
+
+// ── Stripe-formulier voor het bijbetalen van een extra auto ──────────────────
+function ExtraAutoBetaalForm({
+  token, plates, amount, onSuccess, onError,
+}: {
+  token: string; plates: string[]; amount: number;
+  onSuccess: () => void; onError: (msg: string) => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [paying, setPaying] = useState(false);
+
+  async function handlePay(e: React.FormEvent) {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setPaying(true);
+    const returnUrl = `${window.location.origin}${window.location.pathname}?pay_type=vehicles`;
+    try {
+      const { error, paymentIntent } = await stripe.confirmPayment({
+        elements, redirect: 'if_required', confirmParams: { return_url: returnUrl },
+      });
+      if (error) { onError(error.message || 'Betaling mislukt'); return; }
+      if (paymentIntent?.status === 'succeeded') {
+        await bookingApi.addVehiclesComplete(token, paymentIntent.id, plates);
+        onSuccess();
+      } else {
+        onError('Betaling niet succesvol. Probeer opnieuw.');
+      }
+    } catch (err: any) {
+      onError(err.message || 'Er is een fout opgetreden');
+    } finally { setPaying(false); }
   }
 
   return (
@@ -371,6 +415,15 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   const [ferrySyncing, setFerrySyncing] = useState(false);
   const [ferryOutboundDest, setFerryOutboundDest] = useState<'terschelling' | 'vlieland'>('terschelling');
   const [ferryReturnDest, setFerryReturnDest] = useState<'terschelling' | 'vlieland'>('terschelling');
+  // Auto's toevoegen of laten vervallen
+  const [vehSelected, setVehSelected] = useState<string[]>([]);
+  const [vehAddPlates, setVehAddPlates] = useState<string[]>([]);
+  const [vehPreview, setVehPreview] = useState<any>(null);
+  const [vehLoading, setVehLoading] = useState(false);
+  const [vehResult, setVehResult] = useState<any>(null);
+  const [vehClientSecret, setVehClientSecret] = useState<string | null>(null);
+  const [vehAmount, setVehAmount] = useState(0);
+
   // Boottijden die bij een datumwijziging worden meegenomen: bij een andere
   // vertrekdatum verandert de terugboot immers bijna altijd mee.
   const [datesFerryOut, setDatesFerryOut] = useState('');
@@ -679,6 +732,51 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plateValues]);
+
+  // ── Auto's toevoegen of laten vervallen ───────────────────────
+  async function vehBerekenVoorbeeld(ids: string[], platen: string[]) {
+    setError('');
+    if (ids.length === 0 && platen.filter(Boolean).length === 0) { setVehPreview(null); return; }
+    setVehLoading(true);
+    try {
+      const p = await bookingApi.vehiclesPreview(params.token, {
+        removeVehicleIds: ids,
+        addCount: platen.filter(Boolean).length,
+      });
+      setVehPreview(p);
+    } catch (e: any) { setError(e.message); setVehPreview(null); }
+    finally { setVehLoading(false); }
+  }
+
+  function vehToggle(id: string) {
+    const next = vehSelected.includes(id) ? vehSelected.filter(x => x !== id) : [...vehSelected, id];
+    setVehSelected(next);
+    vehBerekenVoorbeeld(next, vehAddPlates);
+  }
+
+  async function vehBevestigVervallen() {
+    if (vehSelected.length === 0) return;
+    setVehLoading(true); setError('');
+    try {
+      const r = await bookingApi.removeVehicles(params.token, vehSelected);
+      setVehResult(r);
+      setStep('vehicles-done');
+    } catch (e: any) { setError(e.message); }
+    finally { setVehLoading(false); }
+  }
+
+  async function vehStartBetaling() {
+    const platen = vehAddPlates.map(p => p.trim().toUpperCase()).filter(Boolean);
+    if (platen.length === 0) { setError('Vul het kenteken van de extra auto in.'); return; }
+    setVehLoading(true); setError('');
+    try {
+      const d = await bookingApi.addVehiclesPay(params.token, platen);
+      setVehClientSecret(d.clientSecret);
+      setVehAmount(d.amount);
+      setStep('vehicles-pay');
+    } catch (e: any) { setError(e.message); }
+    finally { setVehLoading(false); }
+  }
 
   // ── Plate handler ─────────────────────────────────────────────
   async function submitPlate() {
@@ -1443,6 +1541,214 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
     );
   }
 
+  // ── Auto's toevoegen of laten vervallen ───────────────────────
+  if (step === 'vehicles') {
+    const autos = res?.vehicles || [];
+    const platenIngevuld = vehAddPlates.map((x: string) => x.trim()).filter(Boolean);
+    const vervalt = vehSelected.length > 0;
+    const erbij = platenIngevuld.length > 0;
+
+    return (
+      <div style={S.page}><div style={S.card}>
+        <Logo />
+        <ReservationInfo />
+        <h3 style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 700, color: '#142440' }}>Auto&apos;s aanpassen</h3>
+        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#556070', lineHeight: 1.55 }}>
+          Laat een auto vervallen of voeg er een toe. Bij het laten vervallen geldt ons
+          annuleringsbeleid voor dat deel van de reservering.
+        </p>
+
+        {error && <ErrorBox msg={error} />}
+
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
+          Uw auto&apos;s
+        </div>
+        {autos.map((v: any) => {
+          const gekozen = vehSelected.includes(v.id);
+          const laatste = autos.length - vehSelected.length <= 1 && !gekozen;
+          return (
+            <div key={v.id} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+              border: gekozen ? '1.5px solid #c83232' : '0.5px solid rgba(10,34,64,0.18)',
+              background: gekozen ? '#fdf3f3' : 'white',
+              borderRadius: 9, padding: '10px 13px', marginBottom: 8,
+            }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: 'monospace', fontWeight: 800, letterSpacing: '1px', color: '#142440' }}>
+                  {v.license_plate || '—'}
+                </div>
+                {(v.rdw_make || v.rdw_model) && (
+                  <div style={{ fontSize: 12, color: '#7090b0' }}>{[v.rdw_make, v.rdw_model].filter(Boolean).join(' ')}</div>
+                )}
+                {gekozen && <div style={{ fontSize: 12, color: '#c83232', fontWeight: 600, marginTop: 2 }}>Vervalt</div>}
+              </div>
+              <button
+                onClick={() => vehToggle(v.id)}
+                disabled={laatste}
+                title={laatste ? 'Er moet minimaal één auto overblijven' : undefined}
+                style={{
+                  padding: '7px 12px', borderRadius: 7, fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap',
+                  cursor: laatste ? 'not-allowed' : 'pointer', opacity: laatste ? 0.4 : 1,
+                  border: gekozen ? '1px solid #19499e' : '1px solid #c83232',
+                  background: 'white', color: gekozen ? '#19499e' : '#c83232',
+                }}>
+                {gekozen ? 'Toch houden' : 'Laten vervallen'}
+              </button>
+            </div>
+          );
+        })}
+
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '0.5px solid rgba(10,34,64,0.1)' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
+            Auto toevoegen
+          </div>
+          {vehAddPlates.map((plaat: string, i: number) => (
+            <input key={i} value={plaat}
+              onChange={e => {
+                const next = [...vehAddPlates];
+                next[i] = e.target.value.toUpperCase();
+                setVehAddPlates(next);
+              }}
+              onBlur={() => vehBerekenVoorbeeld(vehSelected, vehAddPlates)}
+              placeholder="Kenteken, bijv. 12-ABC-3"
+              style={{ ...S.input, marginBottom: 8, fontWeight: 700, letterSpacing: '1px' }} />
+          ))}
+          {(res?.vehicles?.length || 0) + vehAddPlates.length < 5 && (
+            <button onClick={() => setVehAddPlates([...vehAddPlates, ''])}
+              style={{ ...S.btnGhost, width: '100%', marginTop: 0 }}>
+              + Auto toevoegen
+            </button>
+          )}
+        </div>
+
+        {vehLoading && <p style={{ fontSize: 12, color: '#7090b0', marginTop: 12 }}>Berekenen…</p>}
+
+        {vehPreview && !vehLoading && (
+          <div style={{ background: '#f8f9fb', borderRadius: 10, padding: '14px 16px', marginTop: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+              <span style={{ color: '#7090b0' }}>Nu</span>
+              <span>{vehPreview.currentCount} auto&apos;s · € {Number(vehPreview.currentPrice).toFixed(2)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0', borderBottom: '0.5px solid rgba(10,34,64,0.08)' }}>
+              <span style={{ color: '#7090b0' }}>Straks</span>
+              <span style={{ fontWeight: 700 }}>{vehPreview.newCount} auto&apos;s · € {Number(vehPreview.newPrice).toFixed(2)}</span>
+            </div>
+
+            {vehPreview.priceDiff < 0 && (
+              <>
+                <div style={{ fontSize: 12, color: '#556070', marginTop: 10, lineHeight: 1.55 }}>
+                  De prijs daalt met € {Math.abs(vehPreview.priceDiff).toFixed(2)}. Volgens ons annuleringsbeleid
+                  krijgt u daarvan <strong>{vehPreview.refundPct}%</strong> terug
+                  {vehPreview.refundPerDay > 0 ? ` (€ ${Number(vehPreview.refundPerDay).toFixed(2)} per dag)` : ''}:
+                </div>
+                {Array.isArray(vehPreview.refundBreakdown) && vehPreview.refundBreakdown.filter((b: any) => b.amount > 0).map((b: any) => (
+                  <div key={b.pct} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, padding: '2px 0', color: '#3a4a5e' }}>
+                    <span>{b.days} {b.days === 1 ? 'dag' : 'dagen'} × {b.pct}% terug</span>
+                    <span style={{ fontWeight: 600 }}>€ {Number(b.amount).toFixed(2)}</span>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 800, color: '#19499e', borderTop: '0.5px solid rgba(10,34,64,0.12)', marginTop: 6, paddingTop: 6 }}>
+                  <span>Restitutie</span>
+                  <span>€ {Number(vehPreview.refundAmount).toFixed(2)}</span>
+                </div>
+                {vehPreview.paymentStatus !== 'paid' && (
+                  <div style={{ fontSize: 12, color: '#7a5010', marginTop: 8 }}>
+                    Uw reservering is nog niet online betaald — het bedrag wordt verrekend.
+                  </div>
+                )}
+              </>
+            )}
+
+            {vehPreview.priceDiff > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 800, color: '#8a2020', marginTop: 10 }}>
+                <span>Bij te betalen</span>
+                <span>€ {Number(vehPreview.amountDue).toFixed(2)}</span>
+              </div>
+            )}
+
+            {erbij && !vehPreview.availabilityOk && (
+              <div style={{ background: '#fdeaea', borderRadius: 8, padding: '10px 12px', marginTop: 10, fontSize: 12.5, color: '#8a2020' }}>
+                Er {vehPreview.available === 1 ? 'is' : 'zijn'} nog {vehPreview.available}{' '}
+                {vehPreview.available === 1 ? 'plek' : 'plekken'} vrij in deze periode — een extra auto past er niet meer bij.
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ marginTop: 18 }}>
+          {vervalt && !erbij && (
+            <button onClick={vehBevestigVervallen} disabled={vehLoading || !vehPreview}
+              style={{ ...S.btnPrimary, background: vehLoading ? '#ccc' : '#c83232' }}>
+              {vehLoading ? 'Bezig…' : `Auto${vehSelected.length > 1 ? "'s" : ''} laten vervallen`}
+            </button>
+          )}
+          {erbij && !vervalt && (
+            <button onClick={vehStartBetaling} disabled={vehLoading || !vehPreview?.availabilityOk}
+              style={{ ...S.btnPrimary, opacity: (vehLoading || !vehPreview?.availabilityOk) ? 0.5 : 1 }}>
+              {vehLoading ? 'Bezig…' : 'Verder naar betalen'}
+            </button>
+          )}
+          {vervalt && erbij && (
+            <div style={{ background: '#fff8e6', border: '1px solid #e8a020', borderRadius: 8, padding: '10px 13px', fontSize: 12.5, color: '#7a5010' }}>
+              Doe één ding tegelijk: laat eerst een auto vervallen, of voeg er eerst een toe.
+            </div>
+          )}
+        </div>
+
+        <BackBtn onClick={() => { setError(''); setVehSelected([]); setVehAddPlates([]); setVehPreview(null); setStep('menu'); }} />
+      </div></div>
+    );
+  }
+
+  // ── Extra auto betalen ────────────────────────────────────────
+  if (step === 'vehicles-pay' && vehClientSecret) return (
+    <div style={S.page}><div style={S.card}>
+      <Logo />
+      <h3 style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 700, color: '#142440' }}>Extra auto betalen</h3>
+      <p style={{ margin: '0 0 16px', fontSize: 13, color: '#556070' }}>
+        Na betaling is de extra auto direct aan uw reservering toegevoegd.
+      </p>
+      {error && <ErrorBox msg={error} />}
+      <Elements stripe={stripePromise} options={{ clientSecret: vehClientSecret, locale: 'nl' }}>
+        <ExtraAutoBetaalForm
+          token={params.token}
+          plates={vehAddPlates.map((x: string) => x.trim().toUpperCase()).filter(Boolean)}
+          amount={vehAmount}
+          onSuccess={() => { setVehResult({ added: true }); setStep('vehicles-done'); }}
+          onError={(m: string) => setError(m)}
+        />
+      </Elements>
+      <BackBtn onClick={() => { setError(''); setStep('vehicles'); }} />
+    </div></div>
+  );
+
+  // ── Klaar ─────────────────────────────────────────────────────
+  if (step === 'vehicles-done') return (
+    <div style={S.page}><div style={{ ...S.card, textAlign: 'center' }}>
+      <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eaf1fb', color: '#19499e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+        <CheckIcon className="w-7 h-7" />
+      </div>
+      <h2 style={{ margin: '0 0 8px', color: '#142440' }}>Wijziging doorgevoerd</h2>
+      {vehResult?.added ? (
+        <p style={{ color: '#7090b0', fontSize: 14 }}>De extra auto is toegevoegd aan uw reservering. U ontvangt een bevestiging per e-mail.</p>
+      ) : (
+        <>
+          <p style={{ color: '#7090b0', fontSize: 14 }}>
+            {vehResult?.removedPlates?.length === 1 ? 'De auto is' : "De auto's zijn"} uit uw reservering gehaald
+            {vehResult?.removedPlates?.length ? ` (${vehResult.removedPlates.join(', ')})` : ''}.
+            U ontvangt een bevestiging per e-mail.
+          </p>
+          {Number(vehResult?.refundAmount) > 0 && (
+            <div style={{ marginTop: 16, padding: '12px 16px', background: '#f4f6f9', borderRadius: 8, fontSize: 13 }}>
+              Restitutie: <strong>€ {Number(vehResult.refundAmount).toFixed(2)}</strong> ({vehResult.refundPct}%) — binnen 5–10 werkdagen op uw rekening.
+            </div>
+          )}
+        </>
+      )}
+      <button onClick={() => { window.location.href = window.location.pathname; }} style={{ ...S.btnPrimary, marginTop: 20 }}>Terug naar wijzigingen</button>
+    </div></div>
+  );
+
   // ── Plate form ────────────────────────────────────────────────
   if (step === 'plate') return (
     <div style={S.page}><div style={S.card}>
@@ -2046,6 +2352,13 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       sub: duringStay ? 'Niet mogelijk tijdens verblijf' : 'Uw voertuig(en) aanpassen',
       disabled: duringStay,
       onClick: () => { if (!duringStay) { setError(''); setStep('plate'); } },
+    },
+    {
+      icon: <TruckIcon className="w-6 h-6" />,
+      label: "Auto's aanpassen",
+      sub: duringStay ? 'Niet mogelijk tijdens verblijf' : "Een auto toevoegen of laten vervallen",
+      disabled: duringStay,
+      onClick: () => { if (!duringStay) { setError(''); setVehSelected([]); setVehAddPlates([]); setVehPreview(null); setStep('vehicles'); } },
     },
     {
       icon: <UserIcon className="w-6 h-6" />,

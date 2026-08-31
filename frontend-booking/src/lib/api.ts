@@ -122,6 +122,21 @@ export const bookingApi = {
   applyDatesFerry: (token: string, d: { outboundTime?: string | null; returnTime?: string | null; outboundDestination?: string; returnDestination?: string }) =>
     post<{ success: boolean; merged: boolean; arrivalHarlingen: string | null }>(`/reservations/token/${token}/dates-ferry`, d),
 
+  // ── Aantal auto's wijzigen ────────────────────────────────────
+  vehiclesPreview: (token: string, d: { removeVehicleIds?: string[]; addCount?: number }) =>
+    post<any>(`/reservations/token/${token}/vehicles-preview`, d),
+
+  removeVehicles: (token: string, removeVehicleIds: string[]) =>
+    post<{ success: boolean; newCount: number; newPrice: number; refundAmount: number; refundPct: number; removedPlates: string[] }>(
+      `/reservations/token/${token}/remove-vehicles`, { removeVehicleIds }),
+
+  addVehiclesPay: (token: string, plates: string[]) =>
+    post<{ clientSecret: string; amount: number; paymentIntentId: string }>(
+      `/reservations/token/${token}/add-vehicles-pay`, { plates }),
+
+  addVehiclesComplete: (token: string, paymentIntentId: string, plates: string[]) =>
+    post<{ success: boolean }>(`/reservations/token/${token}/add-vehicles-complete`, { paymentIntentId, plates }),
+
   modifyPlate: (token: string, vehicles: { vehicleId: string; oldPlate: string; newPlate: string }[]) =>
     post<any>(`/reservations/token/${token}/modify-plate`, { vehicles }),
 

@@ -4229,6 +4229,287 @@ router.post('/reservations/token/:token/dates-ferry', async (req: Request, res: 
 });
 
 // ============================================================
+// CUSTOMER — AANTAL AUTO'S WIJZIGEN
+// Een auto laten vervallen of er een toevoegen. Bij vervallen geldt het
+// annuleringsbeleid over het bedrag van die auto — net alsof die auto los
+// geannuleerd wordt. Bij toevoegen moet er plek zijn en bijbetaald worden.
+// ============================================================
+
+// Gedeelde voorbereiding: reservering ophalen en de wijziging doorrekenen.
+async function berekenVoertuigWijziging(token: string, verwijderIds: string[], erbij: number) {
+  const res0 = await query(
+    `SELECT r.*, c.email FROM reservations r JOIN customers c ON c.id = r.customer_id
+      WHERE r.cancellation_token = $1`, [token]
+  );
+  if (res0.rows.length === 0) return { fout: 'Niet gevonden', status: 404 } as const;
+  const r = res0.rows[0];
+  if (['cancelled', 'completed'].includes(r.status)) {
+    return { fout: 'Deze reservering kan niet worden gewijzigd', status: 400 } as const;
+  }
+  if (r.status === 'checked_in') {
+    return { fout: 'Uw voertuig is al ingecheckt — neem contact met ons op.', status: 400 } as const;
+  }
+
+  const voertuigen = await query(
+    'SELECT id, license_plate, sort_order FROM vehicles WHERE reservation_id = $1 ORDER BY sort_order',
+    [r.id]
+  );
+  const huidig = voertuigen.rows.length;
+
+  const teVerwijderen = voertuigen.rows.filter((v: any) => verwijderIds.includes(v.id));
+  if (teVerwijderen.length !== verwijderIds.length) {
+    return { fout: 'Een of meer voertuigen horen niet bij deze reservering', status: 400 } as const;
+  }
+  const nieuw = huidig - teVerwijderen.length + erbij;
+  if (nieuw < 1) return { fout: 'Er moet minimaal één auto overblijven. Wilt u alles annuleren, gebruik dan "Reservering annuleren".', status: 400 } as const;
+  if (nieuw > 5) return { fout: 'Maximaal 5 auto\'s per reservering', status: 400 } as const;
+
+  const isoD = (d: any) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
+  const arr = isoD(r.arrival_date), dep = isoD(r.departure_date);
+  const lotId = r.parking_lot_id;
+
+  // Nieuwe parkeerprijs; diensten (laden) en toeslagen blijven zoals ze zijn,
+  // behalve het laden van een auto die vervalt.
+  const prijsInfo = await calculatePrice(new Date(arr), new Date(dep), lotId, nieuw);
+  const evVervalt = teVerwijderen.length
+    ? (await query(
+        `SELECT COALESCE(SUM(ev_price), 0) AS som FROM vehicles WHERE id = ANY($1::uuid[])`,
+        [teVerwijderen.map((v: any) => v.id)]
+      )).rows[0].som
+    : 0;
+  const servicesNieuw = Math.max(0, parseFloat(r.services_total || '0') - parseFloat(evVervalt || '0'));
+  const toeslag = parseFloat(r.on_site_surcharge || '0');
+  // Ter-plekke-toeslag is per auto (5 euro per auto bij het boeken)
+  const toeslagNieuw = huidig > 0 ? Math.round((toeslag / huidig) * nieuw * 100) / 100 : toeslag;
+
+  const huidigePrijs = parseFloat(r.total_price);
+  const nieuwePrijs = Math.round((prijsInfo.totalPrice + servicesNieuw + toeslagNieuw) * 100) / 100;
+  const verschil = Math.round((nieuwePrijs - huidigePrijs) * 100) / 100;
+
+  return {
+    r, voertuigen: voertuigen.rows, teVerwijderen, huidig, nieuw,
+    arr, dep, lotId, huidigePrijs, nieuwePrijs, verschil,
+    servicesNieuw, toeslagNieuw,
+  } as const;
+}
+
+router.post('/reservations/token/:token/vehicles-preview', async (req: Request, res: Response) => {
+  const verwijderIds: string[] = Array.isArray(req.body?.removeVehicleIds) ? req.body.removeVehicleIds : [];
+  const erbij = Math.max(0, Math.min(4, parseInt(String(req.body?.addCount ?? 0), 10) || 0));
+  if (verwijderIds.length === 0 && erbij === 0) {
+    return res.status(400).json({ error: 'Geef aan welke auto vervalt of hoeveel erbij komen' });
+  }
+
+  const b = await berekenVoertuigWijziging(req.params.token, verwijderIds, erbij);
+  if ('fout' in b) return res.status(b.status ?? 400).json({ error: b.fout });
+
+  const isoDate = (d: any) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
+  const anker = new Date(isoDate(b.r.policy_anchor_date || b.r.arrival_date) + 'T12:00:00');
+
+  let restitutie = 0, restitutiePct = 0, uitsplitsing: any[] = [], perDag = 0;
+  let bijbetalen = 0;
+  let plekVrij = true, beschikbaar = 0;
+
+  if (b.verschil < 0) {
+    // Auto vervalt: annuleringsbeleid over het bedrag van die auto, net als bij
+    // het annuleren van een losse boeking voor dezelfde datums.
+    const pol = await calculatePerDayRefund(anker, resNights(b.r), Math.abs(b.verschil));
+    restitutie = pol.refundAmount;
+    restitutiePct = pol.refundPct;
+    uitsplitsing = pol.breakdown;
+    perDag = pol.perDay;
+  } else if (b.verschil > 0) {
+    bijbetalen = b.verschil;
+  }
+
+  if (erbij > 0) {
+    const { minAvailable } = await checkNightlyAvailability(b.lotId, b.arr, b.dep, b.r.id);
+    beschikbaar = minAvailable;
+    plekVrij = minAvailable >= erbij;
+  }
+
+  return res.json({
+    currentCount: b.huidig,
+    newCount: b.nieuw,
+    currentPrice: b.huidigePrijs,
+    newPrice: b.nieuwePrijs,
+    priceDiff: b.verschil,
+    refundAmount: restitutie,
+    refundPct: restitutiePct,
+    refundBreakdown: uitsplitsing,
+    refundPerDay: perDag,
+    amountDue: bijbetalen,
+    availabilityOk: plekVrij,
+    available: beschikbaar,
+    removing: b.teVerwijderen.map((v: any) => ({ id: v.id, licensePlate: v.license_plate })),
+    paymentStatus: b.r.payment_status,
+  });
+});
+
+// Auto('s) laten vervallen — direct doorvoeren met restitutie volgens beleid
+router.post('/reservations/token/:token/remove-vehicles', async (req: Request, res: Response) => {
+  const verwijderIds: string[] = Array.isArray(req.body?.removeVehicleIds) ? req.body.removeVehicleIds : [];
+  if (verwijderIds.length === 0) return res.status(400).json({ error: 'Geen auto opgegeven' });
+
+  const b = await berekenVoertuigWijziging(req.params.token, verwijderIds, 0);
+  if ('fout' in b) return res.status(b.status ?? 400).json({ error: b.fout });
+  if (b.verschil >= 0) return res.status(400).json({ error: 'Deze wijziging levert geen lagere prijs op' });
+
+  const isoDate = (d: any) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
+  const anker = new Date(isoDate(b.r.policy_anchor_date || b.r.arrival_date) + 'T12:00:00');
+  const pol = await calculatePerDayRefund(anker, resNights(b.r), Math.abs(b.verschil));
+
+  const vervallenPlaten = b.teVerwijderen.map((v: any) => v.license_plate).filter(Boolean);
+
+  // Voertuigen verwijderen en de volgorde weer netjes hernummeren
+  await query('DELETE FROM vehicles WHERE id = ANY($1::uuid[])', [verwijderIds]);
+  const rest = await query('SELECT id FROM vehicles WHERE reservation_id = $1 ORDER BY sort_order', [b.r.id]);
+  for (let i = 0; i < rest.rows.length; i++) {
+    await query('UPDATE vehicles SET sort_order = $1 WHERE id = $2', [i, rest.rows[i].id]);
+  }
+
+  await query(
+    `UPDATE reservations
+        SET total_price = $1, base_price = $2, season_surcharge_amount = $3,
+            services_total = $4, on_site_surcharge = $5, updated_at = NOW()
+      WHERE id = $6`,
+    [b.nieuwePrijs, b.nieuwePrijs - b.servicesNieuw - b.toeslagNieuw, 0,
+     b.servicesNieuw, b.toeslagNieuw, b.r.id]
+  );
+
+  // Restitutie alleen als er daadwerkelijk online is betaald
+  let stripeRefundId: string | null = null;
+  let uitbetaald = 0;
+  if (pol.refundAmount > 0 && b.r.stripe_payment_intent_id && b.r.payment_status === 'paid') {
+    const alRetour = parseFloat(b.r.refund_amount || '0');
+    const maxRetour = Math.max(0, b.huidigePrijs - alRetour);
+    const veilig = Math.min(pol.refundAmount, maxRetour);
+    if (veilig > 0) {
+      try {
+        const rr = await processRefund(b.r.stripe_payment_intent_id, veilig, 'Auto verwijderd door klant');
+        stripeRefundId = rr.refundId;
+        uitbetaald = veilig;
+        await query('UPDATE reservations SET refund_amount = COALESCE(refund_amount,0) + $1 WHERE id = $2', [veilig, b.r.id]);
+      } catch (e: any) {
+        console.error('Restitutie bij verwijderen auto mislukt:', e.message);
+      }
+    }
+  }
+
+  await query(
+    `INSERT INTO reservation_modifications
+       (reservation_id, modified_by, old_arrival_date, old_departure_date, new_arrival_date, new_departure_date,
+        old_total_price, new_total_price, price_difference, modification_fee, stripe_refund_id,
+        status, modification_type, cancellation_refund_pct, change_details)
+     VALUES ($1,'customer',$2,$3,$2,$3,$4,$5,$6,0,$7,'completed','vehicles',$8,$9)`,
+    [b.r.id, b.r.arrival_date, b.r.departure_date, b.huidigePrijs, b.nieuwePrijs, b.verschil,
+     stripeRefundId, pol.refundPct,
+     JSON.stringify({ removedPlates: vervallenPlaten, oldCount: b.huidig, newCount: b.nieuw, refundAmount: uitbetaald })]
+  );
+
+  sendModificationConfirmation(b.r.id).catch(err =>
+    console.error('Bevestigingsmail na verwijderen auto mislukt:', err));
+
+  return res.json({
+    success: true, newCount: b.nieuw, newPrice: b.nieuwePrijs,
+    refundAmount: uitbetaald, refundPct: pol.refundPct, removedPlates: vervallenPlaten,
+  });
+});
+
+// Auto('s) toevoegen — bijbetaling via Stripe
+router.post('/reservations/token/:token/add-vehicles-pay', async (req: Request, res: Response) => {
+  const platen: string[] = Array.isArray(req.body?.plates) ? req.body.plates.filter(Boolean) : [];
+  if (platen.length === 0) return res.status(400).json({ error: 'Geef het kenteken van de extra auto op' });
+
+  const b = await berekenVoertuigWijziging(req.params.token, [], platen.length);
+  if ('fout' in b) return res.status(b.status ?? 400).json({ error: b.fout });
+  if (b.verschil <= 0) return res.status(400).json({ error: 'Geen bijbetaling nodig' });
+
+  const { minAvailable } = await checkNightlyAvailability(b.lotId, b.arr, b.dep, b.r.id);
+  if (minAvailable < platen.length) {
+    return res.status(409).json({ error: `Er ${minAvailable === 1 ? 'is' : 'zijn'} nog ${minAvailable} ${minAvailable === 1 ? 'plek' : 'plekken'} vrij in deze periode.` });
+  }
+
+  const Stripe = (await import('stripe')).default;
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
+  const intent = await stripe.paymentIntents.create({
+    amount: Math.round(b.verschil * 100),
+    currency: 'eur',
+    metadata: { reservationId: b.r.id, type: 'add_vehicles', plates: platen.join(',') },
+  });
+
+  return res.json({ clientSecret: intent.client_secret, amount: b.verschil, paymentIntentId: intent.id });
+});
+
+// Auto('s) toevoegen — afronden na geslaagde betaling
+router.post('/reservations/token/:token/add-vehicles-complete', async (req: Request, res: Response) => {
+  const { paymentIntentId } = req.body || {};
+  const platen: string[] = Array.isArray(req.body?.plates) ? req.body.plates.filter(Boolean) : [];
+  if (!paymentIntentId || platen.length === 0) return res.status(400).json({ error: 'Onvolledige gegevens' });
+
+  const b = await berekenVoertuigWijziging(req.params.token, [], platen.length);
+  if ('fout' in b) return res.status(b.status ?? 400).json({ error: b.fout });
+
+  const Stripe = (await import('stripe')).default;
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
+  const intent = await stripe.paymentIntents.retrieve(String(paymentIntentId));
+  if (intent.status !== 'succeeded') return res.status(400).json({ error: 'Betaling is niet afgerond' });
+
+  // Niet twee keer verwerken bij een dubbele aanroep
+  const bestaat = await query(
+    `SELECT 1 FROM reservation_modifications
+      WHERE reservation_id = $1 AND modification_type = 'vehicles'
+        AND change_details::jsonb->>'paymentIntentId' = $2 LIMIT 1`,
+    [b.r.id, String(paymentIntentId)]
+  );
+  if (bestaat.rows.length > 0) return res.json({ success: true, alreadyDone: true });
+
+  let volgorde = b.huidig;
+  for (const plaat of platen) {
+    const genormaliseerd = normalizePlate(plaat) || '';
+    const ins = await query(
+      `INSERT INTO vehicles (reservation_id, license_plate, sort_order) VALUES ($1,$2,$3) RETURNING id`,
+      [b.r.id, genormaliseerd, volgorde++]
+    );
+    const vid = ins.rows[0].id;
+    if (genormaliseerd) {
+      lookupRdw(genormaliseerd).then(info => {
+        if (info) {
+          query(
+            `UPDATE vehicles SET rdw_make=$1, rdw_model=$2, rdw_color=$3, rdw_fuel_type=$4, rdw_year=$5, rdw_fetched_at=NOW() WHERE id=$6`,
+            [info.make, info.model, info.color, info.fuelType, info.year, vid]
+          ).catch(console.error);
+        }
+      }).catch(console.error);
+    }
+  }
+
+  await query(
+    `UPDATE reservations
+        SET total_price = $1, base_price = $2, services_total = $3, on_site_surcharge = $4,
+            prepaid_amount = COALESCE(prepaid_amount,0) + $5, updated_at = NOW()
+      WHERE id = $6`,
+    [b.nieuwePrijs, b.nieuwePrijs - b.servicesNieuw - b.toeslagNieuw,
+     b.servicesNieuw, b.toeslagNieuw, b.verschil, b.r.id]
+  );
+
+  await query(
+    `INSERT INTO reservation_modifications
+       (reservation_id, modified_by, old_arrival_date, old_departure_date, new_arrival_date, new_departure_date,
+        old_total_price, new_total_price, price_difference, modification_fee,
+        status, modification_type, change_details)
+     VALUES ($1,'customer',$2,$3,$2,$3,$4,$5,$6,0,'completed','vehicles',$7)`,
+    [b.r.id, b.r.arrival_date, b.r.departure_date, b.huidigePrijs, b.nieuwePrijs, b.verschil,
+     JSON.stringify({ addedPlates: platen, oldCount: b.huidig, newCount: b.nieuw, paymentIntentId: String(paymentIntentId) })]
+  );
+
+  sendModificationConfirmation(b.r.id).catch(err =>
+    console.error('Bevestigingsmail na toevoegen auto mislukt:', err));
+
+  return res.json({ success: true, newCount: b.nieuw, newPrice: b.nieuwePrijs });
+});
+
+// ============================================================
 // CUSTOMER — MODIFY PLATE
 // ============================================================
 router.post('/reservations/token/:token/modify-plate', async (req: Request, res: Response) => {

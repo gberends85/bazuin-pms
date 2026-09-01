@@ -144,8 +144,15 @@ export async function lookupRdw(rawPlate: string): Promise<VehicleInfo | null> {
           const chargeable = range > 0 || isOvcHev || externalRange > 0;
 
           if (chargeable) {
+            // Het WLTP-verbruik wordt aan het stopcontact gemeten en bevat dus de
+            // laadverliezen. Bereik x dat verbruik levert daarom niet de accu op
+            // maar de energie die er vanaf het net in gaat -- zo'n 20% te hoog.
+            // Een Volvo XC40 (415 km x 240 Wh/km) kwam zo op 99,6 kWh uit terwijl
+            // de accu bruto 78 kWh is. De oudere velden meten wel vanaf de accu;
+            // daar corrigeren we niet.
+            const netVerlies = wltpConsumption > 0 ? 0.8 : 1;
             const batteryCapacity = range > 0
-              ? Math.round((range * consumption / 1000) * 10) / 10
+              ? Math.round((range * consumption * netVerlies / 1000) * 10) / 10
               : 8; // extern oplaadbaar maar geen bereik bekend → veilige standaard
             const realisticKmPerKwh = Math.round((1000 / consumption) * 0.85 * 10) / 10;
             const isBev = !hasCombustion; // BEV = geen verbrandingsmotor; anders PHEV

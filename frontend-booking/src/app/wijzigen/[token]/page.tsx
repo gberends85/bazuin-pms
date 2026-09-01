@@ -16,6 +16,7 @@ type Step =
   | 'loading' | 'menu'
   | 'dates-form' | 'dates-preview' | 'dates-confirming' | 'dates-pay' | 'dates-done'
   | 'vehicles' | 'vehicles-pay' | 'vehicles-done'
+  | 'pay-open' | 'pay-open-done'
   | 'dates-pay-preStay' | 'dates-on-site-confirm'
   | 'plate' | 'plate-done'
   | 'charging-pay' | 'charging-done'
@@ -233,6 +234,48 @@ function ExtraAutoBetaalForm({
   );
 }
 
+// ── Stripe-formulier voor het alsnog betalen van het openstaande bedrag ──────
+function OpenstaandBetaalForm({
+  token, amount, onSuccess, onError,
+}: {
+  token: string; amount: number; onSuccess: () => void; onError: (msg: string) => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [paying, setPaying] = useState(false);
+
+  async function handlePay(e: React.FormEvent) {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setPaying(true);
+    const returnUrl = `${window.location.origin}${window.location.pathname}?pay_type=outstanding`;
+    try {
+      const { error, paymentIntent } = await stripe.confirmPayment({
+        elements, redirect: 'if_required', confirmParams: { return_url: returnUrl },
+      });
+      if (error) { onError(error.message || 'Betaling mislukt'); return; }
+      if (paymentIntent?.status === 'succeeded') {
+        await bookingApi.payOutstandingComplete(token, paymentIntent.id);
+        onSuccess();
+      } else {
+        onError('Betaling niet succesvol. Probeer opnieuw.');
+      }
+    } catch (err: any) {
+      onError(err.message || 'Er is een fout opgetreden');
+    } finally { setPaying(false); }
+  }
+
+  return (
+    <form onSubmit={handlePay}>
+      <PaymentElement options={{ layout: 'tabs' }} />
+      <button type="submit" disabled={paying || !stripe}
+        style={{ width: '100%', marginTop: 20, padding: '13px', borderRadius: 9, background: paying ? '#ccc' : '#19499e', color: 'white', border: 'none', fontSize: 15, fontWeight: 700, cursor: paying ? 'not-allowed' : 'pointer' }}>
+        {paying ? 'Betaling verwerken...' : `Nu betalen — € ${amount.toFixed(2).replace('.', ',')}`}
+      </button>
+    </form>
+  );
+}
+
 // Eilandkeuze op moduleniveau, zodat die ook buiten de boottijden-stap bruikbaar
 // is (de variant binnen die stap staat lokaal en is daar niet zichtbaar).
 function EilandKeuze({ value, onChange }: { value: 'terschelling' | 'vlieland'; onChange: (d: 'terschelling' | 'vlieland') => void }) {
@@ -415,6 +458,11 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   const [ferrySyncing, setFerrySyncing] = useState(false);
   const [ferryOutboundDest, setFerryOutboundDest] = useState<'terschelling' | 'vlieland'>('terschelling');
   const [ferryReturnDest, setFerryReturnDest] = useState<'terschelling' | 'vlieland'>('terschelling');
+  // Openstaand bedrag alsnog online betalen
+  const [openInfo, setOpenInfo] = useState<any>(null);
+  const [openSecret, setOpenSecret] = useState<string | null>(null);
+  const [openLoading, setOpenLoading] = useState(false);
+
   // Auto's toevoegen of laten vervallen
   const [vehSelected, setVehSelected] = useState<string[]>([]);
   const [vehAddPlates, setVehAddPlates] = useState<string[]>([]);
@@ -738,6 +786,19 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plateValues]);
+
+  // ── Openstaand bedrag alsnog online betalen ───────────────────
+  async function startOpenBetaling() {
+    setError(''); setOpenLoading(true);
+    try {
+      const info = await bookingApi.getOutstanding(params.token);
+      setOpenInfo(info);
+      const d = await bookingApi.payOutstanding(params.token);
+      setOpenSecret(d.clientSecret);
+      setStep('pay-open');
+    } catch (e: any) { setError(e.message); }
+    finally { setOpenLoading(false); }
+  }
 
   // ── Auto's toevoegen of laten vervallen ───────────────────────
   async function vehBerekenVoorbeeld(ids: string[], platen: string[]) {
@@ -1546,6 +1607,66 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       </div></div>
     );
   }
+
+  // ── Openstaand bedrag alsnog online betalen ───────────────────
+  if (step === 'pay-open' && openSecret && openInfo) return (
+    <div style={S.page}><div style={S.card}>
+      <Logo />
+      <ReservationInfo />
+      <h3 style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 700, color: '#142440' }}>Nu online betalen</h3>
+
+      <div style={{ background: '#f8f9fb', borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
+        {[
+          ['Parkeren', openInfo.parking],
+          ...(openInfo.services > 0 ? [["Extra's (o.a. laden)", openInfo.services]] : []),
+          ...(openInfo.onSiteSurcharge > 0 ? [['Toeslag ter plekke betalen', openInfo.onSiteSurcharge]] : []),
+          ...(openInfo.prepaid > 0 ? [['Al betaald', -openInfo.prepaid]] : []),
+        ].map(([k, v]: any) => (
+          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13, borderBottom: '0.5px solid rgba(10,34,64,0.06)' }}>
+            <span style={{ color: '#7090b0' }}>{k}</span>
+            <span>€ {Number(v).toFixed(2)}</span>
+          </div>
+        ))}
+        <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 9, marginTop: 4, fontSize: 15, fontWeight: 800 }}>
+          <span>Te betalen</span>
+          <span>€ {Number(openInfo.amount).toFixed(2)}</span>
+        </div>
+      </div>
+
+      {openInfo.onSiteSurcharge > 0 && (
+        <div style={{ background: '#fff8e6', border: '1px solid #e8a020', borderRadius: 9, padding: '11px 13px', marginBottom: 14, fontSize: 12.5, color: '#7a5010', lineHeight: 1.55 }}>
+          U had gekozen voor betalen ter plekke. De toeslag van
+          € {Number(openInfo.onSiteSurcharge).toFixed(2)} blijft daarom van toepassing.
+          Na betaling gelden de gewone annuleringsvoorwaarden.
+        </div>
+      )}
+
+      {error && <ErrorBox msg={error} />}
+
+      <Elements stripe={stripePromise} options={{ clientSecret: openSecret, locale: 'nl' }}>
+        <OpenstaandBetaalForm
+          token={params.token}
+          amount={Number(openInfo.amount)}
+          onSuccess={() => setStep('pay-open-done')}
+          onError={(m: string) => setError(m)}
+        />
+      </Elements>
+      <BackBtn onClick={() => { setError(''); setStep('menu'); }} />
+    </div></div>
+  );
+
+  if (step === 'pay-open-done') return (
+    <div style={S.page}><div style={{ ...S.card, textAlign: 'center' }}>
+      <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#eaf1fb', color: '#19499e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+        <CheckIcon className="w-7 h-7" />
+      </div>
+      <h2 style={{ margin: '0 0 8px', color: '#142440' }}>Betaling ontvangen</h2>
+      <p style={{ color: '#7090b0', fontSize: 14 }}>
+        Uw reservering is volledig betaald. U ontvangt een bevestiging per e-mail.
+      </p>
+      <button onClick={() => { window.location.href = window.location.pathname; }} style={{ ...S.btnPrimary, marginTop: 20 }}>Terug naar wijzigingen</button>
+    </div></div>
+  );
 
   // ── Auto's toevoegen of laten vervallen ───────────────────────
   if (step === 'vehicles') {
@@ -2381,6 +2502,14 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       disabled: duringStay,
       onClick: () => { if (!duringStay) { setError(''); setStep('plate'); } },
     },
+    ...(res?.payment_status === 'pending' || res?.payment_status === 'on_site' ? [{
+      icon: <CreditCardIcon className="w-6 h-6" />,
+      label: 'Nu online betalen',
+      sub: res?.payment_method === 'on_site'
+        ? 'Alsnog vooraf betalen — de toeslag ter plekke blijft gelden'
+        : 'Uw reservering staat nog open',
+      onClick: () => { setError(''); startOpenBetaling(); },
+    }] : []),
     {
       icon: <TruckIcon className="w-6 h-6" />,
       label: "Auto's aanpassen",

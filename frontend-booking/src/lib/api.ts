@@ -122,6 +122,18 @@ export const bookingApi = {
   applyDatesFerry: (token: string, d: { outboundTime?: string | null; returnTime?: string | null; outboundDestination?: string; returnDestination?: string }) =>
     post<{ success: boolean; merged: boolean; arrivalHarlingen: string | null }>(`/reservations/token/${token}/dates-ferry`, d),
 
+  // ── Openstaand bedrag alsnog online betalen ───────────────────
+  getOutstanding: (token: string) =>
+    get<{ amount: number; parking: number; services: number; onSiteSurcharge: number; prepaid: number; paymentMethod: string | null }>(
+      `/reservations/token/${token}/outstanding`),
+
+  payOutstanding: (token: string) =>
+    post<{ clientSecret: string; amount: number; paymentIntentId: string }>(
+      `/reservations/token/${token}/pay-outstanding`, {}),
+
+  payOutstandingComplete: (token: string, paymentIntentId: string) =>
+    post<{ success: boolean }>(`/reservations/token/${token}/pay-outstanding-complete`, { paymentIntentId }),
+
   // ── Aantal auto's wijzigen ────────────────────────────────────
   vehiclesPreview: (token: string, d: { removeVehicleIds?: string[]; addCount?: number }) =>
     post<any>(`/reservations/token/${token}/vehicles-preview`, d),

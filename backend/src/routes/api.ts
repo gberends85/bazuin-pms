@@ -4229,6 +4229,115 @@ router.post('/reservations/token/:token/dates-ferry', async (req: Request, res: 
 });
 
 // ============================================================
+// CUSTOMER — OPENSTAAND BEDRAG ALSNOG ONLINE BETALEN
+// Ook wie bewust "ter plekke betalen" koos kan alsnog online afrekenen. De
+// ter-plekke-toeslag vervalt daarbij NIET: anders zou je zonder risico kunnen
+// reserveren en vlak voor aankomst alsnog goedkoper online betalen, of gratis
+// annuleren omdat er nog niets betaald is.
+// ============================================================
+async function openstaandBedrag(token: string) {
+  const res0 = await query(
+    `SELECT r.*, c.email FROM reservations r JOIN customers c ON c.id = r.customer_id
+      WHERE r.cancellation_token = $1`, [token]
+  );
+  if (res0.rows.length === 0) return { fout: 'Niet gevonden', status: 404 } as const;
+  const r = res0.rows[0];
+  if (['cancelled', 'completed'].includes(r.status)) {
+    return { fout: 'Deze reservering kan niet meer online betaald worden', status: 400 } as const;
+  }
+  if (r.payment_status === 'paid') {
+    return { fout: 'Deze reservering is al betaald', status: 400 } as const;
+  }
+  const totaal = parseFloat(r.total_price || '0');
+  const vooruit = parseFloat(r.prepaid_amount || '0');
+  const open = Math.round((totaal - vooruit) * 100) / 100;
+  if (open <= 0) return { fout: 'Er staat niets meer open', status: 400 } as const;
+  return {
+    r, open,
+    toeslag: parseFloat(r.on_site_surcharge || '0'),
+    diensten: parseFloat(r.services_total || '0'),
+    parkeren: Math.round((totaal - parseFloat(r.on_site_surcharge || '0') - parseFloat(r.services_total || '0')) * 100) / 100,
+    vooruit,
+  } as const;
+}
+
+router.get('/reservations/token/:token/outstanding', async (req: Request, res: Response) => {
+  const b = await openstaandBedrag(req.params.token);
+  if ('fout' in b) return res.status(b.status ?? 400).json({ error: b.fout });
+  return res.json({
+    amount: b.open,
+    parking: b.parkeren,
+    services: b.diensten,
+    onSiteSurcharge: b.toeslag,
+    prepaid: b.vooruit,
+    paymentMethod: b.r.payment_method,
+  });
+});
+
+router.post('/reservations/token/:token/pay-outstanding', async (req: Request, res: Response) => {
+  const b = await openstaandBedrag(req.params.token);
+  if ('fout' in b) return res.status(b.status ?? 400).json({ error: b.fout });
+
+  const Stripe = (await import('stripe')).default;
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
+  const intent = await stripe.paymentIntents.create({
+    amount: Math.round(b.open * 100),
+    currency: 'eur',
+    metadata: { reservationId: b.r.id, type: 'outstanding_payment' },
+  });
+  return res.json({ clientSecret: intent.client_secret, amount: b.open, paymentIntentId: intent.id });
+});
+
+router.post('/reservations/token/:token/pay-outstanding-complete', async (req: Request, res: Response) => {
+  const { paymentIntentId } = req.body || {};
+  if (!paymentIntentId) return res.status(400).json({ error: 'paymentIntentId is verplicht' });
+
+  const result = await query('SELECT * FROM reservations WHERE cancellation_token = $1', [req.params.token]);
+  if (result.rows.length === 0) return res.status(404).json({ error: 'Niet gevonden' });
+  const r = result.rows[0];
+
+  const Stripe = (await import('stripe')).default;
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
+  const intent = await stripe.paymentIntents.retrieve(String(paymentIntentId), { expand: ['latest_charge'] });
+  if (intent.status !== 'succeeded' || intent.metadata?.reservationId !== r.id || intent.metadata?.type !== 'outstanding_payment') {
+    return res.status(400).json({ error: 'Betaling hoort niet bij deze reservering' });
+  }
+  if (r.payment_status === 'paid') return res.json({ success: true, alreadyDone: true });
+
+  const ch: any = (intent as any).latest_charge;
+  const soort = ch?.payment_method_details?.type;
+  const toegestaan = ['ideal', 'card', 'paypal', 'sepa', 'bancontact'];
+  const methode = toegestaan.includes(soort) ? soort : 'ideal';
+
+  await query(
+    `UPDATE reservations
+        SET payment_status = 'paid',
+            payment_method = $1,
+            paid_at = COALESCE(paid_at, NOW()),
+            prepaid_amount = COALESCE(prepaid_amount, 0) + $2,
+            stripe_payment_intent_id = COALESCE(stripe_payment_intent_id, $3),
+            updated_at = NOW()
+      WHERE id = $4`,
+    [methode, intent.amount / 100, String(paymentIntentId), r.id]
+  );
+
+  await query(
+    `INSERT INTO reservation_modifications
+       (reservation_id, modified_by, old_arrival_date, old_departure_date, new_arrival_date, new_departure_date,
+        old_total_price, new_total_price, price_difference, modification_fee,
+        status, modification_type, change_details)
+     VALUES ($1,'customer',$2,$3,$2,$3,$4,$4,0,0,'completed','payment',$5)`,
+    [r.id, r.arrival_date, r.departure_date, parseFloat(r.total_price),
+     JSON.stringify({ paidOnline: intent.amount / 100, method: methode, wasOnSite: r.payment_method === 'on_site' })]
+  );
+
+  sendModificationConfirmation(r.id).catch(err =>
+    console.error('Bevestigingsmail na online betaling mislukt:', err));
+
+  return res.json({ success: true, amount: intent.amount / 100, method: methode });
+});
+
+// ============================================================
 // CUSTOMER — AANTAL AUTO'S WIJZIGEN
 // Een auto laten vervallen of er een toevoegen. Bij vervallen geldt het
 // annuleringsbeleid over het bedrag van die auto — net alsof die auto los

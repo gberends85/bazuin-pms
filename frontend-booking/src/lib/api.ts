@@ -184,8 +184,9 @@ export const bookingApi = {
     post<{ success: boolean; amount: number }>(`/reservations/token/${token}/modify-dates-on-site`, { newArrivalDate, newDepartureDate, overbooked: !!overbooked }),
 
   // ── Laden toevoegen/aanpassen (via token) ─────────────────────
-  modifyChargingStripePay: (token: string, vehicles: { vehicleId: string; evServiceId: string | null; evKwh: number | null; newPlate?: string }[]) =>
-    post<{ clientSecret: string; amount: number }>(`/reservations/token/${token}/modify-charging-stripe-pay`, { vehicles }),
+  modifyChargingStripePay: (token: string, vehicles: { vehicleId: string; evServiceId: string | null; evKwh: number | null; newPlate?: string }[], includeParking?: boolean) =>
+    post<{ clientSecret: string; amount: number; chargingAmount: number; parkingAmount: number; includesParking: boolean }>(
+      `/reservations/token/${token}/modify-charging-stripe-pay`, { vehicles, includeParking: !!includeParking }),
 
   modifyChargingStripeComplete: (token: string, paymentIntentId: string, vehicles: { vehicleId: string; evServiceId: string | null; evKwh: number | null; newPlate?: string }[]) =>
     post<{ success: boolean }>(`/reservations/token/${token}/modify-charging-stripe-complete`, { paymentIntentId, vehicles }),

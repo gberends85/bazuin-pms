@@ -692,11 +692,17 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
     return Math.round(d * 100) / 100;
   })();
 
-  async function payChargingStripe() {
+  // Openstaand parkeergeld bij een nog niet betaalde boeking (o.a. de
+  // overgenomen boekingen uit het oude systeem).
+  const openstaandParkeren = res?.payment_status === 'pending'
+    ? Math.max(0, Math.round((parseFloat(res?.total_price || '0') - parseFloat(res?.prepaid_amount || '0')) * 100) / 100)
+    : 0;
+
+  async function payChargingStripe(metParkeren = false) {
     setError('');
     const payload = chargingPayloadNow();
     try {
-      const data = await bookingApi.modifyChargingStripePay(params.token, payload);
+      const data = await bookingApi.modifyChargingStripePay(params.token, payload, metParkeren);
       setChargingClientSecret(data.clientSecret);
       setChargingAmount(data.amount);
       setChargingPayload(payload);
@@ -1873,9 +1879,31 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
           <div style={{ fontSize: 13, color: '#142440', marginBottom: 10 }}>
             Toe te voegen laden: <strong>€ {chargingDeltaNow.toFixed(2).replace('.', ',')}</strong>
           </div>
-          <button onClick={payChargingStripe}
-            style={{ ...S.btnPrimary, marginBottom: 10 }}>
-            <CreditCardIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6 }} />Nu betalen via Stripe: € {chargingDeltaNow.toFixed(2).replace('.', ',')} <ArrowRightIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle' }} />
+
+          {/* Staat het parkeergeld nog open, dan kan de klant dat hier meteen
+              meebetalen. Anders rekent hij alleen het laden af en blijft het
+              parkeren openstaan. */}
+          {openstaandParkeren > 0 && (
+            <div style={{ background: 'white', border: '1px solid rgba(25,73,158,0.25)', borderRadius: 9, padding: '11px 13px', marginBottom: 12 }}>
+              <div style={{ fontSize: 12.5, color: '#556070', lineHeight: 1.55, marginBottom: 10 }}>
+                Uw parkeerkosten van <strong style={{ color: '#142440' }}>€ {openstaandParkeren.toFixed(2).replace('.', ',')}</strong> staan
+                nog open. U kunt die hier meteen samen met het laden voldoen.
+              </div>
+              <button onClick={() => payChargingStripe(true)} style={{ ...S.btnPrimary, marginBottom: 0 }}>
+                <CreditCardIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6 }} />
+                Alles nu betalen: € {(openstaandParkeren + chargingDeltaNow).toFixed(2).replace('.', ',')}
+                <ArrowRightIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle' }} />
+              </button>
+              <div style={{ fontSize: 11.5, color: '#7090b0', marginTop: 6, textAlign: 'center' }}>
+                parkeren € {openstaandParkeren.toFixed(2).replace('.', ',')} + laden € {chargingDeltaNow.toFixed(2).replace('.', ',')}
+              </div>
+            </div>
+          )}
+
+          <button onClick={() => payChargingStripe(false)}
+            style={{ ...(openstaandParkeren > 0 ? S.btnGhost : S.btnPrimary), marginBottom: 10, marginTop: 0 }}>
+            <CreditCardIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6 }} />
+            {openstaandParkeren > 0 ? 'Alleen het laden betalen' : 'Nu betalen via Stripe'}: € {chargingDeltaNow.toFixed(2).replace('.', ',')} <ArrowRightIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle' }} />
           </button>
           <button onClick={payChargingOnSite} style={{ ...S.btnGhost, marginTop: 0 }}>
             <HomeIcon className="w-4 h-4" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6 }} />Betalen ter plekke — € {(chargingDeltaNow + 5).toFixed(2).replace('.', ',')} (+€5,00 toeslag)

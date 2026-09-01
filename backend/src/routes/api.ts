@@ -5998,12 +5998,26 @@ router.post('/reservations/token/:token/modify-charging-stripe-pay', async (req:
   const delta = await chargingDelta(r.id, vehicles);
   if (delta <= 0) return res.status(400).json({ error: 'Geen extra laden geselecteerd' });
 
+  // Bij een nog onbetaalde boeking (o.a. de overgenomen boekingen uit het oude
+  // systeem) kan de klant het parkeren meteen meebetalen. Anders zou hij alleen
+  // het laden afrekenen en het parkeergeld open laten staan.
+  const openstaandParkeren = r.payment_status === 'pending'
+    ? Math.max(0, Math.round((parseFloat(r.total_price) - parseFloat(r.prepaid_amount || '0')) * 100) / 100)
+    : 0;
+  const metParkeren = !!req.body?.includeParking && openstaandParkeren > 0;
+  const teBetalen = Math.round((delta + (metParkeren ? openstaandParkeren : 0)) * 100) / 100;
+
   const Stripe = (await import('stripe')).default;
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
   const paymentIntent = await stripe.paymentIntents.create({
-    amount: Math.round(delta * 100),
+    amount: Math.round(teBetalen * 100),
     currency: 'eur',
-    metadata: { reservationId: r.id, type: 'charging_modification' },
+    metadata: {
+      reservationId: r.id,
+      type: 'charging_modification',
+      includesParking: metParkeren ? '1' : '0',
+      parkingAmount: metParkeren ? String(openstaandParkeren) : '0',
+    },
   });
 
   // Nieuwe betaalpoging: eerdere niet-afgeronde online poging niet laten
@@ -6023,9 +6037,15 @@ router.post('/reservations/token/:token/modify-charging-stripe-pay', async (req:
         old_total_price, new_total_price, price_difference, modification_fee, status, modification_type, during_stay, change_details, stripe_payment_intent_id)
      VALUES ($1,'customer',$2,$3,$2,$3,$4,$5,$6,0,'pending_payment','charging',false,$7,$8)`,
     [r.id, r.arrival_date, r.departure_date, r.total_price, newTotal, delta,
-     JSON.stringify({ paymentMethod: 'stripe', vehicles, amount: delta }), paymentIntent.id]
+     JSON.stringify({ paymentMethod: 'stripe', vehicles, amount: delta, includesParking: metParkeren, parkingAmount: metParkeren ? openstaandParkeren : 0 }), paymentIntent.id]
   );
-  return res.json({ clientSecret: paymentIntent.client_secret, amount: delta });
+  return res.json({
+    clientSecret: paymentIntent.client_secret,
+    amount: teBetalen,
+    chargingAmount: delta,
+    parkingAmount: metParkeren ? openstaandParkeren : 0,
+    includesParking: metParkeren,
+  });
 });
 
 router.post('/reservations/token/:token/modify-charging-stripe-complete', async (req: Request, res: Response) => {
@@ -6053,12 +6073,33 @@ router.post('/reservations/token/:token/modify-charging-stripe-complete', async 
   const cd = typeof claim.rows[0].change_details === 'string' ? JSON.parse(claim.rows[0].change_details || '{}') : (claim.rows[0].change_details || {});
   await applyCharging(r.id, cd.vehicles || []);
 
-  // Online betaald laden vastleggen als reeds ontvangen bedrag, zodat een
+  // Online betaald bedrag vastleggen als reeds ontvangen, zodat een
   // ter-plekke-boeking dit niet nogmaals bij afhalen krijgt gerekend.
   await query(
     `UPDATE reservations SET prepaid_amount = COALESCE(prepaid_amount, 0) + $1, updated_at=NOW() WHERE id=$2`,
     [intent.amount / 100, r.id]
   );
+
+  // Is het parkeren meebetaald, dan staat de reservering niet langer open.
+  if (intent.metadata?.includesParking === '1') {
+    let methode = 'ideal';
+    try {
+      const vol = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] });
+      const ch: any = (vol as any).latest_charge;
+      const t = ch?.payment_method_details?.type;
+      if (t) methode = t === 'card' ? 'card' : t;
+    } catch { /* methode blijft ideal */ }
+    const toegestaan = ['ideal', 'card', 'paypal', 'sepa', 'bancontact'];
+    await query(
+      `UPDATE reservations
+          SET payment_status = 'paid',
+              payment_method = COALESCE(payment_method, $1),
+              paid_at = COALESCE(paid_at, NOW()),
+              updated_at = NOW()
+        WHERE id = $2`,
+      [toegestaan.includes(methode) ? methode : 'ideal', r.id]
+    );
+  }
 
   sendModificationConfirmation(r.id).catch(err => console.error('Laden (Stripe) bevestigingsmail mislukt:', err));
   return res.json({ success: true });

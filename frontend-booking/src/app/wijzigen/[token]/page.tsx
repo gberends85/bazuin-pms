@@ -1892,13 +1892,35 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         const rdw = plateRdw[i];
         const ev = rdw?.found ? rdw.ev : null;
         const fuel = (rdw?.fuelType || '').toLowerCase();
-        const isCombustion = fuel.includes('benzine') || fuel.includes('diesel') || fuel.includes('lpg');
-        const isElectric = !!rdw?.found && !isCombustion && !!fuel; // elektrisch / (plug-in) hybride
+        // Zelfde afweging als op de boekingspagina: laden alleen blokkeren bij een
+        // auto die uitsluitend op brandstof rijdt. Een plug-in hybride heeft
+        // "benzine" in de brandstofomschrijving staan maar levert wél een laadblok,
+        // en moet dus gewoon kunnen laden.
+        const isCombustion = (fuel.includes('benzine') || fuel.includes('diesel') || fuel.includes('lpg')) && !ev;
+        const isElectric = !!rdw?.found && !isCombustion;
         const realisticKm = ev ? Math.round(ev.batteryCapacityKwh * ev.realisticKmPerKwh) : 0;
+
+        // Welke pakketten passen er nog in deze accu? Ook dit volgt de boekingspagina.
+        // Aanbevolen tier = het kleinste pakket dat het advies dekt.
+        const suggestedTier = (ev && evSvcs.length)
+          ? (evSvcs.filter((o: any) => o.kwh >= ev.suggestedKwh).sort((a: any, b: any) => a.kwh - b.kwh)[0]
+             ?? evSvcs[evSvcs.length - 1])
+          : null;
+        // Volledig elektrisch: t/m het pakket dat de accu vult. Plug-in hybride: niet
+        // verder dan de aanbeveling, want daarboven past er simpelweg niets meer in.
+        const fullChargeTier = (ev && evSvcs.length)
+          ? (ev.isBev
+              ? (evSvcs.filter((s: any) => s.kwh <= ev.batteryCapacityKwh * 1.05).sort((a: any, b: any) => b.kwh - a.kwh)[0]
+                 ?? evSvcs[evSvcs.length - 1])
+              : suggestedTier)
+          : null;
+        const availableSvcs = (ev && fullChargeTier)
+          ? evSvcs.filter((s: any) => s.kwh <= fullChargeTier.kwh)
+          : evSvcs;
         // Aanbevolen = het dichtstbijzijnde ECHT bestaande laadpakket bij het advies
         // (bv. advies 43,3 kWh → 40 kWh-pakket), i.p.v. de ruwe adviewaarde.
-        const recTier = (ev && evSvcs.length)
-          ? evSvcs.reduce((b: any, s: any) => Math.abs(s.kwh - ev.suggestedKwh) < Math.abs(b.kwh - ev.suggestedKwh) ? s : b, evSvcs[0])
+        const recTier = (ev && availableSvcs.length)
+          ? availableSvcs.reduce((b: any, s: any) => Math.abs(s.kwh - ev.suggestedKwh) < Math.abs(b.kwh - ev.suggestedKwh) ? s : b, availableSvcs[0])
           : null;
         const recKm = recTier ? Math.round(Math.min(recTier.kwh, ev.batteryCapacityKwh) * ev.realisticKmPerKwh) : 0;
         return (
@@ -1945,7 +1967,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
                 </div>
               )}
               {/* Laden kiezen — zelfde tarieven als de boekingspagina */}
-              {evSvcs.length > 0 && (() => {
+              {availableSvcs.length > 0 && (() => {
                 const suggestedTierKwh = recTier ? recTier.kwh : null;
                 const curKwh = res.vehicles?.[i]?.ev_kwh;
                 return (
@@ -1956,15 +1978,21 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
                         style={{ padding: '7px 12px', borderRadius: 8, border: !evSel[i] ? '2px solid #142440' : '0.5px solid rgba(10,34,64,0.2)', background: !evSel[i] ? '#142440' : 'white', color: !evSel[i] ? 'white' : '#142440', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
                         Geen laden
                       </button>
-                      {evSvcs.map((s: any) => {
+                      {availableSvcs.map((s: any) => {
                         const sel = evSel[i] === s.kwh;
                         const isSuggested = suggestedTierKwh != null && s.kwh === suggestedTierKwh;
+                        // "Zeker vol" op het pakket dat de accu helemaal vult
+                        const isExtraTier = fullChargeTier && suggestedTier
+                          && fullChargeTier.kwh !== suggestedTier.kwh && s.kwh === fullChargeTier.kwh;
                         const extraKm = ev ? Math.round(Math.min(s.kwh, ev.batteryCapacityKwh) * ev.realisticKmPerKwh) : null;
                         return (
                           <button key={s.id} type="button" onClick={() => setEvSel(p => ({ ...p, [i]: s.kwh }))}
                             style={{ padding: '7px 12px', borderRadius: 8, border: sel ? '2px solid #19499e' : '0.5px solid rgba(10,34,64,0.18)', background: sel ? '#eaf1fb' : 'white', cursor: 'pointer', textAlign: 'center', position: 'relative', minWidth: 64 }}>
                             {isSuggested && !sel && (
                               <span style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)', background: '#3a80c0', color: 'white', fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 10, whiteSpace: 'nowrap' }}>aanbevolen</span>
+                            )}
+                            {isExtraTier && !sel && (
+                              <span style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)', background: '#8a6020', color: 'white', fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 10, whiteSpace: 'nowrap' }}>zeker vol</span>
                             )}
                             <div style={{ fontSize: 13, fontWeight: 700, color: sel ? '#19499e' : '#142440' }}>{s.kwh} kWh</div>
                             <div style={{ fontSize: 11, color: '#7090b0' }}>€ {parseFloat(s.price).toFixed(0)}</div>

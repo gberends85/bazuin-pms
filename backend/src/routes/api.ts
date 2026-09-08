@@ -1334,7 +1334,8 @@ router.get('/reservations/token/:token', async (req: Request, res: Response) => 
   // Lopende wijzigingsverzoeken, zodat de klant in het menu de status ziet.
   // Alleen wat de klant aangaat: type, status en tijdstip — geen interne details.
   const openVerzoeken = await query(
-    `SELECT id, modification_type, status, created_at
+    `SELECT id, modification_type, status, created_at, change_details,
+            new_arrival_date, new_departure_date
      FROM reservation_modifications
      WHERE reservation_id = $1
        AND status IN ('pending_review', 'pending_payment', 'pending_email_verify')

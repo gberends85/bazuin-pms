@@ -298,11 +298,27 @@ function EilandKeuze({ value, onChange }: { value: 'terschelling' | 'vlieland'; 
 }
 
 // ── Ferry schedule picker ────────────────────────────────────────────────────
+// Welke boottijd staat er al in een lopend verzoek? Klanten dienen anders
+// makkelijk twee keer dezelfde wijziging in, omdat ze niet zien dat de vorige
+// aanvraag nog loopt.
+function aangevraagdeBoottijd(res: any, richting: 'outbound' | 'return'): string | null {
+  const open = Array.isArray(res?.openModifications) ? res.openModifications : [];
+  for (const v of open) {
+    if (v.modification_type !== 'ferry' && v.modification_type !== 'dates') continue;
+    let d: any = v.change_details;
+    if (typeof d === 'string') { try { d = JSON.parse(d); } catch { d = {}; } }
+    const t = richting === 'outbound' ? d?.newOutboundTime : d?.newReturnTime;
+    if (t) return String(t).slice(0, 5);
+  }
+  return null;
+}
+
 function FerryPicker({
-  label, date, destination, direction, currentTime, selectedTime, onSelect,
+  label, date, destination, direction, currentTime, selectedTime, onSelect, pendingTime,
 }: {
   label: string; date: string; destination: string; direction: string;
   currentTime?: string; selectedTime: string; onSelect: (t: string) => void;
+  pendingTime?: string | null;
 }) {
   const [schedules, setSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -340,6 +356,13 @@ function FerryPicker({
         </div>
       )}
 
+      {pendingTime && (
+        <div style={{ background: '#e6f1fb', border: '1px solid rgba(26,107,181,0.3)', borderRadius: 8, padding: '8px 11px', marginBottom: 8, fontSize: 12, color: '#144a80', lineHeight: 1.5 }}>
+          U heeft <strong>{pendingTime}</strong> al aangevraagd. Dat verzoek is nog in behandeling &mdash;
+          u hoeft het niet nogmaals te versturen.
+        </div>
+      )}
+
       {loading && <div style={{ fontSize: 12, color: '#7090b0', marginBottom: 8 }}>Laden...</div>}
 
       {!loading && schedules.length > 0 && !manualMode && (
@@ -348,12 +371,18 @@ function FerryPicker({
           {schedules.map(s => {
             const time = s.departureTime?.slice(0, 5) || '';
             const selected = selectedTime === time;
+            const aangevraagd = !!pendingTime && time === pendingTime;
             return (
               <div key={s.id || time} style={S.scheduleItem(selected)} onClick={() => onSelect(time)}>
                 <span style={{ fontWeight: 700, fontSize: 14, color: '#142440', minWidth: 40 }}>{time}</span>
                 <span style={{ fontSize: 12, color: '#556070' }}>
                   {s.isFast ? <><BoltIcon className="w-3 h-3" style={{ display: 'inline', verticalAlign: 'middle' }} /> Sneldienst</> : <><ArrowRightIcon className="w-3 h-3" style={{ display: 'inline', verticalAlign: 'middle' }} /> Veerdienst</>}
                 </span>
+                {aangevraagd && (
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'white', background: '#1a6bb5', borderRadius: 10, padding: '2px 8px', whiteSpace: 'nowrap' }}>
+                    in aanvraag
+                  </span>
+                )}
                 {selected && <CheckIcon className="w-4 h-4" style={{ marginLeft: 'auto', color: '#19499e' }} />}
               </div>
             );
@@ -902,6 +931,16 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   // ── Ferry handler ─────────────────────────────────────────────
   async function submitFerry() {
     if (!ferryOutboundTime && !ferryReturnTime) { setError('Vul ten minste één gewenste tijd in.'); return; }
+    // Staat exact deze tijd al in een lopend verzoek, dan is nogmaals versturen
+    // zinloos: het levert alleen een tweede melding voor ons op.
+    const openHeen = aangevraagdeBoottijd(res, 'outbound');
+    const openTerug = aangevraagdeBoottijd(res, 'return');
+    const zelfdeHeen = !ferryOutboundTime || ferryOutboundTime === openHeen;
+    const zelfdeTerug = !ferryReturnTime || ferryReturnTime === openTerug;
+    if ((openHeen || openTerug) && zelfdeHeen && zelfdeTerug) {
+      setError('Deze tijd heeft u al aangevraagd; dat verzoek is nog in behandeling. Kies een andere tijd of wacht op onze bevestiging.');
+      return;
+    }
     setError(''); setFerryLoading(true);
     try {
       const result = await bookingApi.modifyFerry(
@@ -1333,6 +1372,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
               date={newArrival}
               destination={ferryOutboundDest}
               direction="outbound"
+              pendingTime={aangevraagdeBoottijd(res, 'outbound')}
               currentTime={res?.ferry_outbound_time}
               selectedTime={datesFerryOut}
               onSelect={setDatesFerryOut}
@@ -1351,6 +1391,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
           date={newDeparture}
           destination={ferryReturnDest}
           direction="return"
+          pendingTime={aangevraagdeBoottijd(res, 'return')}
           currentTime={res?.ferry_return_time}
           selectedTime={datesFerryRet}
           onSelect={setDatesFerryRet}
@@ -2356,6 +2397,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
               date={outboundDate}
               destination={ferryOutboundDest}
               direction="outbound"
+              pendingTime={aangevraagdeBoottijd(res, 'outbound')}
               currentTime={res?.ferry_outbound_time}
               selectedTime={ferryOutboundTime}
               onSelect={setFerryOutboundTime}
@@ -2374,6 +2416,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
           date={returnDate}
           destination={ferryReturnDest}
           direction="return"
+          pendingTime={aangevraagdeBoottijd(res, 'return')}
           currentTime={res?.ferry_return_time}
           selectedTime={ferryReturnTime}
           onSelect={setFerryReturnTime}

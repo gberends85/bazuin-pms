@@ -4813,8 +4813,8 @@ router.post('/reservations/token/:token/modify-ferry', async (req: Request, res:
       `INSERT INTO reservation_modifications
        (reservation_id, modified_by, old_arrival_date, old_departure_date, new_arrival_date, new_departure_date,
         old_total_price, new_total_price, price_difference, modification_fee, status, modification_type, change_details)
-       VALUES ($1,'customer',$2,$2,$2,$2,$3,$3,0,0,'completed','ferry',$4)`,
-      [r.id, r.arrival_date, parseFloat(r.total_price), changeDetails]
+       VALUES ($1,'customer',$2,$3,$2,$3,$4,$4,0,0,'completed','ferry',$5)`,
+      [r.id, r.arrival_date, r.departure_date, parseFloat(r.total_price), changeDetails]
     );
 
     // Wijzigingsbevestiging met bijgewerkte boottijden
@@ -4829,8 +4829,8 @@ router.post('/reservations/token/:token/modify-ferry', async (req: Request, res:
       `INSERT INTO reservation_modifications
        (reservation_id, modified_by, old_arrival_date, old_departure_date, new_arrival_date, new_departure_date,
         old_total_price, new_total_price, price_difference, modification_fee, status, modification_type, change_details)
-       VALUES ($1,'customer',$2,$2,$2,$2,$3,$3,0,0,'pending_review','ferry',$4)`,
-      [r.id, r.arrival_date, parseFloat(r.total_price), changeDetails]
+       VALUES ($1,'customer',$2,$3,$2,$3,$4,$4,0,0,'pending_review','ferry',$5)`,
+      [r.id, r.arrival_date, r.departure_date, parseFloat(r.total_price), changeDetails]
     );
 
     return res.json({ success: true, autoApplied: false });

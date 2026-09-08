@@ -53,13 +53,24 @@ function modSummary(m: any): string | null {
 
   if (m.modification_type === 'ferry') {
     const legs: string[] = [];
+    // Bij welke dag hoort deze boot? Afhalen gebeurt op de vertrekdatum, de
+    // heenreis op de aankomstdatum. Verschuift de datum mee, dan staan de oude
+    // en de nieuwe dag er allebei; anders noemen we de dag één keer.
+    const datumVerschoven = m.old_departure_date && m.new_departure_date
+      && dayShort(m.old_departure_date) !== dayShort(m.new_departure_date);
+    const dagPaar = (oud: any, nieuw: any) => datumVerschoven
+      ? { oud: ` op ${dayShort(oud)}`, nieuw: ` op ${dayShort(nieuw)}` }
+      : { oud: '', nieuw: ` op ${dayShort(nieuw)}` };
+
     if (d.newReturnTime) {
       const arr = d.newReturnArrivalHarlingen ? ` = ${d.newReturnArrivalHarlingen} aankomst` : '';
-      legs.push(`Was ${timeShort(d.currentReturnTime) || '—'} halen → NU ${timeShort(d.newReturnTime)} veerboot${arr}`);
+      const dag = dagPaar(m.old_departure_date, m.departure_date);
+      legs.push(`Was ${timeShort(d.currentReturnTime) || '—'} halen${dag.oud} → NU ${timeShort(d.newReturnTime)} veerboot${dag.nieuw}${arr}`);
     }
     if (d.newOutboundTime) {
       const arr = d.newOutboundArrivalTime ? ` = ${d.newOutboundArrivalTime} op eiland` : '';
-      legs.push(`Was ${timeShort(d.currentOutboundTime) || '—'} heen → NU ${timeShort(d.newOutboundTime)} veerboot${arr}`);
+      const dag = dagPaar(m.old_arrival_date, m.arrival_date);
+      legs.push(`Was ${timeShort(d.currentOutboundTime) || '—'} heen${dag.oud} → NU ${timeShort(d.newOutboundTime)} veerboot${dag.nieuw}${arr}`);
     }
     return legs.length ? prefix + legs.join('   |   ') : null;
   }

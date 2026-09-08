@@ -85,15 +85,28 @@ function kortOverzicht(m: any, details: any): string {
     const regels: string[] = [];
     const o1 = kortTijd(details.currentOutboundTime), o2 = kortTijd(details.newOutboundTime);
     const r1 = kortTijd(details.currentReturnTime), r2 = kortTijd(details.newReturnTime);
-    if (o2 && o2 !== o1) regels.push(`Heenreis was ${o1 || '—'}, nu ${o2}`);
+    // De dag waar de boot bij hoort erbij zetten: heenreis op de aankomstdag,
+    // afhalen op de vertrekdag. Alleen als de datum meeverschuift staan beide
+    // dagen er; anders noemen we de dag één keer.
+    const datumVerschoven = m.old_departure_date && m.new_departure_date
+      && kortDatum(m.old_departure_date) !== kortDatum(m.new_departure_date);
+    const dagPaar = (oud: any, nieuw: any) => datumVerschoven
+      ? { oud: ` op ${kortDatum(oud)}`, nieuw: ` op ${kortDatum(nieuw)}` }
+      : { oud: '', nieuw: ` op ${kortDatum(nieuw)}` };
+
+    if (o2 && o2 !== o1) {
+      const dag = dagPaar(m.old_arrival_date, m.arrival_date);
+      regels.push(`Heenreis was ${o1 || '—'}${dag.oud}, nu ${o2}${dag.nieuw}`);
+    }
     if (r2 && r2 !== r1) {
+      const dag = dagPaar(m.old_departure_date, m.departure_date);
       // Alleen "afhalen" zeggen als we van beide kanten de aankomsttijd in
       // Harlingen kennen; anders vertrektijd met vertrektijd vergelijken.
       const oudAankomst = kortTijd(details.currentReturnArrivalHarlingen) || kortTijd(ophaalTijd);
       const nieuwAankomst = kortTijd(details.newReturnArrivalHarlingen);
       regels.push(oudAankomst && nieuwAankomst
-        ? `Afhalen was ${oudAankomst}, nu ${nieuwAankomst}`
-        : `Terugboot was ${r1 || '—'}, nu ${r2}`);
+        ? `Afhalen was ${oudAankomst}${dag.oud}, nu ${nieuwAankomst}${dag.nieuw}`
+        : `Terugboot was ${r1 || '—'}${dag.oud}, nu ${r2}${dag.nieuw}`);
     }
     return regels.length ? regels.join(' · ') : 'Boottijden aangepast';
   }

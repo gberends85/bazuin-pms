@@ -359,6 +359,22 @@ export default function ModificationsPage() {
   const [processing, setProcessing] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [sendEmail, setSendEmail] = useState<Record<string, boolean>>({});
+  // Afgehandelde verzoeken terugkijken: na goedkeuring verdwijnt een verzoek uit
+  // de wachtrij en was niet meer na te gaan waar het over ging.
+  const [tab, setTab] = useState<'open' | 'afgehandeld'>('open');
+  const [afgehandeld, setAfgehandeld] = useState<any[]>([]);
+  const [afgLoading, setAfgLoading] = useState(false);
+  const [zoek, setZoek] = useState('');
+
+  const laadAfgehandeld = useCallback((q: string) => {
+    setAfgLoading(true);
+    api.modifications.handled(50, q)
+      .then(setAfgehandeld)
+      .catch(e => toastError(e.message))
+      .finally(() => setAfgLoading(false));
+  }, []);
+
+  useEffect(() => { if (tab === 'afgehandeld') laadAfgehandeld(zoek); }, [tab, laadAfgehandeld]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -419,9 +435,81 @@ export default function ModificationsPage() {
           </p>
         </div>
 
-        {loading && <p style={{ color: '#7090b0' }}>Laden...</p>}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 18, borderBottom: '1px solid rgba(10,34,64,0.1)' }}>
+          {([['open', `Openstaand${mods.length ? ` (${mods.length})` : ''}`], ['afgehandeld', 'Afgehandeld']] as const).map(([k, label]) => (
+            <button key={k} onClick={() => setTab(k as any)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: '8px 4px', marginBottom: -1,
+                fontSize: 13.5, fontWeight: 700,
+                color: tab === k ? '#19499e' : '#7090b0',
+                borderBottom: tab === k ? '2px solid #19499e' : '2px solid transparent',
+              }}>
+              {label}
+            </button>
+          ))}
+        </div>
 
-        {!loading && mods.length === 0 && (
+        {tab === 'afgehandeld' && (
+          <div>
+            <form onSubmit={e => { e.preventDefault(); laadAfgehandeld(zoek); }} style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              <input value={zoek} onChange={e => setZoek(e.target.value)}
+                placeholder="Zoek op reserveringsnummer, naam of kenteken"
+                style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid rgba(10,34,64,0.2)', fontSize: 13 }} />
+              <button type="submit" style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#19499e', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                Zoeken
+              </button>
+            </form>
+
+            {afgLoading && <p style={{ color: '#7090b0' }}>Laden...</p>}
+            {!afgLoading && afgehandeld.length === 0 && (
+              <p style={{ color: '#7090b0', fontSize: 13 }}>Niets gevonden.</p>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {afgehandeld.map(m => {
+                const details = m.change_details ? (typeof m.change_details === 'string' ? JSON.parse(m.change_details) : m.change_details) : {};
+                const label = modTypeLabel(m.modification_type || 'dates');
+                const afgewezen = m.status === 'rejected';
+                const wanneer = m.accepted_at || m.created_at;
+                return (
+                  <div key={m.id} style={{ background: 'white', border: '1px solid rgba(10,34,64,0.1)', borderRadius: 10, padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                      <span style={{
+                        background: afgewezen ? '#fdeaea' : '#e6f5ef', color: afgewezen ? '#8a2020' : '#0a6b4f',
+                        borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 800,
+                      }}>
+                        {afgewezen ? 'AFGEWEZEN' : 'GOEDGEKEURD'}
+                      </span>
+                      <span style={{ background: '#e8f0fa', color: '#0a2240', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>
+                        {label.icon} {label.text}
+                      </span>
+                      {m.plates && <Kentekenplaat plaat={m.plates.split(', ')[0]} />}
+                      <span style={{ fontWeight: 800, fontSize: 13, color: '#0a2240' }}>{m.reference}</span>
+                      <span style={{ fontSize: 12, color: '#7090b0' }}>{m.first_name} {m.last_name}</span>
+                    </div>
+                    <div style={{ fontSize: 13.5, color: '#0a2240', lineHeight: 1.4 }}>
+                      {kortOverzicht(m, details)}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: '#7d8ea3', marginTop: 5 }}>
+                      Aangevraagd {fmtDateTime(m.created_at)}
+                      {wanneer !== m.created_at && <> · afgehandeld {fmtDateTime(wanneer)}</>}
+                      {m.handled_by_name && <> door {m.handled_by_name}</>}
+                    </div>
+                    {m.acceptance_notes && (
+                      <div style={{ fontSize: 12, color: '#556070', marginTop: 5, fontStyle: 'italic' }}>
+                        Notitie: {m.acceptance_notes}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {tab === 'open' && loading && <p style={{ color: '#7090b0' }}>Laden...</p>}
+
+        {tab === 'open' && !loading && mods.length === 0 && (
           <div style={{ textAlign: 'center', padding: '60px 20px', color: '#7090b0' }}>
             <CheckCircleIcon className="w-10 h-10" style={{ marginBottom: 12, color: '#7090b0' }} />
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>Geen openstaande wijzigingen</div>
@@ -429,7 +517,7 @@ export default function ModificationsPage() {
           </div>
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: tab === 'open' ? 'flex' : 'none', flexDirection: 'column', gap: 16 }}>
           {mods.map(m => {
             const details = m.change_details ? (typeof m.change_details === 'string' ? JSON.parse(m.change_details) : m.change_details) : {};
             const isDuringStay = m.during_stay;

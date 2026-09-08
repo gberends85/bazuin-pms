@@ -5276,6 +5276,48 @@ router.get('/admin/reservations/:id/modifications', requireAuth, async (req: Req
 // ============================================================
 // ADMIN — PENDING MODIFICATIONS (klantwijzigingen ter beoordeling)
 // ============================================================
+// Afgehandelde verzoeken terugkijken. Zodra een verzoek is goedgekeurd verdwijnt
+// het uit de wachtrij; is er per ongeluk geklikt, dan is nergens meer te zien om
+// welke wijziging het ging.
+router.get('/admin/modifications/handled', requireAuth, async (req: Request, res: Response) => {
+  const limiet = Math.min(Math.max(parseInt(String(req.query.limit ?? '50'), 10) || 50, 1), 200);
+  const zoek = String(req.query.q ?? '').trim();
+
+  const waarden: any[] = [limiet];
+  let filter = '';
+  if (zoek) {
+    waarden.push(`%${zoek}%`);
+    filter = ` AND (r.reference ILIKE $2 OR c.first_name ILIKE $2 OR c.last_name ILIKE $2
+                    OR EXISTS (SELECT 1 FROM vehicles v WHERE v.reservation_id = r.id AND v.license_plate ILIKE $2))`;
+  }
+
+  const result = await query(
+    `SELECT rm.*, r.reference, r.arrival_date, r.departure_date, r.status as reservation_status,
+            c.first_name, c.last_name, c.email,
+            a.name AS handled_by_name,
+            TO_CHAR(r.ferry_outbound_time, 'HH24:MI')      AS ferry_outbound_time,
+            TO_CHAR(r.ferry_return_time, 'HH24:MI')        AS ferry_return_time,
+            TO_CHAR(r.ferry_return_custom_time, 'HH24:MI') AS ferry_return_custom_time,
+            (SELECT TO_CHAR(fs.arrival_harlingen, 'HH24:MI')
+               FROM ferry_schedules fs
+              WHERE fs.schedule_date = r.departure_date AND fs.direction = 'return'
+                AND r.ferry_return_time IS NOT NULL
+                AND ABS(EXTRACT(EPOCH FROM (fs.departure_time - r.ferry_return_time)) / 60) <= 20
+              ORDER BY ABS(EXTRACT(EPOCH FROM (fs.departure_time - r.ferry_return_time)))
+              LIMIT 1) AS ferry_return_arrival_harlingen,
+            (SELECT STRING_AGG(v.license_plate, ', ' ORDER BY v.sort_order) FROM vehicles v WHERE v.reservation_id = r.id) as plates
+     FROM reservation_modifications rm
+     JOIN reservations r ON r.id = rm.reservation_id
+     JOIN customers c ON c.id = r.customer_id
+     LEFT JOIN admin_users a ON a.id = rm.accepted_by
+     WHERE rm.status NOT IN ('pending_review', 'pending_payment', 'pending_email_verify')${filter}
+     ORDER BY COALESCE(rm.accepted_at, rm.created_at) DESC
+     LIMIT $1`,
+    waarden
+  );
+  return res.json(result.rows);
+});
+
 router.get('/admin/modifications/pending', requireAuth, async (_req, res) => {
   const result = await query(
     `SELECT rm.*, r.reference, r.arrival_date, r.departure_date, r.status as reservation_status,

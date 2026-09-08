@@ -298,6 +298,46 @@ function EilandKeuze({ value, onChange }: { value: 'terschelling' | 'vlieland'; 
 }
 
 // ── Ferry schedule picker ────────────────────────────────────────────────────
+// Lopend verzoek van een bepaalde soort, met de gevraagde waarden uitgepakt.
+// Zo kan elke stap tonen wat er al is aangevraagd.
+function openVerzoek(res: any, ...soorten: string[]): any | null {
+  const open = Array.isArray(res?.openModifications) ? res.openModifications : [];
+  for (const v of open) {
+    if (!soorten.includes(v.modification_type)) continue;
+    let d: any = v.change_details;
+    if (typeof d === 'string') { try { d = JSON.parse(d); } catch { d = {}; } }
+    return { ...v, details: d || {} };
+  }
+  return null;
+}
+
+// Vaste opmaak voor het blokje "dit heeft u al aangevraagd".
+function AanvraagMelding({ status, children }: { status?: string; children: React.ReactNode }) {
+  const wacht = status === 'pending_payment';
+  return (
+    <div style={{
+      background: wacht ? '#fff8e6' : '#e6f1fb',
+      border: `1px solid ${wacht ? 'rgba(160,96,16,0.35)' : 'rgba(26,107,181,0.3)'}`,
+      borderRadius: 9, padding: '10px 13px', marginBottom: 14,
+      fontSize: 12.5, color: wacht ? '#7a5010' : '#144a80', lineHeight: 1.55,
+    }}>
+      <span style={{
+        display: 'inline-block', fontSize: 10, fontWeight: 700, color: 'white',
+        background: wacht ? '#a06010' : '#1a6bb5', borderRadius: 10,
+        padding: '2px 8px', marginRight: 8, verticalAlign: 'middle',
+      }}>in aanvraag</span>
+      {children}
+    </div>
+  );
+}
+
+// Korte datum voor in zo'n melding: "9 sep"
+function kortDatumNL(d: any): string {
+  if (!d) return '';
+  return new Date(String(d).slice(0, 10) + 'T12:00:00')
+    .toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+}
+
 // Welke boottijd staat er al in een lopend verzoek? Klanten dienen anders
 // makkelijk twee keer dezelfde wijziging in, omdat ze niet zien dat de vorige
 // aanvraag nog loopt.
@@ -1584,10 +1624,24 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   // ── Dates form ────────────────────────────────────────────────
   if (step === 'dates-form') {
     const arrivalLocked = duringStay || isCheckedIn;
+    const lopendeDatum = openVerzoek(res, 'dates', 'checkedin_departure');
+    const gevraagdeDatums = lopendeDatum
+      ? [kortDatumNL(lopendeDatum.new_arrival_date), kortDatumNL(lopendeDatum.new_departure_date)]
+          .filter(Boolean).join(' t/m ')
+      : '';
     return (
       <div style={S.page}><div style={S.card}>
         <Logo />
         <ReservationInfo />
+
+        {lopendeDatum && (
+          <AanvraagMelding status={lopendeDatum.status}>
+            U heeft al een datumwijziging aangevraagd{gevraagdeDatums ? <> naar <strong>{gevraagdeDatums}</strong></> : ''}.
+            {lopendeDatum.status === 'pending_payment'
+              ? ' Die is nog niet betaald en daarom nog niet definitief.'
+              : ' Dat verzoek is nog in behandeling — u hoeft het niet nogmaals te versturen.'}
+          </AanvraagMelding>
+        )}
 
         {duringStay && (
           <div style={{ background: '#fff8e6', border: '1.5px solid #e8a020', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#7a5010', marginBottom: 16 }}>
@@ -1929,6 +1983,19 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         <p style={{ color: '#7090b0', fontSize: 13 }}>Geen voertuigen gevonden bij deze reservering.</p>
       )}
 
+      {(() => {
+        const lopend = openVerzoek(res, 'plate');
+        const gevraagd = Array.isArray(lopend?.details?.vehicles)
+          ? lopend.details.vehicles.map((x: any) => String(x.newPlate || '').toUpperCase()).filter(Boolean)
+          : [];
+        return gevraagd.length ? (
+          <AanvraagMelding status={lopend.status}>
+            U heeft <strong>{gevraagd.join(', ')}</strong> al aangevraagd. Dat verzoek is nog in
+            behandeling — u hoeft het niet nogmaals te versturen.
+          </AanvraagMelding>
+        ) : null;
+      })()}
+
       {plateValues.map((v, i) => {
         const rdw = plateRdw[i];
         const ev = rdw?.found ? rdw.ev : null;
@@ -1966,7 +2033,20 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         const recKm = recTier ? Math.round(Math.min(recTier.kwh, ev.batteryCapacityKwh) * ev.realisticKmPerKwh) : 0;
         return (
         <div key={v.vehicleId} style={{ marginBottom: 16 }}>
-          <label style={S.label}>Voertuig {i + 1} — huidig kenteken: <span style={{ color: '#142440' }}>{v.oldPlate}</span></label>
+          <label style={S.label}>
+            Voertuig {i + 1} — huidig kenteken: <span style={{ color: '#142440' }}>{v.oldPlate}</span>
+            {(() => {
+              const lopend = openVerzoek(res, 'plate');
+              const rij = Array.isArray(lopend?.details?.vehicles)
+                ? lopend.details.vehicles.find((x: any) => x.vehicleId === v.vehicleId)
+                : null;
+              return rij?.newPlate ? (
+                <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: 'white', background: '#1a6bb5', borderRadius: 10, padding: '2px 8px', whiteSpace: 'nowrap' }}>
+                  {String(rij.newPlate).toUpperCase()} in aanvraag
+                </span>
+              ) : null;
+            })()}
+          </label>
           <input
             type="text"
             value={v.newPlate}

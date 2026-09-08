@@ -111,8 +111,11 @@ export const api = {
     overview: (from: string, to: string) => req<any[]>(`/admin/availability?from=${from}&to=${to}`),
     override: (date: string, spots: number | null, daytimeSpots: number | null, reason?: string) => req<any>('/admin/availability/override', { method: 'PUT', body: JSON.stringify({ date, availableSpots: spots, daytimeSpots, reason }) }),
     removeOverride: (date: string) => req<any>('/admin/availability/override', { method: 'DELETE', body: JSON.stringify({ date }) }),
-    capacity: () => req<{ onlineSpots: number; daytimeSpots: number }>('/admin/location-capacity'),
-    setCapacity: (onlineSpots: number | null, daytimeSpots: number | null) => req<any>('/admin/location-capacity', { method: 'PUT', body: JSON.stringify({ onlineSpots, daytimeSpots }) }),
+    // partnerBuffer hoort bij de partnerreservering-functie die nog in aanbouw is:
+    // de kalenderpagina leest en schrijft hem al, de backend bewaart hem nog niet.
+    capacity: () => req<{ onlineSpots: number; daytimeSpots: number; partnerBuffer: number }>('/admin/location-capacity'),
+    setCapacity: (onlineSpots: number | null, daytimeSpots: number | null, partnerBuffer?: number | null) =>
+      req<any>('/admin/location-capacity', { method: 'PUT', body: JSON.stringify({ onlineSpots, daytimeSpots, partnerBuffer }) }),
     overbookLink: (arrivalDate: string, departureDate: string, vehicles: number) =>
       req<{ url: string; vehicles: number; arrivalDate: string; departureDate: string; expiresInHours: number }>('/admin/overbook-link', { method: 'POST', body: JSON.stringify({ arrivalDate, departureDate, vehicles }) }),
   },
@@ -255,6 +258,8 @@ export const api = {
   },
   modifications: {
     pending: () => req<any[]>('/admin/modifications/pending'),
+    handled: (limit = 50, q = '') =>
+      req<any[]>(`/admin/modifications/handled?limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
     count: () => req<{ count: number }>('/admin/modifications/pending/count'),
     accept: (id: string, notes: string, sendEmail: boolean) =>
       req<any>(`/admin/modifications/${id}/accept`, { method: 'POST', body: JSON.stringify({ notes, sendEmail }) }),

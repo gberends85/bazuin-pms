@@ -6,6 +6,7 @@ import Modal from '@/components/ui/Modal';
 import Toaster, { toast, toastError } from '@/components/ui/Toast';
 import RefundPolicyInfo from '@/components/ui/RefundPolicyInfo';
 import { api, getToken } from '@/lib/api';
+import { bevestigUitcheck } from '@/lib/uitcheck';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -270,6 +271,7 @@ export default function ReservationDetailPage({ params }: { params: { id: string
   }
 
   async function doCheckout() {
+    if (!bevestigUitcheck(res)) return;
     setSaving(true);
     try { await api.reservations.checkout(params.id); toast('Uitgecheckt ✓'); load(); }
     catch (e: any) { toastError(e.message); }
@@ -625,6 +627,8 @@ export default function ReservationDetailPage({ params }: { params: { id: string
                           <div style={{ fontSize: 11, color: '#9aafbf', fontWeight: 500, marginTop: 1 }}>{res.ferry_outbound_name}</div>
                         )}
                       </div>
+                    ) : res.arrival_time ? (
+                      <div style={{ fontWeight: 700, color: '#0a2240' }}>{String(res.arrival_time).slice(0, 5)} <span style={{ fontSize: 11, color: '#9aafbf', fontWeight: 500 }}>auto afgeven</span></div>
                     ) : <span style={{ color: '#b0c4d4' }}>—</span>}
                   </div>
                   {/* Terugreis */}
@@ -644,6 +648,8 @@ export default function ReservationDetailPage({ params }: { params: { id: string
                         )}
                         {res.ferry_return_custom && <div style={{ fontSize: 10, color: '#9aafbf' }}>Eigen tijd</div>}
                       </div>
+                    ) : res.departure_time ? (
+                      <div style={{ fontWeight: 700, color: '#0a2240' }}>{String(res.departure_time).slice(0, 5)} <span style={{ fontSize: 11, color: '#9aafbf', fontWeight: 500 }}>auto ophalen</span></div>
                     ) : <span style={{ color: '#b0c4d4' }}>—</span>}
                   </div>
                   {/* Lege cel voor grid balans */}

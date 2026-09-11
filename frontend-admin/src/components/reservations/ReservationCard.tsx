@@ -5,6 +5,7 @@ import PlateTooltip from '@/components/ui/PlateTooltip';
 import Modal from '@/components/ui/Modal';
 import RefundPolicyInfo from '@/components/ui/RefundPolicyInfo';
 import { api } from '@/lib/api';
+import { bevestigUitcheck } from '@/lib/uitcheck';
 import { toast, toastError } from '@/components/ui/Toast';
 import { CheckIcon, XMarkIcon, EnvelopeIcon, ArrowUpTrayIcon, ChatBubbleOvalLeftEllipsisIcon, TruckIcon, MapIcon, BoltIcon } from '@heroicons/react/24/outline';
 import { AlertTriangle, Receipt } from 'lucide-react';
@@ -91,6 +92,7 @@ export default function ReservationCard({ res, onUpdate, showCheckin = true, sho
   }
 
   async function doCheckout() {
+    if (!bevestigUitcheck(res)) return;
     setLoading(true);
     try {
       await api.reservations.checkout(res.id);
@@ -167,7 +169,7 @@ export default function ReservationCard({ res, onUpdate, showCheckin = true, sho
               )}
             </div>
             <div style={{ fontSize: 11, color: '#7090b0', marginTop: 2, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <span>{new Date(res.arrival_date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} → {new Date(res.departure_date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} · {res.nights + 1} dag{(res.nights + 1) !== 1 ? 'en' : ''}</span>
+              <span>{new Date(res.arrival_date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}{res.arrival_time ? ` ${String(res.arrival_time).slice(0,5)}` : ''} → {new Date(res.departure_date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}{res.departure_time ? ` ${String(res.departure_time).slice(0,5)}` : ''} · {res.nights + 1} dag{(res.nights + 1) !== 1 ? 'en' : ''}</span>
               {res.vehicle_count && <span style={{ fontWeight: 700, color: Number(res.vehicle_count) > 1 ? '#0a2240' : '#7090b0', display:'inline-flex', alignItems:'center', gap:3 }}><TruckIcon className="w-3 h-3" />{res.vehicle_count}×</span>}
               {res.ferry_outbound_name && <span style={{display:'inline-flex', alignItems:'center', gap:3}}><MapIcon className="w-3 h-3" />{res.ferry_outbound_name} {res.ferry_outbound_time?.slice(0,5)}</span>}
               {res.has_ev && <span style={{ color: '#0a7c6e', fontWeight: 600, display:'inline-flex', alignItems:'center', gap:3 }}><BoltIcon className="w-3 h-3" />EV</span>}

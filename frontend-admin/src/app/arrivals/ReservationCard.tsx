@@ -4,6 +4,7 @@ import Link from 'next/link';
 import PlateTooltip from '@/components/ui/PlateTooltip';
 import Modal from '@/components/ui/Modal';
 import { api } from '@/lib/api';
+import { bevestigUitcheck } from '@/lib/uitcheck';
 import { toast, toastError } from '@/components/ui/Toast';
 
 function NotesPopup({ text }: { text: string }) {
@@ -79,6 +80,7 @@ export default function ReservationCard({ res, onUpdate, showCheckin = true, sho
   }
 
   async function doCheckout() {
+    if (!bevestigUitcheck(res)) return;
     setLoading(true);
     try {
       await api.reservations.checkout(res.id);
@@ -127,7 +129,7 @@ export default function ReservationCard({ res, onUpdate, showCheckin = true, sho
               {res.vehicle_count > 1 && <span style={{ fontWeight: 400, color: '#7090b0', fontSize: 12 }}> · {res.vehicle_count} auto's</span>}
             </div>
             <div style={{ fontSize: 11, color: '#7090b0', marginTop: 2, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <span>{new Date(res.arrival_date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} → {new Date(res.departure_date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} · {res.nights} nacht{res.nights !== 1 ? 'en' : ''}</span>
+              <span>{new Date(res.arrival_date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}{res.arrival_time ? ` ${String(res.arrival_time).slice(0,5)}` : ''} → {new Date(res.departure_date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}{res.departure_time ? ` ${String(res.departure_time).slice(0,5)}` : ''} · {res.nights} nacht{res.nights !== 1 ? 'en' : ''}</span>
               {res.ferry_outbound_name && <span>⛴ {res.ferry_outbound_name} {res.ferry_outbound_time?.slice(0,5)}</span>}
               {res.has_ev && <span style={{ color: '#0a7c6e', fontWeight: 600 }}>⚡ EV</span>}
               {res.checkin_at && <span style={{ color: '#0a7c6e' }}>✓ {new Date(res.checkin_at).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}</span>}

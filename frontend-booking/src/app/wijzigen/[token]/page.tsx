@@ -393,6 +393,14 @@ function FerryPicker({
       {currentTime && (
         <div style={{ fontSize: 13, color: '#142440', marginBottom: 8 }}>
           <span style={{ color: '#7090b0' }}>Huidige vertrektijd: </span><strong>{currentTime.slice(0, 5)}</strong>
+          {(() => {
+            // Bij de terugreis telt vooral wanneer de boot in Harlingen aankomt:
+            // dan moet de auto klaarstaan.
+            const aankomst = direction === 'return'
+              ? schedules.find(x => x.departureTime === currentTime.slice(0, 5))?.arrivalHarlingen
+              : null;
+            return aankomst ? <span style={{ color: '#556070' }}> · aankomst Harlingen <strong>{aankomst}</strong></span> : null;
+          })()}
         </div>
       )}
 
@@ -418,6 +426,11 @@ function FerryPicker({
                 <span style={{ fontSize: 12, color: '#556070' }}>
                   {s.isFast ? <><BoltIcon className="w-3 h-3" style={{ display: 'inline', verticalAlign: 'middle' }} /> Sneldienst</> : <><ArrowRightIcon className="w-3 h-3" style={{ display: 'inline', verticalAlign: 'middle' }} /> Veerdienst</>}
                 </span>
+                {direction === 'return' && s.arrivalHarlingen && (
+                  <span style={{ fontSize: 12, color: '#142440' }}>
+                    · aankomst Harlingen <strong>{s.arrivalHarlingen}</strong>
+                  </span>
+                )}
                 {aangevraagd && (
                   <span style={{ fontSize: 10, fontWeight: 700, color: 'white', background: '#1a6bb5', borderRadius: 10, padding: '2px 8px', whiteSpace: 'nowrap' }}>
                     in aanvraag

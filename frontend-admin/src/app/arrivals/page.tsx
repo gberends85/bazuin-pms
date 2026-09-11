@@ -6,6 +6,7 @@ import { toast, toastError } from '@/components/ui/Toast';
 import Modal from '@/components/ui/Modal';
 import PlateTooltip from '@/components/ui/PlateTooltip';
 import { api } from '@/lib/api';
+import { bevestigUitcheck } from '@/lib/uitcheck';
 import { formatPlate } from '@/lib/plate';
 import RefundPolicyInfo from '@/components/ui/RefundPolicyInfo';
 import {
@@ -1017,7 +1018,7 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
           <div style={{ flexShrink: 0, textAlign: 'center', minWidth: 46 }}>
             <div style={{ fontSize: 9, color: '#7090b0', fontWeight: 600, lineHeight: 1, marginBottom: 1 }}>Boot</div>
             <div style={{ fontSize: 19, fontWeight: 900, color: '#0a2240', lineHeight: 1.1 }}>
-              {fmtTime(res.ferry_outbound_time) || '—'}
+              {fmtTime(res.ferry_outbound_time) || fmtTime(res.arrival_time) || '—'}
             </div>
           </div>
           {/* 1. Kenteken + auto info */}
@@ -1056,10 +1057,10 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
           {/* 3. Heentijd */}
           <div style={{ flexShrink: 0, width: 170, paddingRight: 14, borderRight: '0.5px solid rgba(10,34,64,0.08)', marginRight: 4 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: '#4a6080', marginBottom: 2, textTransform: compact ? 'none' : 'capitalize' }}>
-              {compact ? fmtDateCompact(res.arrival_date) : fmtDateLong(res.arrival_date)}
+              {compact ? fmtDateCompact(res.arrival_date) : fmtDateShortNoYear(res.arrival_date)}
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              <span style={{ fontSize: 20, fontWeight: 900, color: '#0a2240', lineHeight: 1.1 }}>{fmtTime(res.ferry_outbound_time) || '—'}</span>
+              <span style={{ fontSize: 20, fontWeight: 900, color: '#0a2240', lineHeight: 1.1 }}>{fmtTime(res.ferry_outbound_time) || fmtTime(res.arrival_time) || '—'}</span>
               {res.ferry_outbound_arrival_island && <span style={{ fontSize: 13, fontWeight: 700, color: '#7090b0' }}>→ {res.ferry_outbound_arrival_island}</span>}
             </div>
           </div>
@@ -1074,7 +1075,9 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
                     <span style={{ fontSize: 20, fontWeight: 900, color: '#0a7c6e' }}>
                       {fmtTime(res.ferry_return_arrival_harlingen) || fmtTime(res.ferry_return_time) || fmtTime(res.ferry_return_custom_time)}
                     </span></>
-                : <span style={{ fontSize: 13, color: '#b0c4d8' }}>—</span>
+                : res.departure_time
+                  ? <span style={{ fontSize: 20, fontWeight: 900, color: '#0a7c6e' }}>{fmtTime(res.departure_time)}</span>
+                  : <span style={{ fontSize: 13, color: '#b0c4d8' }}>—</span>
               }
             </div>
           </div>
@@ -1109,7 +1112,7 @@ function ArrivalCard({ res, onSelect, onUpdate, compact }: { res: any; onSelect:
               {/* Heen + terug op één rij — datum zwart, tijd donkergroen */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginTop: 3, flexWrap: 'wrap', lineHeight: 1.3 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: '#0a2240' }}>{fmtDateShortNoYear(res.arrival_date)}&nbsp;</span>
-                <span style={{ fontSize: 12, fontWeight: 800, color: '#0a6050' }}>{fmtTime(res.ferry_outbound_time) || '—'}</span>
+                <span style={{ fontSize: 12, fontWeight: 800, color: '#0a6050' }}>{fmtTime(res.ferry_outbound_time) || fmtTime(res.arrival_time) || '—'}</span>
                 <span style={{ fontSize: 11, color: '#c8d8e8', margin: '0 4px' }}>·</span>
                 <span style={{ fontSize: 12, fontWeight: 700, color: '#0a2240' }}>{fmtDateShortNoYear(res.departure_date)}&nbsp;</span>
                 <span style={{ fontSize: 12, fontWeight: 800, color: '#0a6050' }}>{fmtTime(res.ferry_return_arrival_harlingen) || fmtTime(res.ferry_return_time) || fmtTime(res.ferry_return_custom_time) || '—'}</span>
@@ -1298,6 +1301,7 @@ function DepartureCard({ res, onUpdate, occupiedLockers = [] }: { res: any; onUp
 
   async function doCheckout(e: React.MouseEvent) {
     e.stopPropagation();
+    if (!bevestigUitcheck(res)) return;
     setCheckingOut(true);
     try {
       await api.reservations.checkout(res.id);

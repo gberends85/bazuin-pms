@@ -632,6 +632,18 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
               await pasBoottijdToe();
               setDoneData({ duringStayPaid: true });
               setStep('dates-done');
+            } else if (payType === 'outstanding') {
+              // Openstaand bedrag alsnog betaald (bij iDEAL komt de klant via deze
+              // omweg terug). Daarna de reservering opnieuw ophalen, anders blijft
+              // "Nu online betalen" in het menu staan.
+              await bookingApi.payOutstandingComplete(params.token, piId);
+              setRes(await bookingApi.getByToken(params.token));
+              setStep('pay-open-done');
+            } else if (payType === 'vehicles') {
+              await bookingApi.addVehiclesComplete(params.token, piId, []);
+              setRes(await bookingApi.getByToken(params.token));
+              setVehResult({ added: true });
+              setStep('vehicles-done');
             } else {
               setStep('menu');
             }

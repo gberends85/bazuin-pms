@@ -6,11 +6,12 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import { router } from './routes/api';
-// partner.routes niet aanwezig op deze server — uitgeschakeld
+import { partnerRouter } from './routes/partner.routes';
 import { constructWebhookEvent, createCheckoutSessionForExtraPayment } from './services/stripe.service';
 import { query } from './db/pool';
 import { sendBookingConfirmation, sendSimpleEmail } from './services/email.service';
 import { syncDoeksenScheduleDays } from './services/doeksen.service';
+import { rondOpenstaandeBetalingAf, rondExtraAutosAf } from './services/betaling-afronden.service';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -107,6 +108,22 @@ app.post(
       switch (event.type) {
         case 'payment_intent.succeeded': {
           const intent = event.data.object as any;
+
+          // Betalingen vanaf de wijzigpagina dragen hun soort mee. Die hier
+          // afronden, zodat ze ook verwerkt worden als de klant na het betalen het
+          // tabblad sluit. Ze mogen niet door de gewone flow hieronder: die zet de
+          // reservering op 'booked', ook als de auto al binnen staat.
+          if (intent.metadata?.type === 'outstanding_payment') {
+            const uit = await rondOpenstaandeBetalingAf(intent.id);
+            console.log(`[Webhook] openstaand bedrag ${intent.id}: ${uit.verwerkt ? 'verwerkt' : uit.reden}`);
+            break;
+          }
+          if (intent.metadata?.type === 'add_vehicles') {
+            const uit = await rondExtraAutosAf(intent.id);
+            console.log(`[Webhook] extra auto ${intent.id}: ${uit.verwerkt ? 'verwerkt' : uit.reden}`);
+            break;
+          }
+
           const reservationId = intent.metadata?.reservation_id;
           console.log(`[Webhook] payment_intent.succeeded — intent=${intent.id}, reservationId=${reservationId}`);
           if (reservationId) {
@@ -265,7 +282,7 @@ app.post(
             // Stripe-dashboard) ten onrechte als 'partial_refund' geregistreerd.
             const refundedEuros = (charge.amount_refunded ?? 0) / 100;
             // Vergelijk het gerestitueerde bedrag met het WERKELIJK betaalde bedrag
-            // (Stripe charge), niet met total_price — dat laatste kan door
+            // (Stripe charge), niet met total_price -- dat laatste kan door
             // wijzigingen zijn gekrompen, waardoor een gedeeltelijke restitutie
             // ten onrechte als volledige 'refunded' zou worden geboekt.
             const capturedEuros = (charge.amount_captured ?? charge.amount ?? 0) / 100;
@@ -355,7 +372,7 @@ app.use(cookieParser());
 
 // ── Routes ────────────────────────────────────────────────────
 // Partner-API (X-API-Key) — o.a. Harlingen Watertaxi, mag in de buffer boeken
-// app.use('/api/v1/partner', partnerRouter); // partner.routes niet aanwezig
+app.use('/api/v1/partner', partnerRouter);
 app.use('/api/v1', router);
 
 // ── Health check (no auth) ────────────────────────────────────

@@ -29,6 +29,7 @@ import {
 import { generateInvoiceGroupPdf } from '../services/invoice-group.service';
 import { importUmbracoRecord } from '../services/umbraco-import.service';
 import { keysafeRouter } from './keysafe.routes';
+import { berekenVoertuigWijzigingVoor, rondOpenstaandeBetalingAf, rondExtraAutosAf } from '../services/betaling-afronden.service';
 
 export const router = Router();
 
@@ -4293,49 +4294,21 @@ router.post('/reservations/token/:token/pay-outstanding-complete', async (req: R
   const { paymentIntentId } = req.body || {};
   if (!paymentIntentId) return res.status(400).json({ error: 'paymentIntentId is verplicht' });
 
-  const result = await query('SELECT * FROM reservations WHERE cancellation_token = $1', [req.params.token]);
+  const result = await query('SELECT id FROM reservations WHERE cancellation_token = $1', [req.params.token]);
   if (result.rows.length === 0) return res.status(404).json({ error: 'Niet gevonden' });
-  const r = result.rows[0];
 
+  // Hoort de betaling bij déze reservering? Anders zou iemand andermans betaling kunnen claimen.
   const Stripe = (await import('stripe')).default;
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
-  const intent = await stripe.paymentIntents.retrieve(String(paymentIntentId), { expand: ['latest_charge'] });
-  if (intent.status !== 'succeeded' || intent.metadata?.reservationId !== r.id || intent.metadata?.type !== 'outstanding_payment') {
+  const intent = await stripe.paymentIntents.retrieve(String(paymentIntentId));
+  if (intent.metadata?.reservationId !== result.rows[0].id || intent.metadata?.type !== 'outstanding_payment') {
     return res.status(400).json({ error: 'Betaling hoort niet bij deze reservering' });
   }
-  if (r.payment_status === 'paid') return res.json({ success: true, alreadyDone: true });
+  if (intent.status !== 'succeeded') return res.status(400).json({ error: 'Betaling is niet afgerond' });
 
-  const ch: any = (intent as any).latest_charge;
-  const soort = ch?.payment_method_details?.type;
-  const toegestaan = ['ideal', 'card', 'paypal', 'sepa', 'bancontact'];
-  const methode = toegestaan.includes(soort) ? soort : 'ideal';
-
-  await query(
-    `UPDATE reservations
-        SET payment_status = 'paid',
-            payment_method = $1,
-            paid_at = COALESCE(paid_at, NOW()),
-            prepaid_amount = COALESCE(prepaid_amount, 0) + $2,
-            stripe_payment_intent_id = COALESCE(stripe_payment_intent_id, $3),
-            updated_at = NOW()
-      WHERE id = $4`,
-    [methode, intent.amount / 100, String(paymentIntentId), r.id]
-  );
-
-  await query(
-    `INSERT INTO reservation_modifications
-       (reservation_id, modified_by, old_arrival_date, old_departure_date, new_arrival_date, new_departure_date,
-        old_total_price, new_total_price, price_difference, modification_fee,
-        status, modification_type, change_details)
-     VALUES ($1,'customer',$2,$3,$2,$3,$4,$4,0,0,'completed','payment',$5)`,
-    [r.id, r.arrival_date, r.departure_date, parseFloat(r.total_price),
-     JSON.stringify({ paidOnline: intent.amount / 100, method: methode, wasOnSite: r.payment_method === 'on_site' })]
-  );
-
-  sendModificationConfirmation(r.id).catch(err =>
-    console.error('Bevestigingsmail na online betaling mislukt:', err));
-
-  return res.json({ success: true, amount: intent.amount / 100, method: methode });
+  // De webhook kan de betaling al verwerkt hebben; dan is dat ook goed.
+  const uit = await rondOpenstaandeBetalingAf(intent.id);
+  return res.json({ success: true, alreadyDone: !uit.verwerkt, amount: intent.amount / 100, method: uit.methode });
 });
 
 // ============================================================
@@ -4359,48 +4332,8 @@ async function berekenVoertuigWijziging(token: string, verwijderIds: string[], e
   if (r.status === 'checked_in') {
     return { fout: 'Uw voertuig is al ingecheckt — neem contact met ons op.', status: 400 } as const;
   }
-
-  const voertuigen = await query(
-    'SELECT id, license_plate, sort_order FROM vehicles WHERE reservation_id = $1 ORDER BY sort_order',
-    [r.id]
-  );
-  const huidig = voertuigen.rows.length;
-
-  const teVerwijderen = voertuigen.rows.filter((v: any) => verwijderIds.includes(v.id));
-  if (teVerwijderen.length !== verwijderIds.length) {
-    return { fout: 'Een of meer voertuigen horen niet bij deze reservering', status: 400 } as const;
-  }
-  const nieuw = huidig - teVerwijderen.length + erbij;
-  if (nieuw < 1) return { fout: 'Er moet minimaal één auto overblijven. Wilt u alles annuleren, gebruik dan "Reservering annuleren".', status: 400 } as const;
-  if (nieuw > 5) return { fout: 'Maximaal 5 auto\'s per reservering', status: 400 } as const;
-
-  const isoD = (d: any) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
-  const arr = isoD(r.arrival_date), dep = isoD(r.departure_date);
-  const lotId = r.parking_lot_id;
-
-  // Nieuwe parkeerprijs; diensten (laden) en toeslagen blijven zoals ze zijn,
-  // behalve het laden van een auto die vervalt.
-  const prijsInfo = await calculatePrice(new Date(arr), new Date(dep), lotId, nieuw);
-  const evVervalt = teVerwijderen.length
-    ? (await query(
-        `SELECT COALESCE(SUM(ev_price), 0) AS som FROM vehicles WHERE id = ANY($1::uuid[])`,
-        [teVerwijderen.map((v: any) => v.id)]
-      )).rows[0].som
-    : 0;
-  const servicesNieuw = Math.max(0, parseFloat(r.services_total || '0') - parseFloat(evVervalt || '0'));
-  const toeslag = parseFloat(r.on_site_surcharge || '0');
-  // Ter-plekke-toeslag is per auto (5 euro per auto bij het boeken)
-  const toeslagNieuw = huidig > 0 ? Math.round((toeslag / huidig) * nieuw * 100) / 100 : toeslag;
-
-  const huidigePrijs = parseFloat(r.total_price);
-  const nieuwePrijs = Math.round((prijsInfo.totalPrice + servicesNieuw + toeslagNieuw) * 100) / 100;
-  const verschil = Math.round((nieuwePrijs - huidigePrijs) * 100) / 100;
-
-  return {
-    r, voertuigen: voertuigen.rows, teVerwijderen, huidig, nieuw,
-    arr, dep, lotId, huidigePrijs, nieuwePrijs, verschil,
-    servicesNieuw, toeslagNieuw,
-  } as const;
+  // De berekening zelf staat in de betaalservice, zodat de webhook hem ook kan gebruiken.
+  return berekenVoertuigWijzigingVoor(r, verwijderIds, erbij);
 }
 
 router.post('/reservations/token/:token/vehicles-preview', async (req: Request, res: Response) => {
@@ -4554,69 +4487,24 @@ router.post('/reservations/token/:token/add-vehicles-pay', async (req: Request, 
 // Auto('s) toevoegen — afronden na geslaagde betaling
 router.post('/reservations/token/:token/add-vehicles-complete', async (req: Request, res: Response) => {
   const { paymentIntentId } = req.body || {};
-  const platen: string[] = Array.isArray(req.body?.plates) ? req.body.plates.filter(Boolean) : [];
-  if (!paymentIntentId || platen.length === 0) return res.status(400).json({ error: 'Onvolledige gegevens' });
+  if (!paymentIntentId) return res.status(400).json({ error: 'Onvolledige gegevens' });
 
-  const b = await berekenVoertuigWijziging(req.params.token, [], platen.length);
-  if ('fout' in b) return res.status(b.status ?? 400).json({ error: b.fout });
+  const result = await query('SELECT id FROM reservations WHERE cancellation_token = $1', [req.params.token]);
+  if (result.rows.length === 0) return res.status(404).json({ error: 'Niet gevonden' });
 
   const Stripe = (await import('stripe')).default;
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
   const intent = await stripe.paymentIntents.retrieve(String(paymentIntentId));
+  if (intent.metadata?.reservationId !== result.rows[0].id || intent.metadata?.type !== 'add_vehicles') {
+    return res.status(400).json({ error: 'Betaling hoort niet bij deze reservering' });
+  }
   if (intent.status !== 'succeeded') return res.status(400).json({ error: 'Betaling is niet afgerond' });
 
-  // Niet twee keer verwerken bij een dubbele aanroep
-  const bestaat = await query(
-    `SELECT 1 FROM reservation_modifications
-      WHERE reservation_id = $1 AND modification_type = 'vehicles'
-        AND change_details::jsonb->>'paymentIntentId' = $2 LIMIT 1`,
-    [b.r.id, String(paymentIntentId)]
-  );
-  if (bestaat.rows.length > 0) return res.json({ success: true, alreadyDone: true });
-
-  let volgorde = b.huidig;
-  for (const plaat of platen) {
-    const genormaliseerd = normalizePlate(plaat) || '';
-    const ins = await query(
-      `INSERT INTO vehicles (reservation_id, license_plate, sort_order) VALUES ($1,$2,$3) RETURNING id`,
-      [b.r.id, genormaliseerd, volgorde++]
-    );
-    const vid = ins.rows[0].id;
-    if (genormaliseerd) {
-      lookupRdw(genormaliseerd).then(info => {
-        if (info) {
-          query(
-            `UPDATE vehicles SET rdw_make=$1, rdw_model=$2, rdw_color=$3, rdw_fuel_type=$4, rdw_year=$5, rdw_fetched_at=NOW() WHERE id=$6`,
-            [info.make, info.model, info.color, info.fuelType, info.year, vid]
-          ).catch(console.error);
-        }
-      }).catch(console.error);
-    }
+  const uit = await rondExtraAutosAf(intent.id);
+  if (!uit.verwerkt && uit.reden !== 'al verwerkt') {
+    return res.status(409).json({ error: `Uw betaling is ontvangen, maar de auto kon niet worden toegevoegd (${uit.reden}). Neem contact met ons op.` });
   }
-
-  await query(
-    `UPDATE reservations
-        SET total_price = $1, base_price = $2, services_total = $3, on_site_surcharge = $4,
-            prepaid_amount = COALESCE(prepaid_amount,0) + $5, updated_at = NOW()
-      WHERE id = $6`,
-    [b.nieuwePrijs, b.nieuwePrijs - b.servicesNieuw - b.toeslagNieuw,
-     b.servicesNieuw, b.toeslagNieuw, b.verschil, b.r.id]
-  );
-
-  await query(
-    `INSERT INTO reservation_modifications
-       (reservation_id, modified_by, old_arrival_date, old_departure_date, new_arrival_date, new_departure_date,
-        old_total_price, new_total_price, price_difference, modification_fee,
-        status, modification_type, change_details)
-     VALUES ($1,'customer',$2,$3,$2,$3,$4,$5,$6,0,'completed','vehicles',$7)`,
-    [b.r.id, b.r.arrival_date, b.r.departure_date, b.huidigePrijs, b.nieuwePrijs, b.verschil,
-     JSON.stringify({ addedPlates: platen, oldCount: b.huidig, newCount: b.nieuw, paymentIntentId: String(paymentIntentId) })]
-  );
-
-  sendModificationConfirmation(b.r.id).catch(err =>
-    console.error('Bevestigingsmail na toevoegen auto mislukt:', err));
-
-  return res.json({ success: true, newCount: b.nieuw, newPrice: b.nieuwePrijs });
+  return res.json({ success: true, alreadyDone: !uit.verwerkt, newCount: uit.newCount, newPrice: uit.newPrice });
 });
 
 // ============================================================
@@ -5366,6 +5254,16 @@ router.post('/admin/modifications/:id/accept', requireAuth, async (req: Request,
     ? (typeof mod.change_details === 'string' ? JSON.parse(mod.change_details) : mod.change_details)
     : {};
 
+  // Een melding van een online betaling hoeft alleen gezien te worden: de betaling
+  // is al verwerkt en de klant heeft zijn bevestiging al gehad. Geen mail dus.
+  if (modType === 'payment') {
+    await query(
+      `UPDATE reservation_modifications SET status='accepted', accepted_by=$1, accepted_at=NOW(), acceptance_notes=$2 WHERE id=$3`,
+      [req.admin!.adminId, notes || null, req.params.id]
+    );
+    return res.json({ success: true });
+  }
+
   if (modType === 'contact') {
     // Update customer contact info
     await query(
@@ -5492,6 +5390,9 @@ router.post('/admin/modifications/:id/reject', requireAuth, async (req: Request,
   if (modResult.rows.length === 0) return res.status(404).json({ error: 'Wijziging niet gevonden' });
   const mod = modResult.rows[0];
   if (mod.status !== 'pending_review') return res.status(400).json({ error: 'Wijziging is al verwerkt' });
+  if (mod.modification_type === 'payment') {
+    return res.status(400).json({ error: 'Een ontvangen betaling kan niet worden afgewezen. Terugbetalen gaat via de reservering.' });
+  }
 
   await query(
     `UPDATE reservation_modifications SET status='rejected', accepted_by=$1, accepted_at=NOW(), acceptance_notes=$2 WHERE id=$3`,

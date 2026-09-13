@@ -20,6 +20,7 @@ const MOD_LABELS: Record<string, string> = {
   ferry: 'Boottijden',
   contact: 'Contactgegevens',
   plate: 'Kenteken',
+  payment: 'Online betaling',
 };
 
 function fmtShort(d: any): string {
@@ -73,6 +74,12 @@ function modSummary(m: any): string | null {
       legs.push(`Was ${timeShort(d.currentOutboundTime) || '—'} heen${dag.oud} → NU ${timeShort(d.newOutboundTime)} veerboot${dag.nieuw}${arr}`);
     }
     return legs.length ? prefix + legs.join('   |   ') : null;
+  }
+
+  if (m.modification_type === 'payment') {
+    const methodeNL: Record<string, string> = { ideal: 'iDEAL', card: 'creditcard', paypal: 'PayPal', bancontact: 'Bancontact', sepa: 'SEPA' };
+    const bedrag = Number(d.paidOnline || 0).toFixed(2).replace('.', ',');
+    return `${prefix}€ ${bedrag} online betaald via ${methodeNL[d.method] || d.method || 'Stripe'}${m.during_stay ? ' — tijdens verblijf' : ''}`;
   }
 
   if (m.modification_type === 'checkedin_departure') {
@@ -275,7 +282,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   onClick={() => approveMod(m.id)}
                   disabled={approvingId === m.id}
                   style={{ marginTop: 8, padding: '7px 12px', borderRadius: 7, background: approvingId === m.id ? '#9fc7bd' : '#0a7c6e', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12, cursor: approvingId === m.id ? 'not-allowed' : 'pointer' }}
-                >{approvingId === m.id ? 'Bezig…' : '✓ Akkoord + mail naar klant'}</button>
+                >{approvingId === m.id ? 'Bezig…' : m.modification_type === 'payment' ? '✓ Gezien' : '✓ Akkoord + mail naar klant'}</button>
               </div>
               );
             })}

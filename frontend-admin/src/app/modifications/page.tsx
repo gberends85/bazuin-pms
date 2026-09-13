@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import AdminLayout from '@/components/layout/AdminLayout';
 import Toaster, { toast, toastError } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
-import { UserIcon, TruckIcon, MapIcon, HomeIcon, CalendarDaysIcon, CheckIcon, XMarkIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { UserIcon, TruckIcon, MapIcon, HomeIcon, CalendarDaysIcon, CheckIcon, XMarkIcon, CheckCircleIcon, BanknotesIcon } from '@heroicons/react/24/outline';
 import { Zap, Ship } from 'lucide-react';
 
 function fmtDate(iso: string) {
@@ -46,6 +46,7 @@ function kortDatum(iso: any) {
   return `${d.getDate()}-${d.getMonth() + 1}`;
 }
 const kortTijd = (t: any) => (t ? String(t).slice(0, 5) : '');
+const BETAALMETHODE: Record<string, string> = { ideal: 'iDEAL', card: 'creditcard', paypal: 'PayPal', bancontact: 'Bancontact', sepa: 'SEPA' };
 
 // Is er bij een datumwijziging ook een boottijd gekozen, dan hoort die in
 // dezelfde regel: de afhaaltijd verandert immers mee.
@@ -77,6 +78,10 @@ function kortOverzicht(m: any, details: any): string {
       ? `Brengen was ${kortDatum(m.old_arrival_date)}, nu ${kortDatum(m.new_arrival_date)}. `
       : '';
     return `${brengen}Afhalen was ${oud}, nu ${nieuw}${boottijdTekst(details)}`;
+  }
+  if (type === 'payment') {
+    const bedrag = Number(details.paidOnline || 0).toFixed(2).replace('.', ',');
+    return `€ ${bedrag} online betaald via ${BETAALMETHODE[details.method] || details.method || 'Stripe'}${m.during_stay ? ' — tijdens verblijf' : ''}`;
   }
   if (type === 'checkedin_departure') {
     return `Afhalen was ${kortDatum(m.old_departure_date)}, nu ${kortDatum(m.new_departure_date)}${boottijdTekst(details)}`;
@@ -128,6 +133,22 @@ function kortOverzicht(m: any, details: any): string {
 // ── Type-specific card body ────────────────────────────────────
 function ModCardBody({ m, details, priceDiff, isDuringStay }: { m: any; details: any; priceDiff: number; isDuringStay: boolean }) {
   const modType = m.modification_type || 'dates';
+
+  if (modType === 'payment') {
+    return (
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#0a6b4f', textTransform: 'uppercase', marginBottom: 8 }}>Online betaling ontvangen</div>
+        <div style={{ background: '#e6f5ef', border: '1.5px solid #0a7c6e', borderRadius: 8, padding: '12px 14px', fontSize: 13, color: '#0a2240', lineHeight: 1.6 }}>
+          De klant heeft <strong>{fmtMoney(Number(details.paidOnline || 0))}</strong> online betaald
+          {details.method ? <> via <strong>{BETAALMETHODE[details.method] || details.method}</strong></> : null}
+          {details.paidAt ? <> op {fmtDateTime(details.paidAt)}</> : null}.
+          {isDuringStay && <> Dit is betaald <strong>tijdens het verblijf</strong>.</>}
+          {' '}Bij het ophalen hoeft er niets meer afgerekend te worden.
+          {details.wasOnSite && <> De klant had eerst gekozen voor betalen ter plekke; de toeslag is daarbij gebleven.</>}
+        </div>
+      </div>
+    );
+  }
 
   if (modType === 'contact') {
     return (
@@ -413,6 +434,7 @@ export default function ModificationsPage() {
       case 'plate':               return { icon: <TruckIcon className="w-3 h-3" style={{display:'inline',verticalAlign:'middle'}} />, text: 'Kenteken' };
       case 'ferry':               return { icon: <MapIcon className="w-3 h-3" style={{display:'inline',verticalAlign:'middle'}} />, text: 'Boottijden' };
       case 'checkedin_departure': return { icon: <HomeIcon className="w-3 h-3" style={{display:'inline',verticalAlign:'middle'}} />, text: 'Vervroegd vertrek' };
+      case 'payment':             return { icon: <BanknotesIcon className="w-3 h-3" style={{display:'inline',verticalAlign:'middle'}} />, text: 'Online betaling' };
       default:                    return { icon: <CalendarDaysIcon className="w-3 h-3" style={{display:'inline',verticalAlign:'middle'}} />, text: 'Data' };
     }
   }
@@ -629,12 +651,14 @@ export default function ModificationsPage() {
                     />
                   </div>
 
+                  {modType !== 'payment' && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#556070', marginBottom: 14, cursor: 'pointer' }}>
                     <input type="checkbox"
                       checked={sendEmail[m.id] !== undefined ? sendEmail[m.id] : true}
                       onChange={e => setSendEmail(s => ({ ...s, [m.id]: e.target.checked }))} />
                     Stuur bevestigingsmail naar klant ({m.email})
                   </label>
+                  )}
 
                   {/* Knoppen */}
                   <div style={{ display: 'flex', gap: 10 }}>
@@ -648,9 +672,9 @@ export default function ModificationsPage() {
                         border: 'none', fontWeight: 700, fontSize: 14,
                         cursor: busy ? 'not-allowed' : 'pointer',
                       }}>
-                      {busy ? 'Bezig...' : isDuringStay ? <><CheckIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Bevestigen</> : <><CheckIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Accepteren</>}
+                      {busy ? 'Bezig...' : modType === 'payment' ? <><CheckIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Gezien</> : isDuringStay ? <><CheckIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Bevestigen</> : <><CheckIcon className="w-4 h-4" style={{display:'inline',verticalAlign:'middle',marginRight:4}} />Accepteren</>}
                     </button>
-                    {!isDuringStay && (
+                    {!isDuringStay && modType !== 'payment' && (
                       <button
                         onClick={() => reject(m.id)}
                         disabled={!!busy}

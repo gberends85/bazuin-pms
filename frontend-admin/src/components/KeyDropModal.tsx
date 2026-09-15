@@ -16,7 +16,7 @@ function waLink(phone: string, text: string): string {
 // met dit kenteken (mini-reservering) en genereert een afhaalcode. Zodra de code
 // wordt ingetoetst geldt dat als de exacte afhaaltijd van deze auto.
 export default function KeyDropModal({
-  open, onClose, onDone, customerId, customerName, plate, stayId, defaultPhone, departureDate,
+  open, onClose, onDone, customerId, customerName, plate, stayId, defaultPhone, departureDate, currentLocker,
 }: {
   open: boolean;
   onClose: () => void;
@@ -27,6 +27,8 @@ export default function KeyDropModal({
   stayId?: number | string | null;
   defaultPhone?: string;
   departureDate?: string;
+  // Zit de sleutel al in een vak, dan is dit een wijziging naar een ander vak
+  currentLocker?: number | null;
 }) {
   const [locker, setLocker] = useState('');
   const [phone, setPhone] = useState('');
@@ -36,14 +38,14 @@ export default function KeyDropModal({
 
   useEffect(() => {
     if (!open) return;
-    setLocker(''); setBusy(false); setCode('');
+    setLocker(currentLocker ? String(currentLocker) : ''); setBusy(false); setCode('');
     setPhone(defaultPhone || '');
     // Bezette kluizen ongeacht datum: een sleutel die al is afgegeven houdt de
     // kluis bezet tot de code is gebruikt, ook als het vertrek pas later is.
     api.keysafe.occupied().then((rows: any[]) => {
       setOccupied(new Set((rows || []).map((r: any) => String(r.parking_spot))));
     }).catch(() => setOccupied(new Set()));
-  }, [open, defaultPhone]);
+  }, [open, defaultPhone, currentLocker]);
 
   async function submit() {
     if (!locker) { toastError('Kies een kluis'); return; }
@@ -71,7 +73,7 @@ export default function KeyDropModal({
   const waMsg = code ? `Uw afhaalcode voor de autosleutel bij Autostalling De Bazuin: ${code} (kluis ${locker}). Toets de code in op het kluisje om de sleutel op te halen.` : '';
 
   return (
-    <Modal open={open} onClose={onClose} title="Sleutel in kluis doen">
+    <Modal open={open} onClose={onClose} title={currentLocker ? `Kluis wijzigen (nu kluis ${currentLocker})` : 'Sleutel in kluis doen'}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ background: '#f4f6f9', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}>
           <div><span style={{ color: '#7090b0' }}>Contractklant:</span> <strong>{customerName}</strong></div>
@@ -85,7 +87,10 @@ export default function KeyDropModal({
               <select value={locker} onChange={e => setLocker(e.target.value)} style={inp}>
                 <option value="">— kies een vrije kluis —</option>
                 {[1, 2, 3, 4, 5, 6, 7].map(n => (
-                  <option key={n} value={n} disabled={occupied.has(String(n))}>{n}{occupied.has(String(n)) ? ' — bezet' : ''}</option>
+                  // Het eigen vak telt niet als bezet: dat mag gekozen blijven
+                  <option key={n} value={n} disabled={occupied.has(String(n)) && n !== currentLocker}>
+                    {n}{n === currentLocker ? ' — huidige kluis' : occupied.has(String(n)) ? ' — bezet' : ''}
+                  </option>
                 ))}
               </select>
             </div>
@@ -98,7 +103,7 @@ export default function KeyDropModal({
             </div>
             <button onClick={submit} disabled={busy}
               style={{ width: '100%', padding: '11px', borderRadius: 8, background: busy ? '#9bb0c8' : '#0a2240', color: 'white', border: 'none', fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer' }}>
-              {busy ? 'Bezig…' : 'In kluis doen + code aanmaken'}
+              {busy ? 'Bezig…' : currentLocker ? 'Kluis wijzigen + nieuwe code aanmaken' : 'In kluis doen + code aanmaken'}
             </button>
           </>
         ) : (

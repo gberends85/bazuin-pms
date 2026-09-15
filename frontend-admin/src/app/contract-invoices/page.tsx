@@ -763,6 +763,7 @@ export default function ContractInvoicesPage() {
           customerName={selectedCustomer.name}
           plate={kdStay.license_plate}
           stayId={kdStay.id}
+          currentLocker={kdStay.locker_number ? Number(kdStay.locker_number) : null}
           defaultPhone={selectedCustomer.phone || ''}
           departureDate={kdStay.departure_date ? String(kdStay.departure_date).slice(0, 10) : undefined}
         />
@@ -956,7 +957,17 @@ export default function ContractInvoicesPage() {
                                 {stayInvoiced && (
                                   <span style={{ fontSize: 9, fontWeight: 700, color: '#6b7280', background: '#e8e8e8', borderRadius: 4, padding: '1px 5px', letterSpacing: '0.3px' }}>GEFACTUREERD</span>
                                 )}
-                                {!s.picked_up_at && (
+                                {!s.picked_up_at && s.locker_number && (
+                                  // Sleutel zit al in een vak: dat tonen, met de mogelijkheid het vak te wijzigen
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700, color: '#0a6b4f', background: '#e6f5ef', border: '1px solid #0a7c6e', borderRadius: 6, padding: '2px 4px 2px 8px' }}>
+                                    <KeyRound size={11} />zit in kluis {s.locker_number}
+                                    <button onClick={() => setKdStay(s)} title="Ander kluisvak kiezen + nieuwe afhaalcode sturen"
+                                      style={{ padding: '1px 6px', background: 'white', border: '1px solid #0a7c6e', color: '#0a7c6e', borderRadius: 4, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                                      wijzigen
+                                    </button>
+                                  </span>
+                                )}
+                                {!s.picked_up_at && !s.locker_number && (
                                   <button onClick={() => setKdStay(s)} title="Sleutel in kluis doen + afhaalcode sturen"
                                     style={{ padding: '3px 8px', background: '#eaf1fb', border: '1px solid #19499e', color: '#19499e', borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                                     <KeyRound size={11} />in kluis doen

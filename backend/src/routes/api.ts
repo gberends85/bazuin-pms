@@ -1899,6 +1899,14 @@ router.get('/admin/reservations/:id/stripe', requireAuth, async (req: Request, r
 // ============================================================
 router.post('/admin/reservations', requireAuth, async (req: Request, res: Response) => {
   const { arrivalDate, departureDate, ferryOutboundDestination, paymentMethod, customerNote, customer, vehicles, invoiceGroupId } = req.body;
+  // Boottijden: het inplanformulier stuurde deze al mee, maar ze werden niet
+  // opgeslagen, waardoor admin-boekingen (o.a. voor factuurklanten) zonder tijd
+  // in de aankomsten- en vertrekkenlijst stonden.
+  const {
+    ferryOutboundId, ferryOutboundTime, isFastFerryOutbound,
+    ferryReturnId, ferryReturnTime, ferryReturnDestination,
+    ferryReturnCustom, ferryReturnCustomTime,
+  } = req.body;
   if (!arrivalDate || !departureDate || !customer?.email || !vehicles?.length) {
     return res.status(400).json({ error: 'Vereiste velden ontbreken' });
   }
@@ -1945,6 +1953,23 @@ router.post('/admin/reservations', requireAuth, async (req: Request, res: Respon
       if (igCheck.rows.length === 0) return res.status(400).json({ error: 'Factuurgroep niet gevonden' });
     }
 
+    // ferry_outbound_id / ferry_return_id verwijzen naar de veerboot (ferries). Het
+    // factuurformulier stuurt het id van de roosterregel; dat hier omzetten naar de
+    // bijbehorende veerboot. Een onbekend id wordt leeg gelaten, zodat de boeking
+    // niet op de foreign key vastloopt.
+    const veerboot = async (id: any): Promise<{ id: any; isFast: boolean } | null> => {
+      if (id == null || String(id).trim() === '') return null;
+      const f = await client.query('SELECT id, is_fast FROM ferries WHERE id::text = $1', [String(id)]);
+      if (f.rows.length) return { id: f.rows[0].id, isFast: !!f.rows[0].is_fast };
+      const sch = await client.query(
+        `SELECT f.id, f.is_fast FROM ferry_schedules fs JOIN ferries f ON f.id = fs.ferry_id WHERE fs.id::text = $1`,
+        [String(id)]
+      );
+      return sch.rows.length ? { id: sch.rows[0].id, isFast: !!sch.rows[0].is_fast } : null;
+    };
+    const heenBoot = await veerboot(ferryOutboundId);
+    const terugBoot = await veerboot(ferryReturnId);
+
     const resResult = await client.query(
       `INSERT INTO reservations (
         reference, customer_id, parking_lot_id, rate_id,
@@ -1954,7 +1979,10 @@ router.post('/admin/reservations', requireAuth, async (req: Request, res: Respon
         base_price, season_surcharge_amount, services_total, on_site_surcharge,
         total_price, vat_amount, admin_notes, policy_anchor_date,
         invoice_group_id,
-        guest_first_name, guest_last_name
+        guest_first_name, guest_last_name,
+        ferry_outbound_id, ferry_outbound_time, is_fast_ferry_outbound,
+        ferry_return_id, ferry_return_time, ferry_return_destination,
+        ferry_return_custom, ferry_return_custom_time
       ) VALUES (
         $1,$2,$3,$4,
         'booked',$5,$6,
@@ -1963,7 +1991,10 @@ router.post('/admin/reservations', requireAuth, async (req: Request, res: Respon
         $10,$11,$12,0,
         $13,$14,$15,$7,
         $16,
-        $17,$18
+        $17,$18,
+        $19,$20,$21,
+        $22,$23,$24,
+        $25,$26
       ) RETURNING id, reference, cancellation_token`,
       [
         reference, customerId, lotId, priceInfo.rateId,
@@ -1975,6 +2006,11 @@ router.post('/admin/reservations', requireAuth, async (req: Request, res: Respon
         invoiceGroupId || null,
         invoiceGroupId ? (customer.firstName || null) : null,
         invoiceGroupId ? (customer.lastName || null) : null,
+        heenBoot?.id ?? null, ferryOutboundTime || null, heenBoot ? heenBoot.isFast : !!isFastFerryOutbound,
+        terugBoot?.id ?? null, ferryReturnTime || null,
+        // Het formulier kent één eiland; terug is dan hetzelfde eiland
+        ferryReturnTime || ferryReturnCustom ? (ferryReturnDestination || ferryOutboundDestination || 'terschelling') : (ferryReturnDestination || null),
+        !!ferryReturnCustom, ferryReturnCustom ? (ferryReturnCustomTime || null) : null,
       ]
     );
     const reservation = resResult.rows[0];
@@ -7828,6 +7864,31 @@ router.post('/admin/contract-customers/:id/key-drop', requireAuth, async (req: R
   try {
     await client.query('BEGIN');
 
+    // Zit de sleutel van dit verblijf al in een kluis (nog niet opgehaald)? Dan is
+    // dit een wijziging: dezelfde reservering naar het nieuwe vak zetten in plaats
+    // van een tweede aanmaken. Anders bleef het oude vak als bezet staan.
+    if (stayIdNum != null) {
+      const bestaand = await client.query(
+        `SELECT id, reference FROM reservations
+          WHERE contract_stay_id = $1 AND contract_customer_id = $2
+            AND status <> 'cancelled' AND locker_collected_at IS NULL
+          ORDER BY created_at DESC LIMIT 1
+          FOR UPDATE`,
+        [stayIdNum, cc.id]
+      );
+      if (bestaand.rows.length > 0) {
+        await client.query(
+          `UPDATE reservations
+              SET parking_spot = $1, departure_date = $2,
+                  guest_phone = COALESCE($3, guest_phone), updated_at = NOW()
+            WHERE id = $4`,
+          [lockerNumber ? String(lockerNumber) : null, depDate, recipientPhone, bestaand.rows[0].id]
+        );
+        await client.query('COMMIT');
+        return res.json({ id: bestaand.rows[0].id, reference: bestaand.rows[0].reference, updated: true });
+      }
+    }
+
     // Eén gedeelde 'klant' per contractklant, zodat customer_id (NOT NULL) klopt.
     const email = cc.email || `contract-${cc.id}@bazuin.local`;
     const custRes = await client.query(
@@ -8003,16 +8064,28 @@ router.get('/admin/contract-customers/:id/vehicle-stays', requireAuth, async (re
   if (!from || !to) return res.status(400).json({ error: 'from en to verplicht' });
   // Alle stays die overlappen met [from, to]
   const r = await query(
-    `SELECT id,
-       license_plate,
-       to_char(arrival_date, 'YYYY-MM-DD') AS arrival_date,
-       to_char(departure_date, 'YYYY-MM-DD') AS departure_date,
-       notes,
-       picked_up_at
-     FROM contract_vehicle_stays
-     WHERE contract_customer_id = $1
-       AND arrival_date <= $3 AND departure_date >= $2
-     ORDER BY arrival_date ASC, license_plate ASC`,
+    `SELECT s.id,
+       s.license_plate,
+       to_char(s.arrival_date, 'YYYY-MM-DD') AS arrival_date,
+       to_char(s.departure_date, 'YYYY-MM-DD') AS departure_date,
+       s.notes,
+       s.picked_up_at,
+       -- In welk kluisvak zit de sleutel nu? (open kluisreservering van dit verblijf)
+       kr.parking_spot AS locker_number
+     FROM contract_vehicle_stays s
+     LEFT JOIN LATERAL (
+       SELECT r.parking_spot
+         FROM reservations r
+        WHERE r.contract_stay_id = s.id
+          AND r.status <> 'cancelled'
+          AND r.locker_code IS NOT NULL
+          AND r.locker_collected_at IS NULL
+        ORDER BY r.created_at DESC
+        LIMIT 1
+     ) kr ON true
+     WHERE s.contract_customer_id = $1
+       AND s.arrival_date <= $3 AND s.departure_date >= $2
+     ORDER BY s.arrival_date ASC, s.license_plate ASC`,
     [req.params.id, from, to]
   );
   return res.json(r.rows);

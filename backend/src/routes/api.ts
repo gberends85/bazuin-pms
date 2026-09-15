@@ -1150,7 +1150,11 @@ router.get('/reservations/by-payment-intent/:intentId', async (req: Request, res
             r.ferry_outbound_time, r.ferry_return_time, r.ferry_return_custom_time,
             COALESCE(r.ferry_outbound_destination, f_out.destination) as ferry_outbound_destination,
             COALESCE(r.ferry_return_destination, f_ret.destination) as ferry_return_destination,
-            (SELECT TO_CHAR(fs.arrival_harlingen, 'HH24:MI')
+            COALESCE(
+              CASE WHEN r.ferry_return_custom_time IS NOT NULL
+                    AND r.ferry_return_custom_time IS DISTINCT FROM r.ferry_return_time
+                   THEN TO_CHAR(r.ferry_return_custom_time, 'HH24:MI') END,
+              (SELECT TO_CHAR(fs.arrival_harlingen, 'HH24:MI')
              FROM ferry_schedules fs
              WHERE fs.schedule_date = r.departure_date AND fs.direction = 'return'
                AND r.ferry_return_time IS NOT NULL
@@ -1158,7 +1162,7 @@ router.get('/reservations/by-payment-intent/:intentId', async (req: Request, res
                AND (COALESCE(r.ferry_return_destination, f_ret.destination) IS NULL
                     OR fs.destination = COALESCE(r.ferry_return_destination, f_ret.destination))
              ORDER BY ABS(EXTRACT(EPOCH FROM (fs.departure_time - r.ferry_return_time)))
-             LIMIT 1) as ferry_return_arrival_harlingen,
+             LIMIT 1)) as ferry_return_arrival_harlingen,
             c.first_name, c.last_name, c.email
      FROM reservations r
      JOIN customers c ON c.id = r.customer_id
@@ -1521,7 +1525,11 @@ router.get('/admin/dashboard/traffic', requireAuth, async (req: Request, res: Re
     // HALEN: na aankomst veerboot in Harlingen op vertrekdatum
     if (r.departure_date >= from && r.departure_date <= to && r.ferry_return_time) {
       const retTime = r.ferry_return_time.slice(0, 5);
+      // Eigen aankomsttijd (afwijkend van de vertrektijd) gaat voor, bv. watertaxi
+      const eigenAankomst = r.ferry_return_custom_time && r.ferry_return_custom_time.slice(0, 5) !== retTime
+        ? r.ferry_return_custom_time.slice(0, 5) : null;
       let halenTime: string | null =
+        eigenAankomst ||
         r.ret_schedule_arrival ||
         (r.ferry_return_duration ? fromMinutes(toMinutes(retTime) + r.ferry_return_duration) : null) ||
         (r.ferry_return_custom_time ? r.ferry_return_custom_time.slice(0, 5) : null);
@@ -1606,6 +1614,10 @@ router.get('/admin/reservations', requireAuth, async (req: Request, res: Respons
                 WHERE m2.reservation_id = r.id AND m2.modification_type = 'plate'
                   AND m2.created_at::date >= r.arrival_date) as plate_changed_late_at,
               COALESCE(r.ferry_return_destination, f_ret.destination) as ferry_return_destination,
+              COALESCE(
+              CASE WHEN r.ferry_return_custom_time IS NOT NULL
+                    AND r.ferry_return_custom_time IS DISTINCT FROM r.ferry_return_time
+                   THEN TO_CHAR(r.ferry_return_custom_time, 'HH24:MI') END,
               (SELECT TO_CHAR(fs.arrival_harlingen, 'HH24:MI')
                FROM ferry_schedules fs
                WHERE fs.schedule_date = r.departure_date AND fs.direction = 'return'
@@ -1614,7 +1626,7 @@ router.get('/admin/reservations', requireAuth, async (req: Request, res: Respons
                  AND (COALESCE(r.ferry_return_destination, f_ret.destination) IS NULL
                       OR fs.destination = COALESCE(r.ferry_return_destination, f_ret.destination))
                ORDER BY ABS(EXTRACT(EPOCH FROM (fs.departure_time - r.ferry_return_time)))
-               LIMIT 1) as ferry_return_arrival_harlingen,
+               LIMIT 1)) as ferry_return_arrival_harlingen,
               ig.reference as invoice_group_reference,
               ig.billing_name as invoice_group_billing_name,
               ig.status as invoice_group_status
@@ -1744,7 +1756,11 @@ router.get('/admin/reservations/today', requireAuth, async (req: Request, res: R
     ferry_return_time: r.ferry_return_time?.slice(0, 5) || null,
     ferry_return_custom_time: r.ferry_return_custom_time?.slice(0, 5) || null,
     ferry_return_arrival_harlingen: r.ferry_return_time
-      ? (r.ret_schedule_arrival ||
+      ? (
+         // Eigen aankomsttijd (afwijkend van de vertrektijd) gaat voor, bv. watertaxi
+         (r.ferry_return_custom_time && r.ferry_return_custom_time.slice(0, 5) !== r.ferry_return_time.slice(0, 5)
+           ? r.ferry_return_custom_time.slice(0, 5) : null) ||
+         r.ret_schedule_arrival ||
          (r.ferry_return_duration ? addMinutes(r.ferry_return_time.slice(0, 5), r.ferry_return_duration) : null) ||
          (() => {
            const dest = (r.ferry_return_destination || r.ferry_outbound_destination || '').toLowerCase();
@@ -1815,7 +1831,11 @@ router.get('/admin/reservations/:id', requireAuth, async (req: Request, res: Res
       (r.is_fast_ferry_outbound ? 50 : (r.ferry_outbound_destination === 'vlieland' ? 100 : 120))
     ) : null,
     ferry_return_arrival_harlingen: r.ferry_return_time
-      ? (r.ret_schedule_arrival ||
+      ? (
+         // Eigen aankomsttijd (afwijkend van de vertrektijd) gaat voor, bv. watertaxi
+         (r.ferry_return_custom_time && r.ferry_return_custom_time.slice(0, 5) !== r.ferry_return_time.slice(0, 5)
+           ? r.ferry_return_custom_time.slice(0, 5) : null) ||
+         r.ret_schedule_arrival ||
          (r.ferry_return_duration ? addMin(r.ferry_return_time, r.ferry_return_duration) : null) ||
          (() => {
            const dest = (r.ferry_return_destination || r.ferry_outbound_destination || '').toLowerCase();

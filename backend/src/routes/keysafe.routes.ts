@@ -108,7 +108,7 @@ keysafeRouter.post('/admin/reservations/:id/keysafe/assign', requireAuth, async 
   try {
     const assigned = await keysafe.assignCode(lockerIndex, 24);
     await query(
-      `UPDATE reservations SET locker_code=$1, locker_code_sent_at=NULL, locker_collected_at=NULL, updated_at=NOW() WHERE id=$2`,
+      `UPDATE reservations SET locker_code=$1, locker_code_assigned_at=NOW(), locker_code_sent_at=NULL, locker_collected_at=NULL, updated_at=NOW() WHERE id=$2`,
       [assigned.code, r.id]
     );
     return res.json({ code: assigned.code, valid_to: assigned.valid_to });
@@ -217,6 +217,120 @@ keysafeRouter.post('/admin/reservations/:id/keysafe/send-email', requireAuth, as
   }
 });
 
+// ── Sleutel opgehaald verwerken ───────────────────────────────────────────
+// Gedeeld door de webhook van de gateway en de periodieke controle hieronder.
+// Match op kluisnummer + de daadwerkelijk gebruikte code (meest precies, want er
+// kunnen meerdere boekingen aan hetzelfde vak gekoppeld zijn). GEEN datum-
+// restrictie: de sleutel kan op een andere dag dan departure_date opgehaald worden.
+// Met alleenNaUitgifte telt de afhaling alleen als die ná het uitgeven van de code
+// gebeurde; zo telt de afhaling van een vorige klant op hetzelfde vak niet mee.
+async function markeerSleutelOpgehaald(
+  lockerNumber: number, code: string | null, opgehaaldOp: Date, alleenNaUitgifte: boolean,
+): Promise<any[]> {
+  // Sleutel opgehaald = klant is weg → reservering ook uitchecken (mits ingecheckt).
+  const upd = await query(
+    `UPDATE reservations
+     SET locker_collected_at = $3::timestamptz,
+         locker_code         = NULL,
+         locker_code_sent_at = NULL,
+         status              = CASE WHEN status = 'checked_in' THEN 'completed' ELSE status END,
+         updated_at          = NOW()
+     WHERE parking_spot = $1
+       AND locker_code IS NOT NULL
+       AND locker_collected_at IS NULL
+       AND ($2::text IS NULL OR locker_code = $2)
+       AND ($4::boolean IS NOT TRUE
+            OR (locker_code_assigned_at IS NOT NULL AND locker_code_assigned_at < $3::timestamptz))
+     RETURNING reference, status, contract_stay_id, locker_collected_at`,
+    [String(lockerNumber), code, opgehaaldOp.toISOString(), alleenNaUitgifte]
+  );
+
+  // Contract-kluiscode (bv. Sixt): de code is gebruikt → dit is de exacte
+  // afhaaltijd/-datum van die auto. Schrijf 'm terug naar het contract-verblijf
+  // (picked_up_at + vertrekdatum), zodat het op de factuur klopt.
+  for (const row of upd.rows) {
+    if (row.contract_stay_id != null) {
+      try {
+        await query(
+          // $1 expliciet typeren: zonder cast wordt dezelfde parameter zowel als
+          // timestamptz (picked_up_at) als date (departure_date) gebruikt, en dan
+          // faalt PostgreSQL met "inconsistent types deduced for parameter $1".
+          `UPDATE contract_vehicle_stays
+           SET picked_up_at   = $1::timestamptz,
+               departure_date = ($1::timestamptz)::date
+           WHERE id = $2`,
+          [row.locker_collected_at, row.contract_stay_id]
+        );
+        console.log(`[keysafe] contract-verblijf ${row.contract_stay_id} bijgewerkt met afhaaltijd`);
+      } catch (e) {
+        console.error('[keysafe] contract-verblijf bijwerken mislukt:', e);
+      }
+    }
+  }
+  return upd.rows;
+}
+
+// ── Periodieke controle bij de kluis ──────────────────────────────────────
+// De gateway meldt een afhaling via de webhook hieronder, maar dat bericht komt
+// niet altijd aan: op 15-9 werd vak 7 (Sixt) om 08:34 geleegd zonder dat er iets
+// binnenkwam. Daarom kijken we elke twee minuten zelf bij de kluis. Staat daar een
+// afhaling met de code van een open reservering, gedaan ná het uitgeven van die
+// code, dan verwerken we die alsnog met de afhaaltijd die de kluis heeft
+// geregistreerd. Wat de webhook al verwerkte, wordt niet nog eens geraakt.
+const CONTROLE_INTERVAL_MS = 2 * 60 * 1000;
+let controleBezig = false;
+let gatewayWeg = false;
+
+async function controleerAfhalingen() {
+  if (controleBezig || !process.env.KEYSAFE_GATEWAY_URL) return;
+  controleBezig = true;
+  try {
+    let lockers: keysafe.KeysafeLocker[];
+    try {
+      lockers = await keysafe.listLockers();
+      if (gatewayWeg) console.log('[keysafe] controle: gateway weer bereikbaar');
+      gatewayWeg = false;
+    } catch (e: any) {
+      // Eén regel per storing, niet elke twee minuten opnieuw
+      if (!gatewayWeg) console.warn('[keysafe] controle: gateway niet bereikbaar —', e?.message || e);
+      gatewayWeg = true;
+      return;
+    }
+
+    for (const l of lockers) {
+      const afgehaald = l.last_delivered ? new Date(l.last_delivered) : null;
+      // De kluis geeft 1970-01-01 terug voor "nooit"
+      if (!afgehaald || isNaN(afgehaald.getTime()) || afgehaald.getFullYear() < 2000 || !l.code) continue;
+
+      const rows = await markeerSleutelOpgehaald(l.index + 1, String(l.code), afgehaald, true);
+      for (const row of rows) {
+        console.warn(`[keysafe] controle: afhaling zonder webhook verwerkt — vak ${l.index + 1}, code ${l.code}, ref ${row.reference}, afgehaald ${l.last_delivered}`);
+        const notify = process.env.KEYSAFE_NOTIFY_EMAIL;
+        if (notify) {
+          sendSimpleEmail(
+            notify,
+            `Sleutel opgehaald — vak ${l.index + 1} (${row.reference})`,
+            `<p>De sleutel uit vak <strong>${l.index + 1}</strong> is opgehaald om ${l.last_delivered}.</p>
+             <p>De kluis stuurde hierover geen melding; de reservering is bijgewerkt via de periodieke controle.</p>`,
+          ).catch(err => console.error('[keysafe] melding versturen mislukt:', err));
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[keysafe] controle mislukt:', e);
+  } finally {
+    controleBezig = false;
+  }
+}
+
+// Kolom voor het uitgiftemoment van een code; daarna de controle starten.
+query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS locker_code_assigned_at TIMESTAMPTZ`)
+  .then(() => {
+    setTimeout(controleerAfhalingen, 30 * 1000);
+    setInterval(controleerAfhalingen, CONTROLE_INTERVAL_MS);
+  })
+  .catch(e => console.error('[keysafe] kolom locker_code_assigned_at aanmaken mislukt:', e));
+
 // ── Webhook van de gateway: code gebruikt / sleutel opgehaald/ingelegd ────
 keysafeRouter.post('/keysafe/events', async (req: Request, res: Response) => {
   const secret = process.env.KEYSAFE_WEBHOOK_SECRET;
@@ -236,51 +350,13 @@ keysafeRouter.post('/keysafe/events', async (req: Request, res: Response) => {
   console.log(`[keysafe] event: ${ev.event} vak ${ev.locker_number} code ${ev.code} @ ${ev.at}`);
 
   // Bij key_collected: markeer de reservering als opgehaald en wis de code.
-  // Match op kluisnummer + de daadwerkelijk gebruikte code (meest precies, want
-  // er kunnen meerdere boekingen aan hetzelfde vak gekoppeld zijn). GEEN datum-
-  // restrictie: de sleutel kan op een andere dag dan departure_date opgehaald worden.
   if (ev.event === 'key_collected' && ev.locker_number != null) {
     try {
-      // Sleutel opgehaald = klant is weg → reservering ook uitchecken (mits ingecheckt).
-      const upd = await query(
-        `UPDATE reservations
-         SET locker_collected_at = NOW(),
-             locker_code         = NULL,
-             locker_code_sent_at = NULL,
-             status              = CASE WHEN status = 'checked_in' THEN 'completed' ELSE status END,
-             updated_at          = NOW()
-         WHERE parking_spot = $1
-           AND locker_code IS NOT NULL
-           AND locker_collected_at IS NULL
-           AND ($2::text IS NULL OR locker_code = $2)
-         RETURNING reference, status, contract_stay_id, locker_collected_at`,
-        [String(ev.locker_number), ev.code != null ? String(ev.code) : null]
+      const rows = await markeerSleutelOpgehaald(
+        ev.locker_number, ev.code != null ? String(ev.code) : null, new Date(), false,
       );
-      const ref = upd.rows[0]?.reference ?? '—';
-      console.log(`[keysafe] key_collected → ${upd.rowCount ?? 0} reservering(en) bijgewerkt + uitgecheckt (vak ${ev.locker_number}, code ${ev.code ?? '—'}, ref ${ref})`);
-
-      // Contract-kluiscode (bv. Sixt): de code is gebruikt → dit is de exacte
-      // afhaaltijd/-datum van die auto. Schrijf 'm terug naar het contract-verblijf
-      // (picked_up_at + vertrekdatum), zodat het op de factuur klopt.
-      for (const row of upd.rows) {
-        if (row.contract_stay_id != null) {
-          try {
-            await query(
-              // $1 expliciet typeren: zonder cast wordt dezelfde parameter zowel als
-              // timestamptz (picked_up_at) als date (departure_date) gebruikt, en dan
-              // faalt PostgreSQL met "inconsistent types deduced for parameter $1".
-              `UPDATE contract_vehicle_stays
-               SET picked_up_at   = $1::timestamptz,
-                   departure_date = ($1::timestamptz)::date
-               WHERE id = $2`,
-              [row.locker_collected_at, row.contract_stay_id]
-            );
-            console.log(`[keysafe] contract-verblijf ${row.contract_stay_id} bijgewerkt met afhaaltijd`);
-          } catch (e) {
-            console.error('[keysafe] contract-verblijf bijwerken mislukt:', e);
-          }
-        }
-      }
+      const ref = rows[0]?.reference ?? '—';
+      console.log(`[keysafe] key_collected → ${rows.length} reservering(en) bijgewerkt + uitgecheckt (vak ${ev.locker_number}, code ${ev.code ?? '—'}, ref ${ref})`);
     } catch (e) {
       console.error('[keysafe] locker bijwerken mislukt:', e);
     }

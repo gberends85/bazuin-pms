@@ -10,6 +10,7 @@ interface RdwVehicle {
   voertuigsoort: string;
   datum_eerste_toelating: string;
   inrichting: string;
+  massa_rijklaar?: string;
 }
 
 interface RdwFuelEntry {
@@ -131,12 +132,22 @@ export async function lookupRdw(rawPlate: string): Promise<VehicleInfo | null> {
           const range = wltpRange > 0 ? wltpRange : (externalRange > 0 ? externalRange : bevRange);
 
           // Verbruik: WLTP indien beschikbaar, anders gewogen gecombineerd, anders
-          // het oudere pure-BEV verbruik, anders ~200 Wh/km.
+          // het oudere pure-BEV verbruik, anders een schatting op basis van gewicht.
           const wltpConsumption = num(electricEntry.elektrisch_verbruik_enkel_elektrisch_wltp)
             || num(electricEntry.elektrisch_verbruik_extern_opladen_wltp);
+          // Geeft het RDW geen verbruik, dan niet een vaste 200 Wh/km aannemen: dat
+          // past bij een grote SUV en maakte van een Peugeot 2008 (340 km) een accu
+          // van 68 kWh, terwijl die 50 kWh is. Het verbruik schalen we daarom met het
+          // rijklaar gewicht: ~1600 kg -> ~145 Wh/km, ~2100 kg -> ~180 Wh/km (gemeten
+          // vanaf de accu). Zonder gewicht 150 Wh/km. Liever wat te laag dan te hoog:
+          // een te grote schatting laat klanten laden betalen dat er niet in past.
+          const massa = num(vehicle.massa_rijklaar);
+          const geschatVerbruik = massa > 0
+            ? Math.min(200, Math.max(130, 0.075 * massa + 25))
+            : 150;
           const consumption = wltpConsumption > 0
             ? wltpConsumption
-            : (combinedElecConsumption > 0 ? combinedElecConsumption : (bevConsumption > 0 ? bevConsumption : 200));
+            : (combinedElecConsumption > 0 ? combinedElecConsumption : (bevConsumption > 0 ? bevConsumption : geschatVerbruik));
 
           // Alleen laden aanbieden als de auto ook echt extern oplaadbaar is.
           // Zonder bekend bereik geen accu-schatting verzinnen: dan valt de

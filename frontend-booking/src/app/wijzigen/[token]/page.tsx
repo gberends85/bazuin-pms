@@ -354,11 +354,15 @@ function aangevraagdeBoottijd(res: any, richting: 'outbound' | 'return'): string
 }
 
 function FerryPicker({
-  label, date, destination, direction, currentTime, selectedTime, onSelect, pendingTime,
+  label, date, destination, direction, currentTime, selectedTime, onSelect, pendingTime, onManual, currentIsPickup,
 }: {
   label: string; date: string; destination: string; direction: string;
   currentTime?: string; selectedTime: string; onSelect: (t: string) => void;
   pendingTime?: string | null;
+  // Bij de terugreis is een handmatige tijd de afhaaltijd in Harlingen; dat geeft
+  // de picker door, zodat het verzoek als afhaaltijd wordt opgeslagen.
+  onManual?: (handmatig: boolean) => void;
+  currentIsPickup?: boolean;
 }) {
   const [schedules, setSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -377,6 +381,13 @@ function FerryPicker({
     fetchSchedules();
   }, [fetchSchedules]);
 
+  // Geen rooster gevonden? Dan is invoeren per definitie handmatig.
+  const handmatigActief = manualMode || (!loading && schedules.length === 0);
+  useEffect(() => {
+    onManual?.(handmatigActief);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handmatigActief]);
+
   const S = {
     scheduleItem: (selected: boolean): React.CSSProperties => ({
       display: 'flex', alignItems: 'center', gap: 10,
@@ -392,7 +403,7 @@ function FerryPicker({
       <div style={{ fontSize: 11, fontWeight: 700, color: '#7090b0', textTransform: 'uppercase', marginBottom: 6 }}>{label}</div>
       {currentTime && (
         <div style={{ fontSize: 13, color: '#142440', marginBottom: 8 }}>
-          <span style={{ color: '#7090b0' }}>Huidige vertrektijd: </span><strong>{currentTime.slice(0, 5)}</strong>
+          <span style={{ color: '#7090b0' }}>{currentIsPickup ? 'Huidige afhaaltijd: ' : 'Huidige vertrektijd: '}</span><strong>{currentTime.slice(0, 5)}</strong>
           {(() => {
             // Bij de terugreis telt vooral wanneer de boot in Harlingen aankomt:
             // dan moet de auto klaarstaan.
@@ -454,6 +465,21 @@ function FerryPicker({
         <>
           {schedules.length === 0 && !loading && (
             <div style={{ fontSize: 12, color: '#7090b0', marginBottom: 6 }}>Geen rooster gevonden — voer handmatig in:</div>
+          )}
+          {direction === 'return' ? (
+            <div style={{ background: '#eaf1fb', border: '1px solid rgba(25,73,158,0.25)', borderRadius: 8, padding: '9px 11px', marginBottom: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#142440', marginBottom: 3 }}>
+                Hoe laat wilt u uw auto ophalen?
+              </div>
+              <div style={{ fontSize: 12, color: '#556070', lineHeight: 1.5 }}>
+                Vul de tijd in waarop u <strong>in Harlingen aankomt</strong> en de auto komt ophalen —
+                dus niet de vertrektijd van de boot op het eiland. Dan staat uw auto op tijd klaar.
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#142440', marginBottom: 6 }}>
+              Vertrektijd van de boot
+            </div>
           )}
           <input
             type="time"
@@ -535,6 +561,8 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   // Ferry sub-form state
   const [ferryOutboundTime, setFerryOutboundTime] = useState('');
   const [ferryReturnTime, setFerryReturnTime] = useState('');
+  // Handmatig ingevulde terugtijd = afhaaltijd in Harlingen (geen boottijd)
+  const [ferryReturnHandmatig, setFerryReturnHandmatig] = useState(false);
   const [ferryNotes, setFerryNotes] = useState('');
   const [ferryLoading, setFerryLoading] = useState(false);
   const [ferrySyncing, setFerrySyncing] = useState(false);
@@ -1012,6 +1040,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         params.token, ferryOutboundTime, ferryReturnTime, ferryNotes,
         ferryOutboundTime ? ferryOutboundDest : undefined,
         ferryReturnTime ? ferryReturnDest : undefined,
+        ferryReturnHandmatig && !!ferryReturnTime,
       );
       setStep(result.autoApplied ? 'ferry-done' : 'pending');
     } catch (e: any) { setError(e.message); }
@@ -2522,9 +2551,11 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
           destination={ferryReturnDest}
           direction="return"
           pendingTime={aangevraagdeBoottijd(res, 'return')}
-          currentTime={res?.ferry_return_time}
+          currentTime={res?.ferry_return_custom_time || res?.ferry_return_time}
+          currentIsPickup={!res?.ferry_return_time && !!res?.ferry_return_custom_time}
           selectedTime={ferryReturnTime}
           onSelect={setFerryReturnTime}
+          onManual={setFerryReturnHandmatig}
         />
 
         <div style={{ marginBottom: 20 }}>

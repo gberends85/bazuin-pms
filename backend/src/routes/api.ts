@@ -1523,24 +1523,25 @@ router.get('/admin/dashboard/traffic', requireAuth, async (req: Request, res: Re
     }
 
     // HALEN: na aankomst veerboot in Harlingen op vertrekdatum
-    if (r.departure_date >= from && r.departure_date <= to && r.ferry_return_time) {
-      const retTime = r.ferry_return_time.slice(0, 5);
-      // Eigen aankomsttijd (afwijkend van de vertrektijd) gaat voor, bv. watertaxi
-      const eigenAankomst = r.ferry_return_custom_time && r.ferry_return_custom_time.slice(0, 5) !== retTime
-        ? r.ferry_return_custom_time.slice(0, 5) : null;
+    const retTime: string | null = r.ferry_return_time ? r.ferry_return_time.slice(0, 5) : null;
+    // Een opgegeven afhaaltijd telt ook zonder boottijd, bv. eigen vervoer
+    const eigenAankomst = r.ferry_return_custom_time && r.ferry_return_custom_time.slice(0, 5) !== retTime
+      ? r.ferry_return_custom_time.slice(0, 5) : null;
+    if (r.departure_date >= from && r.departure_date <= to && (retTime || eigenAankomst)) {
       let halenTime: string | null =
         eigenAankomst ||
         r.ret_schedule_arrival ||
-        (r.ferry_return_duration ? fromMinutes(toMinutes(retTime) + r.ferry_return_duration) : null) ||
+        (retTime && r.ferry_return_duration ? fromMinutes(toMinutes(retTime) + r.ferry_return_duration) : null) ||
         (r.ferry_return_custom_time ? r.ferry_return_custom_time.slice(0, 5) : null);
 
-      if (!halenTime) {
+      if (!halenTime && retTime) {
         const dest = (r.ferry_return_destination || r.ferry_outbound_destination || '').toLowerCase();
         // Vlieland veerboot = 100 min, Terschelling veerboot = 120 min
         // Note: snelboot (50 min) should be resolved via ret_schedule_arrival or ferry_return_duration
         const travelMin = dest.includes('vlieland') ? 100 : 120;
         halenTime = fromMinutes(toMinutes(retTime) + travelMin);
       }
+      if (!halenTime) continue;
 
       const slot = toSlot(halenTime);
       ensureSlot(r.departure_date, slot).halen += vehicles;
@@ -4653,7 +4654,11 @@ router.post('/reservations/token/:token/modify-plate', async (req: Request, res:
 // CUSTOMER — MODIFY FERRY
 // ============================================================
 router.post('/reservations/token/:token/modify-ferry', async (req: Request, res: Response) => {
-  const { newOutboundTime, newReturnTime, notes, destination, outboundDestination, returnDestination } = req.body;
+  const { newOutboundTime, newReturnTime, notes, destination, outboundDestination, returnDestination, returnIsPickup } = req.body;
+  // Een handmatig ingevulde terugtijd is de afhaaltijd in Harlingen, niet de
+  // vertrektijd van de boot. Dan slaan we geen boottijd op: er hoort één tijd te
+  // staan, de tijd waarop de auto klaar moet staan.
+  const terugIsAfhaaltijd = !!returnIsPickup && !!newReturnTime;
   // Support both new separate destinations and old single destination (backward compat)
   const effectiveOutboundDest = outboundDestination || destination || null;
   const effectiveReturnDest = returnDestination || destination || null;
@@ -4702,7 +4707,7 @@ router.post('/reservations/token/:token/modify-ferry', async (req: Request, res:
     }
   }
 
-  if (newReturnTime) {
+  if (newReturnTime && !terugIsAfhaaltijd) {
     const retRes = await query(
       `SELECT f.is_fast, f.duration_min, fs.arrival_harlingen
        FROM ferry_schedules fs JOIN ferries f ON f.id = fs.ferry_id
@@ -4728,9 +4733,14 @@ router.post('/reservations/token/:token/modify-ferry', async (req: Request, res:
     requestedOutboundDestination: effectiveOutboundDest,
     currentReturnDestination: r.ferry_return_destination || null,
     currentReturnTime: r.ferry_return_time || null,
-    newReturnTime: newReturnTime || null,
+    newReturnIsPickup: terugIsAfhaaltijd || undefined,
+    // Bij een afhaaltijd hoort geen boottijd: de opgegeven tijd is de aankomst
+    // in Harlingen, en die staat in newReturnArrivalHarlingen.
+    newReturnTime: terugIsAfhaaltijd ? null : (newReturnTime || null),
     newReturnIsFast: returnScheduleInfo?.isFast ?? null,
-    newReturnArrivalHarlingen: returnScheduleInfo?.arrivalTime ?? null,
+    newReturnArrivalHarlingen: terugIsAfhaaltijd
+      ? String(newReturnTime).slice(0, 5)
+      : (returnScheduleInfo?.arrivalTime ?? null),
     requestedReturnDestination: effectiveReturnDest,
     notes: notes || null,
   });
@@ -4746,8 +4756,16 @@ router.post('/reservations/token/:token/modify-ferry', async (req: Request, res:
       if (effectiveOutboundDest) { updates.push(`ferry_outbound_destination = $${idx++}`); params.push(effectiveOutboundDest); }
     }
     if (newReturnTime) {
-      updates.push(`ferry_return_time = $${idx++}`);
-      params.push(newReturnTime);
+      if (terugIsAfhaaltijd) {
+        // Alleen de afhaaltijd; de boottijd vervalt
+        updates.push(`ferry_return_time = NULL`, `ferry_return_id = NULL`, `ferry_return_custom = true`);
+        updates.push(`ferry_return_custom_time = $${idx++}`);
+        params.push(newReturnTime);
+      } else {
+        updates.push(`ferry_return_time = $${idx++}`);
+        params.push(newReturnTime);
+        updates.push(`ferry_return_custom = false`, `ferry_return_custom_time = NULL`);
+      }
       if (effectiveReturnDest) { updates.push(`ferry_return_destination = $${idx++}`); params.push(effectiveReturnDest); }
     }
     updates.push(`updated_at = NOW()`);
@@ -5353,11 +5371,24 @@ router.post('/admin/modifications/:id/accept', requireAuth, async (req: Request,
       }
     }
   } else if (modType === 'ferry') {
-    // Update ferry times on reservation
-    await query(
-      `UPDATE reservations SET ferry_outbound_time=$1, ferry_return_time=$2, updated_at=NOW() WHERE id=$3`,
-      [details.newOutboundTime || details.currentOutboundTime, details.newReturnTime || details.currentReturnTime, mod.reservation_id]
-    );
+    if (details.newReturnIsPickup && details.newReturnArrivalHarlingen) {
+      // Klant gaf een afhaaltijd op: die vastleggen, de boottijd vervalt
+      await query(
+        `UPDATE reservations
+            SET ferry_outbound_time = $1,
+                ferry_return_time = NULL, ferry_return_id = NULL,
+                ferry_return_custom = true, ferry_return_custom_time = $2,
+                updated_at = NOW()
+          WHERE id = $3`,
+        [details.newOutboundTime || details.currentOutboundTime, details.newReturnArrivalHarlingen, mod.reservation_id]
+      );
+    } else {
+      // Update ferry times on reservation
+      await query(
+        `UPDATE reservations SET ferry_outbound_time=$1, ferry_return_time=$2, updated_at=NOW() WHERE id=$3`,
+        [details.newOutboundTime || details.currentOutboundTime, details.newReturnTime || details.currentReturnTime, mod.reservation_id]
+      );
+    }
   } else if (modType === 'checkedin_departure') {
     // Vervroegd vertrek: only update departure_date, no price change
     const isoDateHelper = (d: any) => d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);

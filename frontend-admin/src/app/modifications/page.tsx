@@ -103,7 +103,12 @@ function kortOverzicht(m: any, details: any): string {
       const dag = dagPaar(m.old_arrival_date, m.arrival_date);
       regels.push(`Heenreis was ${o1 || '—'}${dag.oud}, nu ${o2}${dag.nieuw}`);
     }
-    if (r2 && r2 !== r1) {
+    if (details.newReturnIsPickup && details.newReturnArrivalHarlingen) {
+      // Eigen afhaaltijd opgegeven; de boottijd vervalt
+      const dag = dagPaar(m.old_departure_date, m.departure_date);
+      const oudHalen = kortTijd(details.currentReturnArrivalHarlingen) || kortTijd(ophaalTijd) || '—';
+      regels.push(`Afhalen was ${oudHalen}${dag.oud}, nu ${kortTijd(details.newReturnArrivalHarlingen)}${dag.nieuw} (eigen tijd, geen boot)`);
+    } else if (r2 && r2 !== r1) {
       const dag = dagPaar(m.old_departure_date, m.departure_date);
       // Alleen "afhalen" zeggen als we van beide kanten de aankomsttijd in
       // Harlingen kennen; anders vertrektijd met vertrektijd vergelijken.
@@ -193,6 +198,30 @@ function ModCardBody({ m, details, priceDiff, isDuringStay }: { m: any; details:
           </div>
         ))}
         {vehicles.length === 0 && <p style={{ color: '#7090b0', fontSize: 12 }}>Geen voertuiggegevens.</p>}
+      </div>
+    );
+  }
+
+  if (modType === 'ferry' && details.newReturnIsPickup && details.newReturnArrivalHarlingen) {
+    return (
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#1a6bb5', textTransform: 'uppercase', marginBottom: 8 }}>Afhaaltijd gewijzigd</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 10, alignItems: 'center' }}>
+          <div style={{ background: '#f4f6f9', borderRadius: 8, padding: '10px 14px' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#7090b0', marginBottom: 4 }}>HUIDIGE AFHAALTIJD</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#0a2240' }}>
+              {kortTijd(details.currentReturnArrivalHarlingen) || kortTijd(m.ferry_return_arrival_harlingen) || kortTijd(details.currentReturnTime) || '—'}
+            </div>
+          </div>
+          <div style={{ fontSize: 20, color: '#1a6bb5', fontWeight: 700 }}>→</div>
+          <div style={{ background: '#e6f1fb', borderRadius: 8, padding: '10px 14px', border: '1.5px solid #1a6bb5' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#1a6bb5', marginBottom: 4 }}>NIEUWE AFHAALTIJD</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#1a6bb5' }}>{kortTijd(details.newReturnArrivalHarlingen)}</div>
+          </div>
+        </div>
+        <div style={{ marginTop: 10, background: '#f4f6f9', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#556070' }}>
+          De klant gaf zelf een afhaaltijd op (eigen vervoer of een tijd buiten het rooster). Er hoort dus geen boottijd bij.
+        </div>
       </div>
     );
   }

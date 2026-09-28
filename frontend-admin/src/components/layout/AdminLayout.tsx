@@ -63,7 +63,12 @@ function modSummary(m: any): string | null {
       ? { oud: ` op ${dayShort(oud)}`, nieuw: ` op ${dayShort(nieuw)}` }
       : { oud: '', nieuw: ` op ${dayShort(nieuw)}` };
 
-    if (d.newReturnTime) {
+    if (d.newReturnIsPickup && d.newReturnArrivalHarlingen) {
+      // Klant gaf zelf de afhaaltijd op; er is dan geen boottijd
+      const dag = dagPaar(m.old_departure_date, m.departure_date);
+      const wasHalen = timeShort(m.ferry_return_arrival_harlingen) || timeShort(d.currentReturnTime) || '—';
+      legs.push(`Afhalen was ${wasHalen}${dag.oud} → NU ${timeShort(d.newReturnArrivalHarlingen)}${dag.nieuw} (eigen tijd, geen boot)`);
+    } else if (d.newReturnTime) {
       const arr = d.newReturnArrivalHarlingen ? ` = ${d.newReturnArrivalHarlingen} aankomst` : '';
       const dag = dagPaar(m.old_departure_date, m.departure_date);
       legs.push(`Was ${timeShort(d.currentReturnTime) || '—'} halen${dag.oud} → NU ${timeShort(d.newReturnTime)} veerboot${dag.nieuw}${arr}`);

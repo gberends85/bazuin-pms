@@ -9,7 +9,7 @@ import {
 } from '../services/pricing.service';
 import { lookupRdw, normalizePlate } from '../services/rdw.service';
 import {
-  sendBookingConfirmation, sendModificationConfirmation, sendCheckinMail, sendCancellationMail, sendModificationMail, sendTemplatedEmail, sendSimpleEmail, sendContractInvoiceEmail,
+  sendBookingConfirmation, sendModificationConfirmation, sendCheckinMail, sendCancellationMail, sendModificationMail, sendTemplatedEmail, sendSimpleEmail, sendContractInvoiceEmail, sendInvoiceReminderEmail,
 } from '../services/email.service';
 import {
   createPaymentIntent, processRefund, getPaymentIntent,
@@ -7677,6 +7677,71 @@ router.post('/admin/umbraco/vehicle-repair-scan', requireAuth, async (req: Reque
 // ADMIN — FACTURENOVERZICHT (factuurklanten + contractklanten samen)
 // Twee soorten facturen op één plek, met betaalregistratie.
 // ============================================================
+// Handmatige betalingsherinnering bij een openstaande factuur. Zelfde bijlage en
+// betaallink als de oorspronkelijke factuurmail, met een herinneringstekst.
+router.post('/admin/invoices/:soort/:id/reminder', requireAuth, async (req: Request, res: Response) => {
+  const { soort, id } = req.params;
+  const eur = (v: any) => `€ ${parseFloat(v || '0').toFixed(2).replace('.', ',')}`;
+
+  if (soort === 'contract') {
+    const r = await query('SELECT * FROM contract_invoices WHERE id = $1', [id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Factuur niet gevonden' });
+    const inv = r.rows[0];
+    if (inv.paid_at) return res.status(400).json({ error: 'Deze factuur is al betaald' });
+    if (!inv.sent_at) return res.status(400).json({ error: 'Deze factuur is nog niet verstuurd; stuur eerst de factuur zelf' });
+
+    const snap = typeof inv.snapshot === 'string' ? JSON.parse(inv.snapshot) : inv.snapshot;
+    const customer = await contractInvoiceCustomer(inv, snap);
+    const to = customer?.email;
+    if (!to) return res.status(400).json({ error: 'Klant heeft geen e-mailadres' });
+
+    // Betaallink hergebruiken, of alsnog aanmaken
+    let payUrl: string | null = inv.payment_link_url || null;
+    if (!payUrl) {
+      try {
+        const amountCents = Math.round(parseFloat(inv.total_incl_vat) * 100);
+        if (amountCents > 0) {
+          const link = await createContractInvoicePaymentLink({ amountCents, invoiceNumber: inv.invoice_number, contractInvoiceId: inv.id });
+          payUrl = link.url;
+          await query(`UPDATE contract_invoices SET payment_link_url=$1, stripe_payment_link_id=$2 WHERE id=$3`, [link.url, link.paymentLinkId, inv.id]).catch(() => {});
+        }
+      } catch (e: any) { console.error('iDEAL-betaallink aanmaken mislukt:', e.message); }
+    }
+
+    const pdf = await pdfFromStoredContractInvoice(inv, payUrl || undefined);
+    await sendInvoiceReminderEmail(to, customer?.name || '', inv.invoice_number, pdf, payUrl, {
+      bedrag: eur(inv.total_incl_vat), verstuurdOp: inv.sent_at, eerdereHerinneringen: inv.reminder_count || 0,
+    });
+    const bij = await query(
+      `UPDATE contract_invoices SET reminder_sent_at = NOW(), reminder_count = COALESCE(reminder_count,0) + 1
+        WHERE id = $1 RETURNING reminder_count`, [id]
+    );
+    return res.json({ success: true, email: to, herinneringen: bij.rows[0]?.reminder_count ?? 1 });
+  }
+
+  if (soort === 'factuurgroep') {
+    const group = await loadInvoiceGroup(id);
+    if (!group) return res.status(404).json({ error: 'Factuurgroep niet gevonden' });
+    if (group.paid_at) return res.status(400).json({ error: 'Deze factuur is al betaald' });
+    if (group.status === 'draft') return res.status(400).json({ error: 'Deze factuur is nog niet verstuurd; stuur eerst de factuur zelf' });
+    if (!group.billing_email) return res.status(400).json({ error: 'Deze factuurgroep heeft geen e-mailadres' });
+
+    const bedrag = (group.reservations || []).reduce((s: number, x: any) => s + parseFloat(x.total_price || '0'), 0);
+    const pdf = await generateInvoiceGroupPdf(group);
+    await sendInvoiceReminderEmail(
+      group.billing_email, group.billing_name || group.billing_company || '', group.reference, pdf, null,
+      { bedrag: eur(bedrag), verstuurdOp: group.sent_at, eerdereHerinneringen: group.reminder_count || 0 },
+    );
+    const bij = await query(
+      `UPDATE invoice_groups SET reminder_sent_at = NOW(), reminder_count = COALESCE(reminder_count,0) + 1
+        WHERE id = $1 RETURNING reminder_count`, [id]
+    );
+    return res.json({ success: true, email: group.billing_email, herinneringen: bij.rows[0]?.reminder_count ?? 1 });
+  }
+
+  return res.status(400).json({ error: 'Onbekend factuursoort' });
+});
+
 router.get('/admin/invoices/overview', requireAuth, async (req: Request, res: Response) => {
   const { status } = req.query as Record<string, string>;
 
@@ -7687,6 +7752,7 @@ router.get('/admin/invoices/overview', requireAuth, async (req: Request, res: Re
               COALESCE(NULLIF(ig.billing_company, ''), ig.billing_name) AS klant,
               ig.billing_email AS email, ig.status, ig.created_at,
               ig.sent_at, ig.paid_at, ig.payment_method,
+              ig.reminder_sent_at, ig.reminder_count,
               COALESCE(SUM(r.total_price), 0) AS bedrag,
               COUNT(r.id)::int AS regels
        FROM invoice_groups ig
@@ -7697,6 +7763,7 @@ router.get('/admin/invoices/overview', requireAuth, async (req: Request, res: Re
     query(
       `SELECT ci.id, ci.invoice_number AS nummer, cc.name AS klant,
               cc.email, ci.created_at, ci.sent_at, ci.paid_at, ci.payment_method,
+              ci.reminder_sent_at, ci.reminder_count,
               ci.total_incl_vat AS bedrag, ci.total_cars::int AS regels,
               ci.period_from, ci.period_to, ci.payment_link_url
        FROM contract_invoices ci
@@ -7771,6 +7838,12 @@ router.post('/admin/invoices/:soort/:id/payment', requireAuth, async (req: Reque
 // Idempotente kolom-migraties
 (async () => {
   try {
+    // Handmatige betalingsherinneringen: wanneer voor het laatst en hoe vaak.
+    await query(`ALTER TABLE contract_invoices ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ`);
+    await query(`ALTER TABLE contract_invoices ADD COLUMN IF NOT EXISTS reminder_count INTEGER NOT NULL DEFAULT 0`);
+    await query(`ALTER TABLE invoice_groups ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ`);
+    await query(`ALTER TABLE invoice_groups ADD COLUMN IF NOT EXISTS reminder_count INTEGER NOT NULL DEFAULT 0`);
+
     // Centrale seizoenstarieven (gelden voor alle contractklanten met
     // rate_type 'seasonal'). Alleen aanmaken als ze nog niet bestaan.
     await query(

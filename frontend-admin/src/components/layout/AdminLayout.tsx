@@ -122,6 +122,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   // Openstaande wijzigingsverzoeken (pending_review) — voor badge + popup
   const [pendingMods, setPendingMods] = useState<any[]>([]);
+  // Automatisch aangemaakte concept-facturen wachten ook op een beslissing en
+  // horen daarom in ditzelfde meldingenvenster.
+  const [pendingInvoices, setPendingInvoices] = useState<any[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -137,11 +140,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     } catch { /* negeer */ }
   }, []);
 
-  const loadPending = useCallback(() =>
+  const loadPending = useCallback(() => Promise.all([
     api.modifications.pending()
       .then((list: any) => setPendingMods(Array.isArray(list) ? list : []))
       .catch(() => { /* stil */ }),
-  []);
+    api.pendingContractInvoices.list()
+      .then((list: any) => setPendingInvoices(Array.isArray(list) ? list : []))
+      .catch(() => { /* stil */ }),
+  ]), []);
 
   // Pollen van openstaande verzoeken (alleen als ingelogd)
   useEffect(() => {
@@ -176,8 +182,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
   function toggleSidebar() { sidebarOpen ? closeSidebar() : openSidebar(); }
 
-  const pendingCount = pendingMods.length;
   const visibleMods = pendingMods.filter(m => !dismissed.has(m.id));
+  const visibleFacturen = pendingInvoices.filter(f => !dismissed.has('factuur-' + f.id));
+  // Badge telt alles wat op een beslissing wacht
+  const pendingCount = pendingMods.length + pendingInvoices.length;
 
   // "Tijdelijk wegklikken": verberg de huidige verzoeken voor deze sessie.
   // Een NIEUW verzoek (ander id) laat de popup opnieuw verschijnen; na accepteren
@@ -185,6 +193,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   function snoozeAll() {
     const next = new Set(dismissed);
     pendingMods.forEach(m => next.add(m.id));
+    pendingInvoices.forEach(f => next.add('factuur-' + f.id));
     setDismissed(next);
     try { sessionStorage.setItem('dismissedModAlerts', JSON.stringify(Array.from(next))); } catch { /* negeer */ }
   }
@@ -192,15 +201,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     snoozeAll();
     router.push('/modifications');
   }
+  function goToFacturen() {
+    snoozeAll();
+    router.push('/facturen-goedkeuren');
+  }
 
   // Badge-bubbel op het hamburger-menu
-  const Badge = ({ navy }: { navy?: boolean }) => pendingCount > 0 ? (
+  const Badge = ({ navy, count = pendingCount }: { navy?: boolean; count?: number }) => count > 0 ? (
     <span style={{
       position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, padding: '0 5px',
       background: '#e8a020', color: '#0a2240', borderRadius: 9, fontSize: 11, fontWeight: 800,
       display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
       border: `2px solid ${navy ? '#0a2240' : '#fff'}`,
-    }}>{pendingCount}</span>
+    }}>{count}</span>
   ) : null;
 
   if (!ready) {
@@ -232,7 +245,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <nav style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
             {TOP_LINKS.map(l => {
               const active = path.startsWith(l.href);
-              const showBadge = l.href === '/modifications' && pendingCount > 0;
+              // Elke knop toont zijn eigen aantal
+              const badgeCount = l.href === '/modifications' ? pendingMods.length : 0;
               return (
                 <Link key={l.href} href={l.href} style={{
                   position: 'relative',
@@ -241,7 +255,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   color: active ? '#fff' : '#0a2240',
                   background: active ? '#0a2240' : 'transparent',
                   border: active ? 'none' : '0.5px solid rgba(10,34,64,0.15)',
-                }}>{l.label}{showBadge && <Badge navy={!active} />}</Link>
+                }}>{l.label}{badgeCount > 0 && <Badge navy={!active} count={badgeCount} />}</Link>
               );
             })}
           </nav>
@@ -250,7 +264,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </main>
 
       {/* Popup bij openstaande wijzigingsverzoeken */}
-      {visibleMods.length > 0 && (
+      {(visibleMods.length > 0 || visibleFacturen.length > 0) && (
         <div style={{
           position: 'fixed', bottom: 16, right: 16, left: 'auto', zIndex: 200,
           width: 'min(360px, calc(100vw - 32px))',
@@ -260,10 +274,30 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div style={{ background: '#0a2240', color: '#fff', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 18 }}>🔔</span>
             <span style={{ fontWeight: 700, fontSize: 14, flex: 1 }}>
-              {visibleMods.length === 1 ? 'Nieuw wijzigingsverzoek' : `${visibleMods.length} openstaande wijzigingsverzoeken`}
+              {(() => {
+                const m = visibleMods.length, f = visibleFacturen.length;
+                if (m && f) return `${m + f} openstaande meldingen`;
+                if (f) return f === 1 ? 'Nieuwe concept-factuur' : `${f} concept-facturen`;
+                return m === 1 ? 'Nieuw wijzigingsverzoek' : `${m} openstaande wijzigingsverzoeken`;
+              })()}
             </span>
           </div>
           <div style={{ maxHeight: 260, overflowY: 'auto', padding: '8px 0' }}>
+            {visibleFacturen.slice(0, 4).map(f => (
+              <div key={'factuur-' + f.id} style={{ padding: '10px 16px', borderBottom: '0.5px solid rgba(10,34,64,0.07)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ fontWeight: 700, fontSize: 13, color: '#0a2240' }}>{f.customer_name}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#a06010', background: '#fff6e6', borderRadius: 5, padding: '1px 6px' }}>Concept-factuur</span>
+                </div>
+                <div style={{ fontSize: 12, color: '#556070', marginTop: 2 }}>
+                  Automatisch aangemaakt · {fmtShort(f.period_from)} – {fmtShort(f.period_to)}
+                </div>
+                <button
+                  onClick={goToFacturen}
+                  style={{ marginTop: 8, padding: '7px 12px', borderRadius: 7, background: '#e8a020', color: '#0a2240', border: 'none', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+                >Factuur beoordelen</button>
+              </div>
+            ))}
             {visibleMods.slice(0, 6).map(m => {
               const summary = modSummary(m);
               return (

@@ -125,6 +125,44 @@ export async function sendSimpleEmail(to: string, subject: string, html: string)
   console.log(`Simple email sent to ${to}: ${subject}`);
 }
 
+// Herinnering bij een factuur die nog niet betaald is. Zelfde bijlage en
+// betaalmogelijkheden als de factuurmail, met een tekst die duidelijk maakt dat
+// het om een herinnering gaat. Wordt alleen handmatig verstuurd.
+export async function sendInvoiceReminderEmail(
+  to: string, name: string, invoiceNumber: string, pdf: Buffer,
+  payUrl?: string | null,
+  opties: { bedrag?: string; verstuurdOp?: Date | string | null; eerdereHerinneringen?: number } = {},
+): Promise<void> {
+  if (!isWhitelisted(to)) {
+    console.log(`[EMAIL WHITELIST] Geblokkeerd: ${to} | herinnering ${invoiceNumber}`);
+    return;
+  }
+  const datum = opties.verstuurdOp
+    ? new Date(opties.verstuurdOp).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })
+    : null;
+  const payBlock = payUrl
+    ? `<p style="margin:18px 0">
+         <a href="${payUrl}" style="display:inline-block;background:#19499e;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 24px;border-radius:8px;font-family:Arial,sans-serif">Betaal direct met iDEAL</a>
+       </p>
+       <p style="font-size:13px;color:#555">Of maak het bedrag over op IBAN <strong>NL81 ABNA 0108 0879 48</strong> t.n.v. Autostalling De Bazuin, o.v.v. ${invoiceNumber}.</p>`
+    : `<p style="font-size:13px;color:#555">U kunt het bedrag overmaken op IBAN <strong>NL81 ABNA 0108 0879 48</strong> t.n.v. Autostalling De Bazuin, o.v.v. ${invoiceNumber}.</p>`;
+  const bcc = factuurBcc();
+  await transporter.sendMail({
+    from: `"${process.env.EMAIL_FROM_NAME || 'Autostalling De Bazuin'}" <${process.env.EMAIL_FROM_ADDRESS}>`,
+    to,
+    ...(bcc ? { bcc } : {}),
+    subject: `Herinnering: factuur ${invoiceNumber} — Autostalling De Bazuin`,
+    html: `<p>Beste ${name || 'klant'},</p>
+      <p>Onze administratie laat zien dat factuur <strong>${invoiceNumber}</strong>${opties.bedrag ? ` van <strong>${opties.bedrag}</strong>` : ''}${datum ? `, verstuurd op ${datum},` : ''} nog niet is voldaan.</p>
+      <p>Mogelijk is deze aan uw aandacht ontsnapt. Wilt u het bedrag alsnog voldoen? De factuur zit opnieuw als bijlage bij deze e-mail.</p>
+      ${payBlock}
+      <p style="font-size:13px;color:#555">Heeft u de betaling inmiddels gedaan of klopt er iets niet? Laat het ons even weten, dan zoeken we het samen uit.</p>
+      <p>Met vriendelijke groet,<br>Autostalling De Bazuin</p>`,
+    attachments: [{ filename: `Factuur-${invoiceNumber}.pdf`, content: pdf, contentType: 'application/pdf' }],
+  });
+  console.log(`Herinnering factuur ${invoiceNumber} gemaild naar ${to}${bcc ? ` (bcc ${bcc})` : ''}`);
+}
+
 // Contractfactuur per e-mail met PDF-bijlage
 export async function sendContractInvoiceEmail(to: string, name: string, invoiceNumber: string, pdf: Buffer, payUrl?: string | null): Promise<void> {
   if (!isWhitelisted(to)) {

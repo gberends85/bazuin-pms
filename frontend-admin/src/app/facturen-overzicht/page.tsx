@@ -4,7 +4,7 @@ import AdminLayout from '@/components/layout/AdminLayout';
 import Modal from '@/components/ui/Modal';
 import Toaster, { toast, toastError } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
-import { BanknotesIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
+import { BanknotesIcon, ArrowUturnLeftIcon, BellAlertIcon } from '@heroicons/react/24/outline';
 
 const eur = (v: any) => `€ ${parseFloat(v || 0).toFixed(2).replace('.', ',')}`;
 const dat = (v: any) => v ? new Date(v).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
@@ -28,6 +28,22 @@ export default function FacturenOverzichtPage() {
   const [bezig, setBezig] = useState<string | null>(null);
   const [markeer, setMarkeer] = useState<any | null>(null);
   const [betaalDatum, setBetaalDatum] = useState(isoVandaag());
+
+  // Herinnering sturen bij een openstaande factuur. Er gaat een mail naar de
+  // klant, dus eerst bevestigen met het adres erbij.
+  async function stuurHerinnering(r: any) {
+    const eerder = r.reminder_count > 0
+      ? `\n\nEr zijn al ${r.reminder_count} herinnering(en) verstuurd, voor het laatst op ${dat(r.reminder_sent_at)}.`
+      : '';
+    if (!window.confirm(`Herinnering sturen voor ${r.nummer} (${eur(r.bedrag)}) naar ${r.email || 'de klant'}?${eerder}`)) return;
+    setBezig(r.id);
+    try {
+      const uit = await api.reports.invoiceReminder(r.soort, r.id);
+      toast(`Herinnering verstuurd naar ${uit.email}`);
+      load(filter);
+    } catch (e: any) { toastError(e.message); }
+    finally { setBezig(null); }
+  }
   const [betaalWijze, setBetaalWijze] = useState('overboeking');
 
   const load = useCallback(async (f: string) => {
@@ -152,10 +168,22 @@ export default function FacturenOverzichtPage() {
                           ) : (
                             /* Neutrale actieknop: een groene "Betaald"-knop leest
                                als een status alsof de factuur al voldaan is. */
-                            <button onClick={() => openMarkeer(r)} disabled={bezig === r.id}
-                              style={{ background: 'white', border: '1px solid #19499e', color: '#19499e', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
-                              <BanknotesIcon className="w-4 h-4" />Betaling registreren
-                            </button>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                              {r.reminder_count > 0 && (
+                                <span style={{ fontSize: 11, color: '#a06010', whiteSpace: 'nowrap' }}
+                                      title={`Laatste herinnering: ${dat(r.reminder_sent_at)}`}>
+                                  {r.reminder_count}× herinnerd · {dat(r.reminder_sent_at)}
+                                </span>
+                              )}
+                              <button onClick={() => stuurHerinnering(r)} disabled={bezig === r.id}
+                                style={{ background: 'white', border: '1px solid #e8a020', color: '#a06010', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+                                <BellAlertIcon className="w-4 h-4" />Herinnering sturen
+                              </button>
+                              <button onClick={() => openMarkeer(r)} disabled={bezig === r.id}
+                                style={{ background: 'white', border: '1px solid #19499e', color: '#19499e', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+                                <BanknotesIcon className="w-4 h-4" />Betaling registreren
+                              </button>
+                            </span>
                           )}
                         </td>
                       </tr>

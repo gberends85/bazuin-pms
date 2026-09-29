@@ -125,6 +125,8 @@ export const api = {
     invoicesOverview: (status: string) => req<any>(`/admin/invoices/overview?status=${status}`),
     invoicePayment: (soort: string, id: string, d: { paid: boolean; paidAt?: string; paymentMethod?: string }) =>
       req<any>(`/admin/invoices/${soort}/${id}/payment`, { method: 'POST', body: JSON.stringify(d) }),
+    invoiceReminder: (soort: string, id: string) =>
+      req<{ success: boolean; email: string; herinneringen: number }>(`/admin/invoices/${soort}/${id}/reminder`, { method: 'POST', body: JSON.stringify({}) }),
     occupancy: (p: any) => req<any>(`/admin/reports/occupancy?${new URLSearchParams(p)}`),
     cash: (from: string, to?: string) => req<any>(`/admin/reports/cash?from=${from}${to && to !== from ? '&to=' + to : ''}`),
   },

@@ -448,6 +448,38 @@ export async function buildConfirmationVars(
   };
 }
 
+// Eenmalige mail voor reserveringen die uit het oude systeem zijn overgezet:
+// dezelfde bevestiging als altijd, met een korte uitleg erboven. Wordt alleen
+// handmatig gebruikt, niet vanuit de gewone boekingsflow.
+export async function sendMigrationNotice(reservationId: string): Promise<void> {
+  const { email, vars } = await buildConfirmationVars(reservationId);
+  // Staat er nog een bedrag open, dan krijgt de klant in deze mail de
+  // mogelijkheid om alsnog online te betalen.
+  const r = await query(
+    `SELECT payment_status, payment_method, notes, total_price,
+            COALESCE(prepaid_amount, 0) AS prepaid, cancellation_token
+       FROM reservations WHERE id = $1`,
+    [reservationId]
+  );
+  const res = r.rows[0] || {};
+  // Alleen de boekingen uit het oudste systeem (v1) krijgen de mogelijkheid om
+  // alsnog online te betalen. Wie later boekte kon toen al kiezen hoe te betalen;
+  // koos die voor ter plekke, dan blijft dat zo (inclusief de toeslag).
+  // Uit het oudste systeem: herkenbaar aan de v1-notitie, of doordat er nooit een
+  // betaalmethode is vastgelegd (toen kon de klant nog niet kiezen).
+  const uitOudsteSysteem = /imported from v1/i.test(String(res.notes || ''))
+    || !String(res.payment_method || '').trim();
+  const openBedrag = Math.max(0, Math.round(
+    (parseFloat(res.total_price || '0') - parseFloat(res.prepaid || '0')) * 100) / 100);
+  const open = (res.payment_status !== 'paid' && uitOudsteSysteem) ? openBedrag : 0;
+  await sendTemplatedEmail('migration_notice', email, {
+    ...vars,
+    openstaand: open > 0,
+    openstaand_bedrag: `€ ${open.toFixed(2).replace('.', ',')}`,
+    betaallink: vars.wijzigingslink,
+  });
+}
+
 export async function sendBookingConfirmation(reservationId: string): Promise<void> {
   const { email, vars } = await buildConfirmationVars(reservationId);
   await sendTemplatedEmail('booking_confirmed', email, vars);

@@ -3816,6 +3816,38 @@ router.put('/admin/settings', requireAuth, async (req: Request, res: Response) =
 // ============================================================
 // PUBLIC — MODIFICATION PREVIEW (via cancellation token)
 // ============================================================
+// Verlengen tijdens het verblijf. De klant betaalt wat de langere periode normaal
+// gekost zou hebben — alsof de reservering meteen zo was geboekt — plus eenmalig
+// wijzigingskosten. Niet langer een vast dagtarief per extra dag: bij een lang
+// verblijf werd dat onevenredig duur, en bij een kort verblijf juist te goedkoop.
+async function berekenVerlenging(r: any, nieuweVertrekdatum: string) {
+  const isoD = (d: any) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
+  const { differenceInDays } = await import('date-fns');
+
+  const vc = await query('SELECT COUNT(*)::int AS n FROM vehicles WHERE reservation_id = $1', [r.id]);
+  const autos = Math.max(1, vc.rows[0]?.n || 1);
+
+  const prijs = await calculatePrice(
+    new Date(isoD(r.arrival_date)), new Date(nieuweVertrekdatum), r.parking_lot_id, autos,
+  );
+  // Diensten en toeslagen blijven zoals ze zijn; alleen het parkeren wordt opnieuw berekend.
+  const extras = parseFloat(r.services_total || '0') + parseFloat(r.on_site_surcharge || '0')
+    + parseFloat(r.payment_surcharge || '0') + parseFloat(r.overbooking_surcharge || '0');
+  const huidigeTotaal = parseFloat(r.total_price || '0');
+  const nieuwParkeren = Math.round(prijs.totalPrice * 100) / 100;
+  const prijsverschil = Math.max(0, Math.round((nieuwParkeren + extras - huidigeTotaal) * 100) / 100);
+
+  const cfg = await query("SELECT value FROM settings WHERE key = 'during_stay_change_fee'");
+  const toeslag = parseFloat(cfg.rows[0]?.value ?? '10');
+  const teBetalen = Math.round((prijsverschil + toeslag) * 100) / 100;
+
+  return {
+    extraDays: differenceInDays(new Date(nieuweVertrekdatum + 'T12:00:00'), new Date(isoD(r.departure_date) + 'T12:00:00')),
+    prijsverschil, toeslag, teBetalen,
+    nieuwePrijs: Math.round((huidigeTotaal + teBetalen) * 100) / 100,
+  };
+}
+
 router.get('/reservations/token/:token/modification-preview', async (req: Request, res: Response) => {
   const { newArrival, newDeparture } = req.query as Record<string, string>;
   if (!newArrival || !newDeparture) return res.status(400).json({ error: 'newArrival en newDeparture zijn verplicht' });
@@ -3828,12 +3860,11 @@ router.get('/reservations/token/:token/modification-preview', async (req: Reques
     return res.status(400).json({ error: 'Deze reservering kan niet worden gewijzigd' });
   }
 
-  const settingsResult = await query("SELECT key, value FROM settings WHERE key IN ('modification_fee','modification_min_days_before','during_stay_daily_rate','overbooking_fee')");
+  const settingsResult = await query("SELECT key, value FROM settings WHERE key IN ('modification_fee','modification_min_days_before','overbooking_fee')");
   const cfg: Record<string, string> = {};
   for (const s of settingsResult.rows) cfg[s.key] = s.value;
   const modFee = parseFloat(cfg['modification_fee'] || '0');
   const minDays = parseInt(cfg['modification_min_days_before'] || '0');
-  const duringStayDailyRate = parseFloat(cfg['during_stay_daily_rate'] || '20');
   const overbookingFeePerNight = parseFloat(cfg['overbooking_fee'] || '20');
 
   const { differenceInDays } = await import('date-fns');
@@ -3867,21 +3898,18 @@ router.get('/reservations/token/:token/modification-preview', async (req: Reques
       });
     }
 
-    // Verlengen → vast dagtarief per extra dag, direct via Stripe.
+    // Verlengen → normale prijs voor de langere periode + eenmalige wijzigingskosten.
     if (isoDate(newDeparture) > currentDepStr) {
-      const newDepartureDateObj = new Date(newDeparture + 'T12:00:00');
-      const extraDays = differenceInDays(newDepartureDateObj, currentDepartureDate);
-      const extraCharge = Math.round(extraDays * duringStayDailyRate * 100) / 100;
-      const newPrice = currentPrice + extraCharge;
-
+      const v = await berekenVerlenging(r, isoDate(newDeparture));
       return res.json({
         reservationId: r.id, reference: r.reference,
         currentArrival: r.arrival_date, currentDeparture: r.departure_date, currentPrice,
-        newArrival, newDeparture, newPrice,
-        priceDifference: extraCharge, modificationFee: 0,
-        netAmountDue: extraCharge, netRefundAmount: 0,
+        newArrival, newDeparture, newPrice: v.nieuwePrijs,
+        priceDifference: v.teBetalen, modificationFee: v.toeslag,
+        netAmountDue: v.teBetalen, netRefundAmount: 0,
         cancellationRefundPct: 0, policyDescription: 'Geen restitutie tijdens verblijf',
-        duringStay: true, extraDays, duringStayDailyRate,
+        duringStay: true, extraDays: v.extraDays,
+        verlengingPrijsverschil: v.prijsverschil, wijzigingstoeslag: v.toeslag,
         available: true, pendingReview: true,
       });
     }
@@ -4013,12 +4041,11 @@ router.post('/reservations/token/:token/modify', async (req: Request, res: Respo
     return res.status(400).json({ error: 'Deze reservering kan niet worden gewijzigd' });
   }
 
-  const settingsResult = await query("SELECT key, value FROM settings WHERE key IN ('modification_fee','modification_min_days_before','during_stay_daily_rate','overbooking_fee')");
+  const settingsResult = await query("SELECT key, value FROM settings WHERE key IN ('modification_fee','modification_min_days_before','overbooking_fee')");
   const cfg: Record<string, string> = {};
   for (const s of settingsResult.rows) cfg[s.key] = s.value;
   const modFee = parseFloat(cfg['modification_fee'] || '0');
   const minDays = parseInt(cfg['modification_min_days_before'] || '0');
-  const duringStayDailyRate = parseFloat(cfg['during_stay_daily_rate'] || '20');
   const overbookingFeePerNight = parseFloat(cfg['overbooking_fee'] || '20');
 
   const { differenceInDays } = await import('date-fns');
@@ -4037,10 +4064,10 @@ router.post('/reservations/token/:token/modify', async (req: Request, res: Respo
     if (newArrivalDate !== currentArrivalStr) return res.status(400).json({ error: 'Tijdens uw verblijf kunt u alleen de vertrekdatum wijzigen.' });
     if (newDepartureDate <= isoDate(r.departure_date)) return res.status(400).json({ error: 'Tijdens uw verblijf kunt u de verblijfsduur niet verkorten.' });
 
-    const newDepartureDateObj = new Date(newDepartureDate + 'T12:00:00');
-    const extraDays = differenceInDays(newDepartureDateObj, currentDepartureDate);
-    const extraCharge = Math.round(extraDays * duringStayDailyRate * 100) / 100;
-    const newPrice = parseFloat(r.total_price) + extraCharge;
+    const v = await berekenVerlenging(r, newDepartureDate);
+    const extraDays = v.extraDays;
+    const extraCharge = v.teBetalen;
+    const newPrice = v.nieuwePrijs;
 
     // Sla op als PENDING — admin moet accepteren
     await query(
@@ -4050,7 +4077,7 @@ router.post('/reservations/token/:token/modify', async (req: Request, res: Respo
        VALUES ($1,'customer',$2,$3,$4,$5,$6,$7,$8,0,'pending_review','dates',true,$9)`,
       [r.id, r.arrival_date, r.departure_date, newArrivalDate, newDepartureDate,
        parseFloat(r.total_price), newPrice, extraCharge,
-       JSON.stringify({ plates, extraDays, duringStayDailyRate, extraCharge })]
+       JSON.stringify({ plates, extraDays, verlengingPrijsverschil: v.prijsverschil, wijzigingstoeslag: v.toeslag, extraCharge })]
     );
 
     return res.json({ success: true, pending: true, message: 'Uw wijzigingsverzoek is ontvangen en wordt zo spoedig mogelijk door ons verwerkt.' });
@@ -5540,12 +5567,9 @@ router.post('/reservations/token/:token/modify-during-stay-pay', async (req: Req
     return res.status(400).json({ error: 'Tijdens uw verblijf kunt u de verblijfsduur niet verkorten' });
   }
 
-  const settingsResult = await query("SELECT key, value FROM settings WHERE key = 'during_stay_daily_rate'");
-  const duringStayDailyRate = parseFloat(settingsResult.rows[0]?.value || '20');
-
-  const newDepartureDateObj = new Date(newDepStr + 'T12:00:00');
-  const extraDays = differenceInDays(newDepartureDateObj, currentDepartureDate);
-  const extraCharge = Math.round(extraDays * duringStayDailyRate * 100) / 100;
+  const v = await berekenVerlenging(r, newDepStr);
+  const extraDays = v.extraDays;
+  const extraCharge = v.teBetalen;
   const amountCents = Math.round(extraCharge * 100);
 
   const Stripe = (await import('stripe')).default;
@@ -5565,7 +5589,8 @@ router.post('/reservations/token/:token/modify-during-stay-pay', async (req: Req
     clientSecret: paymentIntent.client_secret,
     amount: extraCharge,
     extraDays,
-    duringStayDailyRate,
+    verlengingPrijsverschil: v.prijsverschil,
+    wijzigingstoeslag: v.toeslag,
   });
 });
 
@@ -5615,10 +5640,9 @@ router.post('/reservations/token/:token/modify-during-stay-complete', async (req
   const newDepartureDateObj = new Date(newDepStr + 'T12:00:00');
   const extraDays = differenceInDays(newDepartureDateObj, currentDepartureDate);
 
-  const settingsResult = await query("SELECT key, value FROM settings WHERE key = 'during_stay_daily_rate'");
-  const duringStayDailyRate = parseFloat(settingsResult.rows[0]?.value || '20');
-  const extraCharge = Math.round(extraDays * duringStayDailyRate * 100) / 100;
-  const newPrice = parseFloat(r.total_price) + extraCharge;
+  const v = await berekenVerlenging(r, newDepStr);
+  const extraCharge = v.teBetalen;
+  const newPrice = v.nieuwePrijs;
 
   // De betaalde verlenging moet exact overeenkomen met wat nu wordt toegepast
   if (intent.metadata?.newDepartureDate !== newDepStr || intent.amount !== Math.round(extraCharge * 100)) {
@@ -5647,7 +5671,7 @@ router.post('/reservations/token/:token/modify-during-stay-complete', async (req
     [
       r.id, r.arrival_date, r.departure_date, newDepStr,
       parseFloat(r.total_price), newPrice, extraCharge,
-      JSON.stringify({ plates, extraDays, duringStayDailyRate, extraCharge, paymentIntentId, autoApplied: true }),
+      JSON.stringify({ plates, extraDays, verlengingPrijsverschil: v.prijsverschil, wijzigingstoeslag: v.toeslag, extraCharge, paymentIntentId, autoApplied: true }),
       paymentIntentId,
     ]
   );
@@ -7838,6 +7862,14 @@ router.post('/admin/invoices/:soort/:id/payment', requireAuth, async (req: Reque
 // Idempotente kolom-migraties
 (async () => {
   try {
+    // Eenmalige wijzigingskosten bij verlengen tijdens het verblijf.
+    await query(
+      `INSERT INTO settings (key, value, description)
+       VALUES ('during_stay_change_fee', '10.00',
+               'Eenmalige wijzigingskosten bij het verlengen van een verblijf; daarbovenop betaalt de klant het normale tarief voor de extra dagen')
+       ON CONFLICT (key) DO NOTHING`
+    );
+
     // Handmatige betalingsherinneringen: wanneer voor het laatst en hoe vaak.
     await query(`ALTER TABLE contract_invoices ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ`);
     await query(`ALTER TABLE contract_invoices ADD COLUMN IF NOT EXISTS reminder_count INTEGER NOT NULL DEFAULT 0`);

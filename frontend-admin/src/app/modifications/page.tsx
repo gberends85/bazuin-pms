@@ -379,7 +379,9 @@ function ModCardBody({ m, details, priceDiff, isDuringStay }: { m: any; details:
           {isDuringStay ? (
             <span>
               Betaald door klant: <strong>{details.extraDays} extra dag{details.extraDays !== 1 ? 'en' : ''}</strong>
-              {details.duringStayDailyRate ? ` × ${fmtMoney(details.duringStayDailyRate)}` : ''}
+              {details.verlengingPrijsverschil != null
+                ? <> — {fmtMoney(details.verlengingPrijsverschil)} voor de extra dagen{details.wijzigingstoeslag ? ` + ${fmtMoney(details.wijzigingstoeslag)} wijzigingskosten` : ''}</>
+                : (details.duringStayDailyRate ? ` × ${fmtMoney(details.duringStayDailyRate)}` : '')}
               {' '}= <strong>{fmtMoney(priceDiff)}</strong>
               {details.paymentIntentId && (
                 <span style={{ color: '#7090b0', fontSize: 11, marginLeft: 8 }}>PI: {details.paymentIntentId.slice(0, 20)}...</span>

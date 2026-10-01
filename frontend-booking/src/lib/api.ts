@@ -176,7 +176,7 @@ export const bookingApi = {
     post<{ success: boolean; autoApplied: boolean }>(`/reservations/token/${token}/modify-ferry`, { newOutboundTime, newReturnTime, notes, outboundDestination, returnDestination, returnIsPickup: !!returnIsPickup }),
 
   modifyDuringStayPay: (token: string, newDepartureDate: string) =>
-    post<{ clientSecret: string; amount: number; extraDays: number; duringStayDailyRate: number }>(
+    post<{ clientSecret: string; amount: number; extraDays: number; verlengingPrijsverschil: number; wijzigingstoeslag: number }>(
       `/reservations/token/${token}/modify-during-stay-pay`, { newDepartureDate }
     ),
 

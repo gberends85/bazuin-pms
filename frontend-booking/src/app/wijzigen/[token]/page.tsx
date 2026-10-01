@@ -519,7 +519,8 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
   const [stripeClientSecret, setStripeClientSecret] = useState('');
   const [stripeAmount, setStripeAmount] = useState(0);
   const [stripeExtraDays, setStripeExtraDays] = useState(0);
-  const [stripeDailyRate, setStripeDailyRate] = useState(0);
+  const [stripeToeslag, setStripeToeslag] = useState(0);
+  const [stripeExtraPrijs, setStripeExtraPrijs] = useState(0);
 
   // Pre-stay Stripe state
   const [stripePreStayClientSecret, setStripePreStayClientSecret] = useState('');
@@ -773,7 +774,8 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
         setStripeClientSecret(payData.clientSecret);
         setStripeAmount(payData.amount);
         setStripeExtraDays(payData.extraDays);
-        setStripeDailyRate(payData.duringStayDailyRate);
+        setStripeToeslag(Number(payData.wijzigingstoeslag || 0));
+        setStripeExtraPrijs(Number(payData.verlengingPrijsverschil || 0));
         setStep('dates-pay');
       } catch (e: any) { setError(e.message); }
       return;
@@ -1288,8 +1290,10 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
       <div style={{ background: '#fff8e6', border: '1.5px solid #e8a020', borderRadius: 10, padding: '14px 18px', marginBottom: 20 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: '#7a5010', textTransform: 'uppercase', marginBottom: 6 }}>Verlenging tijdens verblijf</div>
         <div style={{ fontSize: 14, color: '#142440' }}>
-          <strong>{stripeExtraDays} extra dag{stripeExtraDays !== 1 ? 'en' : ''}</strong>
-          {' '}× € {stripeDailyRate.toFixed(2).replace('.', ',')} = <strong>€ {stripeAmount.toFixed(2).replace('.', ',')}</strong>
+          <strong>{stripeExtraDays} extra dag{stripeExtraDays !== 1 ? 'en' : ''}</strong>:
+          {' '}€ {stripeExtraPrijs.toFixed(2).replace('.', ',')} voor de extra dagen
+          {stripeToeslag > 0 ? ` + € ${stripeToeslag.toFixed(2).replace('.', ',')} wijzigingskosten` : ''}
+          {' '}= <strong>€ {stripeAmount.toFixed(2).replace('.', ',')}</strong>
         </div>
         <div style={{ fontSize: 12, color: '#7a5010', marginTop: 6 }}>
           Nieuwe vertrekdatum: <strong>{fmtDate(newDeparture)}</strong>
@@ -1308,7 +1312,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
             newDeparture={newDeparture}
             amount={stripeAmount}
             extraDays={stripeExtraDays}
-            dailyRate={stripeDailyRate}
+            dailyRate={stripeToeslag}
             onSuccess={async () => { await pasBoottijdToe(); setDoneData({ duringStayPaid: true }); setStep('dates-done'); }}
             onError={msg => setError(msg)}
           />
@@ -1494,7 +1498,10 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
 
       {preview.duringStay && preview.netAmountDue > 0 && (
         <div style={{ background: '#fff8e6', border: '1.5px solid #e8a020', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#7a5010', marginBottom: 12 }}>
-          Verlenging van <strong>{preview.extraDays} dag{preview.extraDays !== 1 ? 'en' : ''}</strong> × € {preview.duringStayDailyRate?.toFixed(2)} = <strong>€ {preview.netAmountDue.toFixed(2)}</strong> — betaling via Stripe.
+          Verlenging met <strong>{preview.extraDays} dag{preview.extraDays !== 1 ? 'en' : ''}</strong>:
+          € {Number(preview.verlengingPrijsverschil ?? 0).toFixed(2)} voor de extra dagen
+          {preview.wijzigingstoeslag ? <> + € {Number(preview.wijzigingstoeslag).toFixed(2)} wijzigingskosten</> : null}
+          {' '}= <strong>€ {preview.netAmountDue.toFixed(2)}</strong> — betaling via Stripe.
         </div>
       )}
 
@@ -1699,7 +1706,7 @@ export default function WijzigenPage({ params }: { params: { token: string } }) 
 
         {duringStay && (
           <div style={{ background: '#fff8e6', border: '1.5px solid #e8a020', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#7a5010', marginBottom: 16 }}>
-            U verblijft momenteel bij Autostalling De Bazuin. U kunt uw vertrekdatum <strong>vervroegen</strong> of <strong>verlengen</strong>. Vervroegen wordt ter beoordeling aangeboden (geen restitutie); verlengen rekenen we per dag.
+            U verblijft momenteel bij Autostalling De Bazuin. U kunt uw vertrekdatum <strong>vervroegen</strong> of <strong>verlengen</strong>. Vervroegen wordt ter beoordeling aangeboden (geen restitutie). Bij verlengen betaalt u het normale tarief voor de extra dagen, plus eenmalig wijzigingskosten.
           </div>
         )}
 

@@ -29,6 +29,13 @@ const FIELDS: SettingField[] = [
     type: 'number',
     unit: 'dagen',
   },
+  {
+    key: 'during_stay_change_fee',
+    label: 'Wijzigingskosten tijdens verblijf',
+    description: 'Eenmalige kosten als een klant tijdens het verblijf de vertrekdatum uitstelt. Daarbovenop betaalt de klant het normale tarief voor de extra dagen, alsof die meteen waren geboekt.',
+    type: 'euro',
+    unit: '€ eenmalig',
+  },
   // Seizoenstarief voor contractklanten: centraal, zodat het voor alle
   // seizoensklanten gelijk is. Alleen de startdatum blijft per klant.
   {
